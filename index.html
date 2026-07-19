@@ -144,7 +144,8 @@ function Activity(props) {
        例) 53 (素数)         -> 53円 (分解不可 = 高騰)
        例) 64 = 2^6          -> 2*6 = 12円 (底値)
 
-     N_start(T) = B + T   (Bはゲーム開始時に秘匿された 10,000〜90,000 のランダム整数)
+     N_start(T) = ターンごとに独立して抽選される 10,000〜90,000 のランダム整数
+                  (先読み防止のため、前ターンの数字と一切連動しない)
 
    1ターンのシーケンス:
      1. 市場開示  : N_start を公開し、仮株価 sopf(N_start) を表示
@@ -267,7 +268,7 @@ function FactorTrader() {
   const [screen, setScreen] = useState("setup"); // setup | play | over
   const [playerCount, setPlayerCount] = useState(3);
   const [players, setPlayers] = useState([]);
-  const [base, setBase] = useState(0);
+  const [currentN, setCurrentN] = useState(0);
   const [turn, setTurn] = useState(1);
   const [totalTurns, setTotalTurns] = useState(24);
   const [phase, setPhase] = useState("market"); // market | order | hack | reveal
@@ -284,8 +285,11 @@ function FactorTrader() {
   const logEndRef = useRef(null);
   const topRef = useRef(null);
 
-  const nStart = base + turn;
-  const priceBefore = base > 0 ? sopf(nStart) : 0;
+  const nStart = currentN;
+  const priceBefore = currentN > 0 ? sopf(nStart) : 0;
+  // 基準株価: 損益計算の基準になる価格。前ターンの確定株価(無ければゲーム開始時のbasePrice)。
+  // ターン開始時から見えるようにして、変動の読み合いができるようにする。
+  const refPrice = priceHistory.length > 0 ? priceHistory[priceHistory.length - 1].price : basePrice;
 
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -302,10 +306,11 @@ function FactorTrader() {
   }
 
   function startGame() {
-    const b = randBase();
     const t = TURN_TABLE[playerCount];
-    setBase(b);
-    setBasePrice(sopf(b));
+    // ゲーム開始前の「仮想の直前株価」として、独立した乱数のsopfを基準値にする
+    // (1ターン目からベース数字は完全ランダムなので、この基準がないとturn1だけ損益が出せない)
+    setBasePrice(sopf(randBase()));
+    setCurrentN(randBase());
     setTotalTurns(t);
     setTurn(1);
     setPlayers(makePlayers(playerCount, "YOU"));
@@ -364,12 +369,9 @@ function FactorTrader() {
     for (let i = 0; i < totalHeavy; i++) nFinal *= 2;
 
     const priceFinal = sopf(nFinal);
-    // 損益は「直前の確定株価」からの変動で計算する。
+    // 損益は「直前の確定株価」からの変動で計算する（refPriceはコンポーネント上部で算出済み）。
     // (priceBefore基準だと、誰もハックを使わないターンはnFinal=nStartとなり比率が常に1になる
     //  = 株価自体は毎ターン動いて見えるのに資産が一切変化しない、というバグの原因だった)
-    // 1ターン目は履歴が無いため、ゲーム開始時のベース株価(basePrice)を基準にする。
-    // これにより1ターン目から賭けが意味を持つ。
-    const refPrice = priceHistory.length > 0 ? priceHistory[priceHistory.length - 1].price : basePrice;
     const ratio = priceFinal / refPrice;
 
     // 資産精算 & 手札消費
@@ -458,6 +460,7 @@ function FactorTrader() {
       return;
     }
     setTurn((t) => t + 1);
+    setCurrentN(randBase());
     setPhase("market");
     setHumanOrderDraft({ type: "stay", pct: 1 });
     setHumanHackDraft({ quick: 0, heavy: false });
@@ -507,7 +510,7 @@ function FactorTrader() {
           />
           <div className="ft-main">
             <div className="ft-left">
-              <ChartPanel priceHistory={priceHistory} nStart={nStart} priceBefore={priceBefore} phase={phase} />
+              <ChartPanel priceHistory={priceHistory} nStart={nStart} priceBefore={priceBefore} refPrice={refPrice} phase={phase} />
               <PlayersPanel players={players} orders={orders} phase={phase} />
             </div>
             <div className="ft-right">
@@ -515,6 +518,7 @@ function FactorTrader() {
                 phase={phase}
                 human={human}
                 priceBefore={priceBefore}
+                refPrice={refPrice}
                 nStart={nStart}
                 humanOrderDraft={humanOrderDraft}
                 setHumanOrderDraft={setHumanOrderDraft}
@@ -722,8 +726,8 @@ function TopBar({ turn, totalTurns, human, onQuit, onShowRules }) {
   );
 }
 
-function ChartPanel({ priceHistory, nStart, priceBefore, phase }) {
-  const max = Math.max(20, ...priceHistory.map((h) => h.price), priceBefore || 0);
+function ChartPanel({ priceHistory, nStart, priceBefore, refPrice, phase }) {
+  const max = Math.max(20, ...priceHistory.map((h) => h.price), priceBefore || 0, refPrice || 0);
   const points = priceHistory.slice(-8);
   const w = 560;
   const h = 160;
@@ -737,10 +741,25 @@ function ChartPanel({ priceHistory, nStart, priceBefore, phase }) {
     })
     .join(" ");
 
+  const diff = priceBefore - refPrice;
+  const diffPct = refPrice > 0 ? ((priceBefore / refPrice - 1) * 100) : 0;
+
   return (
     <div className="ft-panel">
       <div className="ft-panel-head">
         <Activity size={15} /> MARKET FEED
+      </div>
+      <div className="ft-refprice-box">
+        <div className="ft-refprice-label">📌 基準株価（今回の損益はここからの変動で決まります）</div>
+        <div className="ft-refprice-row">
+          <span className="ft-refprice-value">{refPrice}円</span>
+          <span className="ft-refprice-arrow">→</span>
+          <span className="ft-refprice-value current">{priceBefore}円</span>
+          <span className={"ft-refprice-diff" + (diff > 0 ? " up" : diff < 0 ? " down" : "")}>
+            {diff === 0 ? "±0" : diff > 0 ? `+${diff}円` : `${diff}円`}
+            {refPrice > 0 && ` (${diffPct >= 0 ? "+" : ""}${diffPct.toFixed(1)}%)`}
+          </span>
+        </div>
       </div>
       <div className="ft-market-open">
         <div>
@@ -805,6 +824,7 @@ function ActionPanel(props) {
     phase,
     human,
     priceBefore,
+    refPrice,
     nStart,
     humanOrderDraft,
     setHumanOrderDraft,
@@ -827,7 +847,9 @@ function ActionPanel(props) {
         <p className="ft-action-desc">
           今タームのベース数字 <b>{nStart.toLocaleString()}</b> が公開されました。
           仮株価は <b className="ft-highlight">{priceBefore}円</b>（{factorString(nStart)}）。
-          高騰（素数）を狙うか、暴落（2の累乗）に備えるか——判断のときです。
+          基準株価 <b className="ft-highlight">{refPrice}円</b> と比べて
+          {priceBefore > refPrice ? "上振れ" : priceBefore < refPrice ? "下振れ" : "同水準"}
+          しています。高騰（素数）を狙うか、暴落（2の累乗）に備えるか——判断のときです。
         </p>
         <button className="ft-primary-btn" onClick={onGoOrder}>
           注文フェーズへ ▶
@@ -841,7 +863,8 @@ function ActionPanel(props) {
       <div className="ft-panel ft-action">
         <div className="ft-panel-head">STEP 2 — 投資注文（秘密）</div>
         <p className="ft-action-desc">
-          現仮株価 <b className="ft-highlight">{priceBefore}円</b> で建玉します。
+          現仮株価 <b className="ft-highlight">{priceBefore}円</b> で建玉します
+          （基準株価 <b>{refPrice}円</b> からの変動で最終的な損益が決まります）。
         </p>
         <div className="ft-order-btns">
           <button
@@ -1401,6 +1424,32 @@ const CSS = `
   padding-bottom: 8px;
 }
 
+.ft-refprice-box {
+  background: rgba(255,182,72,0.06);
+  border: 1px solid rgba(255,182,72,0.3);
+  border-radius: 3px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+}
+.ft-refprice-label {
+  font-size: 10px;
+  color: var(--ft-amber);
+  margin-bottom: 6px;
+  letter-spacing: 0.5px;
+}
+.ft-refprice-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-family: var(--ft-font-display);
+}
+.ft-refprice-value { font-size: 16px; font-weight: 700; color: var(--ft-text-dim); }
+.ft-refprice-value.current { color: var(--ft-amber); }
+.ft-refprice-arrow { color: var(--ft-text-dim); font-size: 14px; }
+.ft-refprice-diff { font-size: 12px; margin-left: 4px; color: var(--ft-text-dim); }
+.ft-refprice-diff.up { color: var(--ft-accent); }
+.ft-refprice-diff.down { color: var(--ft-red); }
 .ft-market-open { display: flex; align-items: center; gap: 16px; margin-bottom: 12px; }
 .ft-mo-label { font-size: 10px; color: var(--ft-text-dim); margin-bottom: 2px; }
 .ft-mo-value { font-family: var(--ft-font-display); font-size: 22px; font-weight: 700; }
