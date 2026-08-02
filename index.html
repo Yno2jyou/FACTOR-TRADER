@@ -950,24 +950,35 @@ function aiDecideCards(cards, turn, totalTurns, order, nStart, priceBefore, allO
   let avantPrice = 1000;
   const selfPl = (playersList || []).find((pl) => pl && String(pl.id) === String(selfId));
   const stockLeft = stock - bestQuick - (bestHeavy > 0 ? 5 : 0) - (useDefense ? 5 : 0);
+  // 奥義は大口取引向け。小口では控える。10万株以上の売買で積極使用。
+  const AVANT_BIG = 100000;
   if (
     selfPl && !selfPl.avantUsed && !selfPl.isBankrupt &&
-    stockLeft >= 10 && progress >= 0.35 &&
-    selfAction !== "stay" && selfShares >= 5
+    stockLeft >= 10 &&
+    selfAction !== "stay" && selfShares > 0
   ) {
-    // 積極的に奥義を狙う（ゲーム中1回・効果大）
-    let avChance = 0.18;
-    if (selfShares >= 12) avChance = 0.28;
-    if (selfShares >= 25) avChance = 0.4;
-    if (selfShares >= 40) avChance = 0.52;
-    if (progress > 0.55) avChance += 0.1;
-    if (progress > 0.8) avChance += 0.12;
-    // 被妨害で破産しそうな大口買いは特に優先
-    if (selfAction === "buy") {
+    let avChance = 0;
+    if (selfShares >= AVANT_BIG) {
+      // 10万株以上の売買 → 積極的に使用
+      avChance = 0.72;
+      if (selfShares >= AVANT_BIG * 2) avChance = 0.88;
+      if (progress > 0.5) avChance = Math.min(0.95, avChance + 0.08);
+    } else if (selfShares >= 20000) {
+      // 中口は控えめ
+      avChance = 0.08 + Math.min(0.12, (selfShares / AVANT_BIG) * 0.12);
+    } else if (selfShares >= 5000) {
+      // 小〜中口はほぼ使わない
+      avChance = 0.02;
+    } else {
+      // 小さな取引では奥義を控える
+      avChance = 0;
+    }
+    // 被妨害で破産しそうな大口買いは例外的に優先（ただし株数がそれなりある場合）
+    if (selfAction === "buy" && selfShares >= 5000) {
       const priceHit = personalExecPrice(nStart, bestQuick, 1, "buy");
       const req = selfShares * priceHit;
       const liq = (selfPl.cash || 0) + (selfPl.holdings || 0) * priceHit;
-      if (req > liq + 1e-9) avChance = Math.min(0.85, avChance + 0.35);
+      if (req > liq + 1e-9) avChance = Math.max(avChance, selfShares >= AVANT_BIG ? 0.9 : 0.25);
     }
     if (stockLeft < 15) avChance *= 0.85;
     if (Math.random() < avChance) {
@@ -978,7 +989,6 @@ function aiDecideCards(cards, turn, totalTurns, order, nStart, priceBefore, allO
       } else if (selfAction === "sell") {
         avantPrice = 99999;
       } else {
-        // 様子見時は状況に応じて極端値
         const cash = selfPl.cash || 0;
         const hold = selfPl.holdings || 0;
         avantPrice = (hold >= 5 && cash < hold * (priceBefore || 1) * 0.3) ? 99999 : 1;
