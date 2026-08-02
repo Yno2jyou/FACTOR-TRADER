@@ -972,10 +972,16 @@ function aiDecideCards(cards, turn, totalTurns, order, nStart, priceBefore, allO
     if (stockLeft < 15) avChance *= 0.85;
     if (Math.random() < avChance) {
       avant = 1;
+      // 買い → 1円で大量購入 / 売り → 99999円で高値売却
       if (selfAction === "buy") {
-        avantPrice = Math.max(1, Math.min(99999, Math.floor(priceBefore * (0.08 + Math.random() * 0.25))));
+        avantPrice = 1;
+      } else if (selfAction === "sell") {
+        avantPrice = 99999;
       } else {
-        avantPrice = Math.max(1, Math.min(99999, Math.floor(priceBefore * (1.8 + Math.random() * 2.5))));
+        // 様子見時は状況に応じて極端値
+        const cash = selfPl.cash || 0;
+        const hold = selfPl.holdings || 0;
+        avantPrice = (hold >= 5 && cash < hold * (priceBefore || 1) * 0.3) ? 99999 : 1;
       }
       bestQuick = 0;
       bestHeavy = 0;
@@ -1963,7 +1969,7 @@ function FactorTrader() {
       });
     }
 
-    // 奥義アバンギャルド重複解決
+    // 奥義AVANT-GARDE重複解決
     {
       const avantUsers = rescuedPlayers.filter((p) => !p.isBankrupt && newHacks[p.id] && newHacks[p.id].avant);
       if (avantUsers.length > 1) {
@@ -1979,12 +1985,12 @@ function FactorTrader() {
         avantUsers.forEach((p) => {
           if (p.id === winner.id) return;
           newHacks[p.id] = { ...newHacks[p.id], avant: 0, avantPrice: 0 };
-          pushLog("💜 " + (p.name || p.id) + " の奥義アバンギャルドは重複により不成立（COIN返却）");
+          pushLog("💜 " + (p.name || p.id) + " の奥義AVANT-GARDEは重複により不成立（COIN返却）");
         });
-        pushLog("💜 奥義アバンギャルド成立: " + (winner.name || winner.id) + "（株価 " + yenNum(newHacks[winner.id].avantPrice) + "円）");
+        pushLog("💜 奥義AVANT-GARDE成立: " + (winner.name || winner.id) + "（株価 " + yenNum(newHacks[winner.id].avantPrice) + "円）");
       } else if (avantUsers.length === 1) {
         const w = avantUsers[0];
-        pushLog("💜 奥義アバンギャルド: " + (w.name || w.id) + " が株価 " + yenNum(newHacks[w.id].avantPrice) + "円 を指定");
+        pushLog("💜 奥義AVANT-GARDE: " + (w.name || w.id) + " が株価 " + yenNum(newHacks[w.id].avantPrice) + "円 を指定");
       }
     }
     setHackChoices(newHacks);
@@ -2602,6 +2608,7 @@ function RulesContent() {
               <li>COIN1枚〜</li>
               <li>自分の株価を操作</li>
               <li>COIN1枚=N+1</li>
+              <li>被妨害時、効果無効</li>
             </ul>
           </div>
           <div className="ft-card-type sab">
@@ -2623,7 +2630,7 @@ function RulesContent() {
             </ul>
           </div>
           <div className="ft-card-type avant">
-            <div className="ft-card-type-title"><Heptagram size={14} className="icon-avant" /> 奥義：アバンギャルド</div>
+            <div className="ft-card-type-title"><Heptagram size={14} className="icon-avant" /> 奥義：AVANT-GARDE</div>
             <ul>
               <li>COIN10枚</li>
               <li>株価自由指定（1〜99999円）</li>
@@ -2964,7 +2971,7 @@ function PlayersPanel({ players, orders, phase, currentPrice, revealData }) {
       const who = p.name;
       notes.push({
         cls: "note-avant",
-        text: who + "が奥義：アバンギャルドを使用しました",
+        text: who + "が奥義：AVANT-GARDEを使用しました",
       });
     });
     // --- 1. 妨害 ---
@@ -3449,7 +3456,7 @@ function ActionPanel(props) {
           <div className="ft-hack-row">
             <div className="ft-hack-label">
               <Zap size={16} className="icon-quick" /> 操作
-              <span style={{fontSize:"11px", opacity:0.7, marginLeft:8}}>自分の株価だけを操作</span>
+              <span style={{fontSize:"11px", opacity:0.7, marginLeft:8}}>自分の株価だけを操作（被妨害時は無効）</span>
             </div>
             <div className="ft-hack-stepper">
               <button
@@ -3524,7 +3531,7 @@ function ActionPanel(props) {
           <div className={"ft-hack-row is-avant" + (humanHackDraft.avant ? " is-on" : "")}>
             <div className="ft-hack-label">
               <Heptagram size={16} className="icon-avant" style={{marginRight:4}} />
-              <span style={{color:"var(--ft-purple)", fontWeight:600}}>奥義：アバンギャルド</span>
+              <span style={{color:"var(--ft-purple)", fontWeight:600}}>奥義：AVANT-GARDE</span>
               {human.avantUsed ? (
                 <span style={{fontSize:"11px", opacity:0.7, marginLeft:8, color:"var(--ft-purple)"}}>使用済み</span>
               ) : null}
@@ -3601,7 +3608,7 @@ function ActionPanel(props) {
                   const dSign = dTv > 0 ? "+" : "";
                   return (
                     <span style={{ display: "block" }}>
-                      <b style={{ color: "var(--ft-purple)" }}>奥義：アバンギャルド</b>
+                      <b style={{ color: "var(--ft-purple)" }}>奥義：AVANT-GARDE</b>
                       <span style={{ opacity: 0.85 }}>（COIN10枚・一度限り／自分の株価のみ／被妨害無効）</span>
                       <br />
                       指定する自分の株価 <b style={{ color: "var(--ft-purple)" }}>{ap.toLocaleString()}円</b>
@@ -3623,7 +3630,7 @@ function ActionPanel(props) {
                 })() : null}
                 {!humanHackDraft.avant && humanHackDraft.quick > 0 ? (
                   <span style={{ display: "block", marginBottom: 8 }}>
-                    <b style={{ color: "var(--ft-blue)" }}>操作</b>：自分の株価を操作<br />
+                    <b style={{ color: "var(--ft-blue)" }}>操作</b>：自分の株価を操作（被妨害時は無効）<br />
                     あなたの株価目安 <b>{yenNum(selfPrice)}円</b>
                     {baseP !== selfPrice ? `（操作前 ${yenNum(baseP)}円）` : ""}
                     <br />
