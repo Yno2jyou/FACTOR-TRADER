@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>FACTOR/TRADER</title>
+<title>FACTOR/TRADER — 素因数分解投資ゲーム</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.development.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.development.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
@@ -2670,9 +2670,12 @@ function SetupScreen({ playerCount, setPlayerCount, humanCount, setHumanCount, h
             <input
               type="text"
               maxLength={16}
+              autoCorrect="off"
+              autoComplete="nickname"
+              spellCheck={false}
               value={myName || ""}
               onChange={(e) => setMyName && setMyName(e.target.value)}
-              style={{ width: "100%", background: "var(--ft-panel-alt)", border: "1px solid var(--ft-border)", color: "var(--ft-text)", padding: "10px 12px", borderRadius: 3, fontSize: 14, marginBottom: 12 }}
+              style={{ width: "100%", background: "var(--ft-panel-alt)", border: "1px solid var(--ft-border)", color: "var(--ft-text)", padding: "10px 12px", borderRadius: 3, fontSize: 16, marginBottom: 12 }}
             />
             <div className="ft-label">部屋を作る（ホスト）</div>
             <div className="ft-select-count" style={{ marginBottom: 8 }}>
@@ -2699,10 +2702,26 @@ function SetupScreen({ playerCount, setPlayerCount, humanCount, setHumanCount, h
             <div className="ft-label">部屋に参加（ゲスト）</div>
             <input
               type="text"
-              maxLength={8}
+              inputMode="text"
+              autoCapitalize="characters"
+              autoCorrect="off"
+              autoComplete="off"
+              spellCheck={false}
+              maxLength={6}
               placeholder="部屋コード（6桁）"
               value={joinCodeInput || ""}
-              onChange={(e) => setJoinCodeInput && setJoinCodeInput(e.target.value.toUpperCase())}
+              onChange={(e) => {
+                // 入力中はそのまま（モバイルIMEで toUpperCase すると文字化け・重複入力になる）
+                if (setJoinCodeInput) setJoinCodeInput(e.target.value);
+              }}
+              onBlur={(e) => {
+                if (!setJoinCodeInput) return;
+                const cleaned = String(e.target.value || "")
+                  .toUpperCase()
+                  .replace(/[^A-Z0-9]/g, "")
+                  .slice(0, 6);
+                setJoinCodeInput(cleaned);
+              }}
               style={{ width: "100%", background: "var(--ft-panel-alt)", border: "1px solid var(--ft-border)", color: "var(--ft-text)", padding: "10px 12px", borderRadius: 3, fontSize: 16, letterSpacing: 3, marginBottom: 10, fontFamily: "var(--ft-font-display)" }}
             />
             <button className="ft-start-btn" style={{ background: "var(--ft-blue)", boxShadow: "0 0 20px rgba(51,209,255,0.25)" }} onClick={onJoinRoom}>
