@@ -169,17 +169,18 @@ function Activity(props) {
 // ---------- 数理エンジン ----------
 function sopf(n) {
   // 与えられた正整数 n の素因数(重複あり)の総和を返す
-  let num = n;
+  let num = Math.floor(Number(n) || 0);
+  if (num < 2) return 0;
   let sum = 0;
   let d = 2;
   while (d * d <= num) {
     while (num % d === 0) {
       sum += d;
-      num /= d;
+      num = Math.floor(num / d);
     }
     d += 1;
   }
-  if (num > 1) sum += num; // 残った num は素数
+  if (num > 1) sum += num;
   return sum;
 }
 
@@ -272,6 +273,11 @@ const AI_NAMES = ["Albert Einstein", "Sir Isaac Newton", "Marie Curie", "Leonard
 
 function randBase() {
   return 10000 + Math.floor(Math.random() * 80000);
+}
+function ensureBaseN(n) {
+  const v = Math.floor(Number(n) || 0);
+  if (v >= 10000 && v <= 99999) return v;
+  return randBase();
 }
 
 function makePlayers(count, humanCount, humanNames, seriousMode) {
@@ -1035,6 +1041,17 @@ function FactorTrader() {
     isHostRef.current = onlineRole === "host";
   });
 
+  // currentN が 0/不正なら再抽選（仮株価0円バグ防止）
+  useEffect(() => {
+    if (screen !== "play") return;
+    const v = Math.floor(Number(currentN) || 0);
+    if (v < 10000 || v > 99999) {
+      const fixed = randBase();
+      setCurrentN(fixed);
+      stateRef.current = { ...stateRef.current, currentN: fixed };
+    }
+  }, [screen, turn, currentN]);
+
   // ゲスト: フェーズ切替で下書きをリセット
   const prevPhaseRef = useRef(phase);
   useEffect(() => {
@@ -1063,7 +1080,7 @@ function FactorTrader() {
     if (snap.turn != null) setTurn(snap.turn);
     if (snap.totalTurns != null) setTotalTurns(snap.totalTurns);
     if (snap.phase) setPhase(snap.phase);
-    if (snap.currentN != null) setCurrentN(snap.currentN);
+    if (snap.currentN != null) setCurrentN(ensureBaseN(snap.currentN));
     if (snap.basePrice != null) setBasePrice(snap.basePrice);
     if (snap.priceHistory) setPriceHistory(snap.priceHistory);
     if (snap.log) setLog(snap.log);
@@ -1263,8 +1280,9 @@ function FactorTrader() {
     finalizeOnlineHacks(pending);
   }
 
-  const nStart = currentN;
-  const priceBefore = currentN > 0 ? sopf(nStart) : 0;
+  // 表示用。不正値は useEffect で修復される（ここでは再抽選しない）
+  const nStart = Math.floor(Number(currentN) || 0);
+  const priceBefore = nStart >= 2 ? sopf(nStart) : 0;
   // 基準株価: 損益計算の基準になる価格。前TERNの確定株価(無ければゲーム開始時のbasePrice)。
   // TERN開始時から見えるようにして、変動の読み合いができるようにする。
   const refPrice = priceHistory.length > 0 ? priceHistory[priceHistory.length - 1].price : basePrice;
@@ -1306,8 +1324,11 @@ function FactorTrader() {
     // LOCAL は常に人間1人 vs CPU
     const hc = 1;
     // ゲーム開始前の「仮想の直前株価」として、独立した乱数のsopfを基準値にする
-    setBasePrice(sopf(randBase()));
-    setCurrentN(randBase());
+    const cn0 = randBase();
+    const bp0 = sopf(randBase());
+    setBasePrice(bp0);
+    setCurrentN(cn0);
+    stateRef.current = { ...stateRef.current, currentN: cn0, basePrice: bp0, turn: 1, phase: "market", screen: "play" };
     setTotalTurns(t);
     setTurn(1);
     setEndgameBonusMsg("");
@@ -1461,6 +1482,7 @@ function FactorTrader() {
     const cn = randBase();
     setBasePrice(bp);
     setCurrentN(cn);
+    stateRef.current = { ...stateRef.current, currentN: cn, basePrice: bp, turn: 1, phase: "market", screen: "play" };
     setTotalTurns(t);
     setTurn(1);
     setEndgameBonusMsg("");
@@ -1580,7 +1602,10 @@ function FactorTrader() {
     if (playMode === "online") {
       const me = players.find((p) => p.id === myPlayerId) || players.find((p) => !p.isAI);
       if (!me || me.isBankrupt) return;
-      const clamped = clampOrder(humanOrderDraft, me.cash, me.holdings, priceBefore, turn, totalTurns);
+      let nOrd = Math.floor(Number(currentN) || 0);
+      if (nOrd < 10000) { nOrd = randBase(); setCurrentN(nOrd); stateRef.current = { ...stateRef.current, currentN: nOrd }; }
+      const px = sopf(nOrd);
+      const clamped = clampOrder(humanOrderDraft, me.cash, me.holdings, px, turn, totalTurns);
       if (onlineRole === "guest") {
         setISubmittedOrder(true);
         sendToHost({ type: "order", order: clamped });
@@ -1608,7 +1633,10 @@ function FactorTrader() {
       finalizeOrdersAndGoHack({});
       return;
     }
-    const clamped = clampOrder(humanOrderDraft, cur.cash, cur.holdings, priceBefore, turn, totalTurns);
+    let nOrd = Math.floor(Number(currentN) || 0);
+    if (nOrd < 10000) { nOrd = randBase(); setCurrentN(nOrd); stateRef.current = { ...stateRef.current, currentN: nOrd }; }
+    const px = sopf(nOrd);
+    const clamped = clampOrder(humanOrderDraft, cur.cash, cur.holdings, px, turn, totalTurns);
     const nextOrders = { ...orders, [cur.id]: clamped };
     setOrders(nextOrders);
     const nextIdx = inputHumanIdx + 1;
@@ -1658,6 +1686,7 @@ function FactorTrader() {
       }
     });
     setOrders(newOrders);
+    stateRef.current = { ...stateRef.current, orders: newOrders, phase: "hack", currentN: ensureBaseN(stateRef.current.currentN) };
     setPendingOrders({});
     setSubmittedOrderIds([]);
     setISubmittedOrder(false);
@@ -1702,6 +1731,7 @@ function FactorTrader() {
       }
     });
     setOrders(newOrders);
+    stateRef.current = { ...stateRef.current, orders: newOrders, phase: "hack", currentN: ensureBaseN(stateRef.current.currentN) };
     // ハックフェーズへ：最初の生存人間
     const ah = aliveHumans(players);
     setInputHumanIdx(0);
@@ -1959,10 +1989,16 @@ function FactorTrader() {
   }
 
   function resolveTurn(hacks, playersOverride) {
-
-    const basePlayers = playersOverride || players;
+    const st = stateRef.current || {};
+    const basePlayers = playersOverride || st.players || players;
+    const nStartR = ensureBaseN(st.currentN != null ? st.currentN : currentN);
+    const priceBeforeR = sopf(nStartR);
+    const ordersR = (st.orders && Object.keys(st.orders).length) ? st.orders : (orders || {});
+    const turnR = st.turn != null ? st.turn : turn;
+    // 清算直前に stateRef も同期
+    stateRef.current = { ...st, currentN: nStartR, orders: ordersR };
     const { updated, execResults, priceMap, nMap } = settleTurn(
-      basePlayers, orders, hacks, nStart, priceBefore
+      basePlayers, ordersR, hacks, nStartR, priceBeforeR
     );
 
     const totalQuick = basePlayers.reduce((s, p) => s + (hacks[p.id]?.quick || 0), 0);
@@ -1993,26 +2029,26 @@ function FactorTrader() {
       return `${p.name}: 様子見`;
     }).filter(Boolean);
 
-    pushLog(`── TERN${turn} ── 仮株価 ${yenNum(priceBefore)}円 / 個人株価制`);
+    pushLog(`── TERN${turnR} ── 仮株価 ${yenNum(priceBeforeR)}円 / 個人株価制`);
     cardLines.forEach((l) => pushLog("  " + l));
     orderLines.forEach((l) => pushLog("  " + l));
 
     // チャート用: 最初の人間（または生存人間）の株価を記録
     const focusId = (primaryHuman(basePlayers) || humanPlayersOf(basePlayers)[0] || basePlayers[0]).id;
-    const focusPrice = priceMap[focusId] != null ? priceMap[focusId] : sopf(nStart);
+    const focusPrice = priceMap[focusId] != null ? priceMap[focusId] : sopf(nStartR);
 
     const perHuman = {};
     humanPlayersOf(basePlayers).forEach((hb) => {
       const ha = updated.find((u) => u.id === hb.id) || hb;
-      const hp = priceMap[hb.id] != null ? priceMap[hb.id] : sopf(nStart);
-      const vb = totalValue(hb, priceBefore);
+      const hp = priceMap[hb.id] != null ? priceMap[hb.id] : sopf(nStartR);
+      const vb = totalValue(hb, priceBeforeR);
       const va = ha.isBankrupt ? 0 : totalValue(ha, hp);
       perHuman[hb.id] = {
         id: hb.id,
         name: hb.name,
-        nFinal: nMap[hb.id] || nStart,
+        nFinal: nMap[hb.id] || nStartR,
         priceFinal: hp,
-        humanOrder: orders[hb.id] || { action: "stay", shares: 0 },
+        humanOrder: ordersR[hb.id] || { action: "stay", shares: 0 },
         humanExec: execResults[hb.id],
         humanCashBefore: hb.cash,
         humanCashAfter: ha.cash,
@@ -2029,12 +2065,12 @@ function FactorTrader() {
     const focusReveal = perHuman[focusId] || Object.values(perHuman)[0];
 
     setPlayers(updated);
-    setPriceHistory((h) => [...h, { turn, price: focusPrice, nFinal: (focusReveal && focusReveal.nFinal) || nStart }]);
+    setPriceHistory((h) => [...h, { turn: turnR, price: focusPrice, nFinal: (focusReveal && focusReveal.nFinal) || nStartR }]);
     setRevealFocusId(focusId);
     setRevealData({
-      nStart,
-      nFinal: focusReveal ? focusReveal.nFinal : nStart,
-      priceBefore,
+      nStart: nStartR,
+      nFinal: focusReveal ? focusReveal.nFinal : nStartR,
+      priceBefore: priceBeforeR,
       priceFinal: focusReveal ? focusReveal.priceFinal : focusPrice,
       totalQuick,
       totalHeavy,
@@ -2112,7 +2148,9 @@ function FactorTrader() {
       pushLog("🎁 " + bonusText);
     }
     setTurn(next);
-    setCurrentN(randBase());
+    const cnNext = randBase();
+    setCurrentN(cnNext);
+    stateRef.current = { ...stateRef.current, turn: next, currentN: cnNext, phase: "market" };
     setPhase("market");
     setHumanOrderDraft({ action: "stay", shares: 0 });
     setHumanHackDraft({ quick: 0, heavy: 0, defense: 0, avant: 0, avantPrice: 1000, coinRescue: "" });
