@@ -2094,7 +2094,7 @@ function FactorTrader() {
     const focusPrice = priceMap[focusId] != null ? priceMap[focusId] : sopf(nStartR);
 
     const perHuman = {};
-    humanPlayersOf(basePlayers).forEach((hb) => {
+    basePlayers.forEach((hb) => {
       const ha = updated.find((u) => u.id === hb.id) || hb;
       const hp = priceMap[hb.id] != null ? priceMap[hb.id] : sopf(nStartR);
       const vb = totalValue(hb, priceBeforeR);
@@ -2102,6 +2102,7 @@ function FactorTrader() {
       perHuman[hb.id] = {
         id: hb.id,
         name: hb.name,
+        isAI: !!hb.isAI,
         nFinal: nMap[hb.id] || nStartR,
         priceFinal: hp,
         humanOrder: ordersR[hb.id] || { action: "stay", shares: 0 },
@@ -3720,11 +3721,19 @@ function ActionPanel(props) {
     const myDefense = !!hex.defense;
     const blockedHeavy = hex.blockedHeavy || 0;
     const usedHeavy = hex.usedHeavy || 0;
-    const humanNamesList = Object.values(per);
+    // 自分を先頭に、全プレイヤーの清算タブ
+    const selfId = (human && human.id) || null;
+    const humanNamesList = Object.values(per).slice().sort((a, b) => {
+      if (selfId && a.id === selfId) return -1;
+      if (selfId && b.id === selfId) return 1;
+      if (!a.isAI && b.isAI) return -1;
+      if (a.isAI && !b.isAI) return 1;
+      return 0;
+    });
     return (
       <div className="ft-panel ft-action">
         <div className="ft-panel-head">STEP 4 — 清算結果{view.name ? "（" + view.name + "）" : ""}</div>
-        {humanNamesList.length > 1 ? (
+        {humanNamesList.length > 0 ? (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
             {humanNamesList.map((h) => (
               <button
@@ -3741,7 +3750,7 @@ function ActionPanel(props) {
                   color: (focusId === h.id) ? "var(--ft-accent)" : "var(--ft-text-dim)",
                 }}
               >
-                {h.name}{h.humanBankrupt ? "（破産）" : ""}
+                {h.name}{h.isAI ? "（CPU）" : ""}{h.humanBankrupt ? "（破産）" : ""}
               </button>
             ))}
           </div>
