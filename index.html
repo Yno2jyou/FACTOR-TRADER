@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>FACTOR/TRADER — 素因数分解投資ゲーム</title>
+<title>FACTOR/TRADER</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.development.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.development.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
@@ -145,7 +145,7 @@ function Activity(props) {
 
 
 /* =====================================================================================
-   FACTOR TRADER — 素因数分解投資ゲーム
+   FACTOR TRADER
    ---------------------------------------------------------------------------------
    コア数理エンジン:
      sopf(N) = Nを素因数分解し、その素因数(重複込み)をすべて足し合わせた値 = そのTERNの株価
@@ -2517,7 +2517,7 @@ function RulesContent() {
       <div className="ft-rules-section">
         <div className="ft-rules-h">株価</div>
         <div className="ft-rule-block ft-rule-compact">
-          <div className="ft-rule-formula">株価 = N の素因数の合計</div>
+          <div className="ft-rule-formula">株価 = Nの素因数和（素因数の合計）</div>
           <div className="ft-rule-chips">
             <span className="ft-chip up">素数 → 高い</span>
             <span className="ft-chip down">2の累乗 → 安い</span>
