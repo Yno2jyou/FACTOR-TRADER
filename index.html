@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>FACTOR/TRADER — 素因数分解投資ゲーム</title>
+<title>FACTOR/TRADER</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.development.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.development.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
@@ -1087,7 +1087,11 @@ function FactorTrader() {
     if (snap.orders) setOrders(snap.orders);
     if (snap.hackChoices) setHackChoices(snap.hackChoices);
     if (snap.revealData !== undefined) setRevealData(snap.revealData);
-    if (snap.revealFocusId !== undefined) setRevealFocusId(snap.revealFocusId);
+    if (snap.phase === "reveal" && myPlayerIdRef.current) {
+      setRevealFocusId(myPlayerIdRef.current);
+    } else if (snap.revealFocusId !== undefined) {
+      setRevealFocusId(snap.revealFocusId);
+    }
     if (snap.endgameBonusMsg != null) setEndgameBonusMsg(snap.endgameBonusMsg);
     if (snap.playerCount != null) setPlayerCount(snap.playerCount);
     if (snap.seriousMode != null) setSeriousMode(!!snap.seriousMode);
@@ -2034,7 +2038,11 @@ function FactorTrader() {
     orderLines.forEach((l) => pushLog("  " + l));
 
     // チャート用: 最初の人間（または生存人間）の株価を記録
-    const focusId = (primaryHuman(basePlayers) || humanPlayersOf(basePlayers)[0] || basePlayers[0]).id;
+    // 自分の清算を先に表示（ONLINE は myPlayerId、LOCAL は人間プレイヤー）
+    const focusId = (
+      myPlayerIdRef.current
+      || (primaryHuman(basePlayers) || humanPlayersOf(basePlayers)[0] || basePlayers[0]).id
+    );
     const focusPrice = priceMap[focusId] != null ? priceMap[focusId] : sopf(nStartR);
 
     const perHuman = {};
@@ -2568,7 +2576,7 @@ function RulesContent() {
             <div className="ft-card-type-title"><Bomb size={14} className="icon-heavy" /> 妨害</div>
             <ul>
               <li>COIN5枚</li>
-              <li>自分以外の株価を妨害(N+1)</li>
+              <li>自分以外の株価を妨害（N+1）</li>
               <li>自分には無効</li>
               <li>重複あり</li>
               <li>最初の3TERNは使用不可</li>
@@ -2578,7 +2586,7 @@ function RulesContent() {
             <div className="ft-card-type-title"><Shield size={14} className="icon-defense" /> 防衛</div>
             <ul>
               <li>COIN5枚</li>
-              <li>相手からの妨害無効</li>
+              <li>相手からの妨害を無効化</li>
               <li>最初の3TERNは使用不可</li>
             </ul>
           </div>
@@ -3407,7 +3415,7 @@ function ActionPanel(props) {
               <span style={{fontSize:"11px", opacity:0.7, marginLeft:8}}>
                 {turn <= 3
                   ? "最初の3TERNは使用不可"
-                  : "COIN5枚で、自分以外の株価を妨害(N+1)（複数不可）"}
+                  : "自分以外の株価を妨害（N+1）"}
               </span>
             </div>
             <div className="ft-hack-stepper">
@@ -3431,7 +3439,7 @@ function ActionPanel(props) {
             <div className="ft-hack-label">
               <Shield size={16} className="icon-defense" /> 防衛
               <span style={{fontSize:"11px", opacity:0.7, marginLeft:8}}>
-                {turn <= 3 ? "最初の3TERNは使用不可（妨害なし）" : "COIN5枚で、このTERNの被妨害を無効化"}
+                {turn <= 3 ? "最初の3TERNは使用不可" : "相手からの妨害を無効化"}
               </span>
             </div>
             <div className="ft-hack-stepper">
@@ -3562,7 +3570,7 @@ function ActionPanel(props) {
                 ) : null}
                 {!humanHackDraft.avant && humanHackDraft.heavy > 0 ? (
                   <span style={{ display: "block", marginBottom: 8 }}>
-                    <b style={{ color: "var(--ft-red)" }}>妨害</b>：相手の株価を妨害<br />
+                    <b style={{ color: "var(--ft-red)" }}>妨害</b>：自分以外の株価を妨害（N+1）<br />
                     自分には無効、他プレイヤーと重複する可能性あり<br />
                     買い：<b>{yenNum(buy0)}円→{yenNum(personalExecPrice(nStart, 0, humanHackDraft.heavy, "buy"))}円</b>
                     <br />
@@ -3571,8 +3579,8 @@ function ActionPanel(props) {
                 ) : null}
                 {!humanHackDraft.avant && humanHackDraft.defense ? (
                   <span style={{ display: "block" }}>
-                    <b style={{ color: "var(--ft-amber)" }}>防衛</b>：COIN5枚<br />
-                    このTERNの被妨害を無効化
+                    <b style={{ color: "var(--ft-amber)" }}>防衛</b>：相手からの妨害を無効化<br />
+                    COIN5枚
                   </span>
                 ) : null}
               </p>
@@ -3609,7 +3617,7 @@ function ActionPanel(props) {
 
   if (phase === "reveal" && revealData) {
     const per = revealData.perHuman || {};
-    const focusId = revealFocusId || revealData.focusId || (human && human.id);
+    const focusId = revealFocusId || (human && human.id) || revealData.focusId;
     const focused = (focusId && per[focusId]) || null;
     const view = focused || {
       humanOrder: revealData.humanOrder,
