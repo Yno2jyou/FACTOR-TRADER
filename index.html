@@ -1035,7 +1035,7 @@ function FactorTrader() {
     isHostRef.current = onlineRole === "host";
   });
 
-  // ゲスト: フェーズ切替でローカル下書きをリセット
+  // ゲスト: フェーズ切替で下書きをリセット
   const prevPhaseRef = useRef(phase);
   useEffect(() => {
     if (playMode !== "online") return;
@@ -1303,7 +1303,8 @@ function FactorTrader() {
 
   function startGame() {
     const t = TURN_TABLE[playerCount] || 22;
-    const hc = Math.max(1, Math.min(playerCount, Number(humanCount) || 1));
+    // LOCAL は常に人間1人 vs CPU
+    const hc = 1;
     // ゲーム開始前の「仮想の直前株価」として、独立した乱数のsopfを基準値にする
     setBasePrice(sopf(randBase()));
     setCurrentN(randBase());
@@ -1313,8 +1314,7 @@ function FactorTrader() {
     const pls = makePlayers(playerCount, hc, humanNames, seriousMode);
     setPlayers(pls);
     setPriceHistory([]);
-    const humanLabel = hc === 1 ? "対CPU" : ("人間" + hc + "人 + CPU" + (playerCount - hc) + "人");
-    setLog([`🎲 市場が起動しました。人数: ${playerCount}人（${humanLabel}） / 総TERN数: ${t}`]);
+    setLog([`🎲 市場が起動しました。LOCAL / ${playerCount}人（YOU + CPU${playerCount - 1}） / 総TERN数: ${t}`]);
     setPhase("market");
     setScreen("play");
     setOrders({});
@@ -1466,7 +1466,7 @@ function FactorTrader() {
     setEndgameBonusMsg("");
     setPlayers(pls);
     setPriceHistory([]);
-    setLog(["🎲 オンライン市場起動 / 部屋 " + roomCode + " / 人間" + humanTotal + "人+CPU" + (playerCount - humanTotal) + "人 / " + t + "TERN"]);
+    setLog(["🎲 ONLINE 市場起動 / 部屋 " + roomCode + " / 人間" + humanTotal + "人+CPU" + (playerCount - humanTotal) + "人 / " + t + "TERN"]);
     setPhase("market");
     setScreen("play");
     setOrders({});
@@ -1494,7 +1494,7 @@ function FactorTrader() {
         currentN: cn,
         basePrice: bp,
         priceHistory: [],
-        log: ["🎲 オンライン市場起動 / 部屋 " + roomCode],
+        log: ["🎲 ONLINE 市場起動 / 部屋 " + roomCode],
         orders: {},
         hackChoices: {},
         revealData: null,
@@ -1531,7 +1531,7 @@ function FactorTrader() {
   }
 
   function goToOrderPhase() {
-    // オンラインゲストはホストのスナップショット待ち
+    // ONLINE ゲストはホストのスナップショット待ち
     if (playMode === "online" && onlineRole === "guest") return;
     const ah = aliveHumans(players);
     setInputHumanIdx(0);
@@ -1544,7 +1544,7 @@ function FactorTrader() {
     setSubmittedHackIds([]);
     setISubmittedOrder(false);
     setISubmittedHack(false);
-    // オンライン: 同時入力（パス不要）。ローカル複数人はパス＆プレイ
+    // ONLINE: 同時入力。LOCAL は常に人間1人
     const online = playMode === "online";
     const hum = online
       ? players.find((p) => p.id === myPlayerId) || ah[0]
@@ -1576,7 +1576,7 @@ function FactorTrader() {
   }
 
   function confirmOrders() {
-    // ---- オンライン ----
+    // ---- ONLINE ----
     if (playMode === "online") {
       const me = players.find((p) => p.id === myPlayerId) || players.find((p) => !p.isAI);
       if (!me || me.isBankrupt) return;
@@ -1601,7 +1601,7 @@ function FactorTrader() {
       setTimeout(() => tryFinalizeOnlineOrders(nextPending, nextSubmitted), 30);
       return;
     }
-    // ---- ローカル（パス＆プレイ） ----
+    // ---- LOCAL ----
     const ah = aliveHumans(players);
     const cur = ah[inputHumanIdx];
     if (!cur) {
@@ -1712,7 +1712,7 @@ function FactorTrader() {
   }
 
   function confirmHacks() {
-    // ---- オンライン ----
+    // ---- ONLINE ----
     if (playMode === "online") {
       const me = players.find((p) => p.id === myPlayerId) || players.find((p) => !p.isAI);
       if (!me || me.isBankrupt) return;
@@ -1760,7 +1760,7 @@ function FactorTrader() {
       setTimeout(() => tryFinalizeOnlineHacks(nextPending, nextSubmitted), 30);
       return;
     }
-    // ---- ローカル ----
+    // ---- LOCAL ----
     const ah = aliveHumans(players);
     const cur = ah[inputHumanIdx];
     const endgame = isLastFiveTurns(turn, totalTurns);
@@ -2302,10 +2302,11 @@ function FactorTrader() {
             {onlineRole === "host" && (
               <div className="ft-select-count" style={{ marginBottom: 12 }}>
                 <div className="ft-label">席数（不足分はCPU）</div>
-                <div className="ft-count-options">
+                <div className="ft-count-options ft-count-options-players">
                   {[2, 3, 5, 9].map((n) => (
                     <button key={n} className={"ft-count-btn" + (playerCount === n ? " active" : "")} onClick={() => setPlayerCount(n)}>
-                      <div className="ft-count-num">{n}</div>
+                      <div className="ft-count-num">{n}<span className="ft-count-people"> PEOPLE</span></div>
+                      <div className="ft-count-turns">{TURN_TABLE[n]} TERN</div>
                     </button>
                   ))}
                 </div>
@@ -2456,8 +2457,7 @@ function RulesContent() {
         <div className="ft-rules-h">ゴール</div>
         <p className="ft-rules-lead">最終TERN終了時、総資産（現金＋株の評価額）が最も多い人が勝ち。</p>
         <p className="ft-rules-lead">自分以外のプレイヤーが全て破産した場合、その時点で勝ち。</p>
-        <p className="ft-rules-note">対人戦（パス＆プレイ）: セットアップで人間プレイヤー数を2人以上にすると、同じ端末を順番に渡してプレイできます。</p>
-        <p className="ft-rules-note">オンライン対人: プレイモード「オンライン」で部屋を作成し、部屋コードを共有。別端末のブラウザから参加できます（PeerJS / WebRTC）。ホストが進行を管理し、空き席はCPUが埋めます。</p>
+        <p className="ft-rules-note">LOCAL: あなた1人 vs CPU。ONLINE: 部屋を作成して部屋コードを共有し、別端末から参加（PeerJS / WebRTC）。ホストが進行を管理し、空き席はCPUが埋めます。</p>
         <p className="ft-rules-note">買い注文の代金を、現金＋全株売却でも支払えない場合は<strong>破産</strong>。ただしCOINが10枚以上あれば、10枚消費してその買いを帳消しにできます。</p>
         <p className="ft-rules-note" style={{ marginTop: 10 }}>
           <strong>終盤ルール（ラスト5TERN）</strong><br />
@@ -2605,15 +2605,15 @@ function SetupScreen({ playerCount, setPlayerCount, humanCount, setHumanCount, h
         <RulesContent />
 
         <div className="ft-select-count">
-          <div className="ft-label">プレイモード</div>
+          <div className="ft-label">MODE</div>
           <div className="ft-count-options">
             <button className={"ft-count-btn" + (playMode === "local" ? " active" : "")} onClick={() => setPlayMode && setPlayMode("local")}>
-              <div className="ft-count-num">ローカル</div>
-              <div className="ft-count-turns">CPU / パス＆プレイ</div>
+              <div className="ft-count-num">LOCAL</div>
+              <div className="ft-count-turns">vs CPU</div>
             </button>
             <button className={"ft-count-btn" + (playMode === "online" ? " active" : "")} onClick={() => setPlayMode && setPlayMode("online")}>
-              <div className="ft-count-num">オンライン</div>
-              <div className="ft-count-turns">別端末で対人</div>
+              <div className="ft-count-num">ONLINE</div>
+              <div className="ft-count-turns">対人戦</div>
             </button>
           </div>
         </div>
@@ -2631,10 +2631,10 @@ function SetupScreen({ playerCount, setPlayerCount, humanCount, setHumanCount, h
             <div className="ft-label">部屋を作る（ホスト）</div>
             <div className="ft-select-count" style={{ marginBottom: 8 }}>
               <div className="ft-label" style={{ opacity: 0.7 }}>席数（後からロビーでも変更可・不足はCPU）</div>
-              <div className="ft-count-options">
+              <div className="ft-count-options ft-count-options-players">
                 {[2, 3, 5, 9].map((n) => (
                   <button key={n} className={"ft-count-btn" + (playerCount === n ? " active" : "")} onClick={() => setPlayerCount(n)}>
-                    <div className="ft-count-num">{n}</div>
+                    <div className="ft-count-num">{n}<span className="ft-count-people"> PEOPLE</span></div>
                     <div className="ft-count-turns">{TURN_TABLE[n]} TERN</div>
                   </button>
                 ))}
@@ -2664,78 +2664,27 @@ function SetupScreen({ playerCount, setPlayerCount, humanCount, setHumanCount, h
             </button>
             {netStatus ? <p style={{ fontSize: 12, color: "var(--ft-amber)", marginTop: 10 }}>{netStatus}</p> : null}
             <p style={{ fontSize: 11, opacity: 0.65, marginTop: 12, lineHeight: 1.6 }}>
-              オンラインは PeerJS（WebRTC）のP2P接続です。同一ネットワークまたはNAT越え可能な環境が必要です。接続できない場合はローカルのパス＆プレイをご利用ください。
+              ONLINE は PeerJS（WebRTC）のP2P接続です。同一ネットワークまたはNAT越え可能な環境が必要です。接続できない場合は LOCAL（vs CPU）をご利用ください。
             </p>
           </div>
         ) : null}
 
         {playMode !== "online" ? (
+        <>
         <div className="ft-select-count">
           <div className="ft-label">対戦人数を選択</div>
-          <div className="ft-count-options">
+          <div className="ft-count-options ft-count-options-players">
             {[2, 3, 5, 9].map((n) => (
               <button
                 key={n}
                 className={"ft-count-btn" + (playerCount === n ? " active" : "")}
                 onClick={() => changePlayerCount(n)}
               >
-                <div className="ft-count-num">{n} PEOPLE</div>
+                <div className="ft-count-num">{n}<span className="ft-count-people"> PEOPLE</span></div>
                 <div className="ft-count-turns">{TURN_TABLE[n]} TERN</div>
               </button>
             ))}
           </div>
-        </div>
-
-        <div className="ft-select-count" style={{ marginTop: 14 }}>
-          <div className="ft-label">人間プレイヤー数（パス＆プレイ対人）</div>
-          <div className="ft-count-options" style={{ flexWrap: "wrap" }}>
-            {Array.from({ length: playerCount }, (_, i) => i + 1).map((n) => (
-              <button
-                key={n}
-                className={"ft-count-btn" + (hc === n ? " active" : "")}
-                onClick={() => changeHumanCount(n)}
-                style={{ minWidth: 64 }}
-              >
-                <div className="ft-count-num">{n}人</div>
-                <div className="ft-count-turns">{n === 1 ? "vs CPU" : (n === playerCount ? "全員人間" : "人間+CPU")}</div>
-              </button>
-            ))}
-          </div>
-          <p style={{ fontSize: 11, opacity: 0.75, marginTop: 8, lineHeight: 1.6 }}>
-            2人以上の場合、同じ端末を順番に渡してプレイします（注文・COINは他の人に見えないよう注意）。
-          </p>
-          {hc > 1 && (
-            <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
-              {Array.from({ length: hc }, (_, i) => (
-                <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ fontSize: 11, opacity: 0.7, width: 52 }}>P{i + 1}</span>
-                  <input
-                    type="text"
-                    maxLength={16}
-                    value={(humanNames && humanNames[i]) || ""}
-                    placeholder={"プレイヤー" + (i + 1)}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setHumanNames((prev) => {
-                        const arr = Array.from({ length: hc }, (_, j) => (prev && prev[j]) || "");
-                        arr[i] = v;
-                        return arr;
-                      });
-                    }}
-                    style={{
-                      flex: 1,
-                      background: "var(--ft-panel-alt)",
-                      border: "1px solid var(--ft-border)",
-                      color: "var(--ft-text)",
-                      padding: "8px 10px",
-                      borderRadius: 3,
-                      fontSize: 13,
-                    }}
-                  />
-                </div>
-              ))}
-            </div>
-          )}
         </div>
 
         <div className="ft-select-count" style={{ marginTop: 14 }}>
@@ -2764,6 +2713,7 @@ function SetupScreen({ playerCount, setPlayerCount, humanCount, setHumanCount, h
         <button className="ft-start-btn" onClick={onStart}>
           市場を起動する ▶
         </button>
+        </>
         ) : null}
       </div>
     </div>
@@ -3959,17 +3909,46 @@ const CSS = `
   text-transform: uppercase;
   margin-bottom: 8px;
 }
-.ft-count-options { display: flex; gap: 8px; }
+.ft-count-options { display: flex; gap: 8px; flex-wrap: wrap; }
+.ft-count-options-players {
+  display: grid !important;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  width: 100%;
+}
 .ft-count-btn {
   flex: 1;
+  min-width: 0;
   background: var(--ft-panel-alt);
   border: 1px solid var(--ft-border);
   color: var(--ft-text-dim);
-  padding: 12px 6px;
+  padding: 12px 8px;
   border-radius: 3px;
   cursor: pointer;
   transition: all .15s;
   font-family: var(--ft-font-display);
+  overflow: hidden;
+}
+.ft-count-options-players .ft-count-btn {
+  flex: unset;
+  width: 100%;
+  box-sizing: border-box;
+}
+.ft-count-options-players .ft-count-num {
+  font-size: 20px;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+.ft-count-options-players .ft-count-people {
+  font-size: 0.68em;
+  vertical-align: 0.05em;
+}
+.ft-count-options-players .ft-count-turns {
+  font-size: 10px;
+  margin-top: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .ft-count-btn:hover { border-color: var(--ft-accent-dim); color: var(--ft-text); }
 .ft-count-btn.active {
@@ -3979,6 +3958,13 @@ const CSS = `
   box-shadow: 0 0 12px rgba(57,255,156,0.15) inset;
 }
 .ft-count-num { font-size: 18px; font-weight: 700; }
+.ft-count-people {
+  font-size: 0.72em;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  opacity: 0.9;
+  margin-left: 2px;
+}
 .ft-count-turns { font-size: 10px; margin-top: 3px; opacity: .8; }
 .ft-cards-preview { display: flex; gap: 10px; margin-bottom: 26px; }
 .ft-card-chip {
