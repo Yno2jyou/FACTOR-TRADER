@@ -2747,7 +2747,7 @@ function FactorTrader() {
                   {[2, 3, 6, 9, 12, 15].map((n) => (
                     <button key={n} className={"ft-count-btn" + (playerCount === n ? " active" : "")} onClick={() => setPlayerCount(n)}>
                       <div className="ft-count-num">{n}<span className="ft-count-people"> PEOPLE</span></div>
-                      <div className="ft-count-turns">{TURN_TABLE[n]} TERN · COIN {CARDS_TABLE[n]}</div>
+                      <div className="ft-count-turns">{TURN_TABLE[n]} TERN</div>
                     </button>
                   ))}
                 </div>
@@ -3105,7 +3105,7 @@ function SetupScreen({ playerCount, setPlayerCount, humanCount, setHumanCount, h
                 {[2, 3, 6, 9, 12, 15].map((n) => (
                   <button key={n} className={"ft-count-btn" + (playerCount === n ? " active" : "")} onClick={() => setPlayerCount(n)}>
                     <div className="ft-count-num">{n}<span className="ft-count-people"> PEOPLE</span></div>
-                    <div className="ft-count-turns">{TURN_TABLE[n]} TERN · COIN {CARDS_TABLE[n]}</div>
+                    <div className="ft-count-turns">{TURN_TABLE[n]} TERN</div>
                   </button>
                 ))}
               </div>
@@ -3167,7 +3167,7 @@ function SetupScreen({ playerCount, setPlayerCount, humanCount, setHumanCount, h
                 onClick={() => changePlayerCount(n)}
               >
                 <div className="ft-count-num">{n}<span className="ft-count-people"> PEOPLE</span></div>
-                <div className="ft-count-turns">{TURN_TABLE[n]} TERN · COIN {CARDS_TABLE[n]}</div>
+                <div className="ft-count-turns">{TURN_TABLE[n]} TERN</div>
               </button>
             ))}
           </div>
@@ -4631,9 +4631,25 @@ const CSS = `
   margin-bottom: 8px;
 }
 .ft-count-options { display: flex; gap: 8px; flex-wrap: wrap; }
-.ft-count-options-players .ft-count-btn { min-width: 88px; flex: 1 1 88px; max-width: 140px; }
-.ft-count-options-players .ft-count-num { font-size: 18px; }
-.ft-count-options-players .ft-count-turns { font-size: 10px; }
+.ft-count-options-players {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  width: 100%;
+}
+.ft-count-options-players .ft-count-btn {
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  flex: none;
+  box-sizing: border-box;
+  padding: 14px 10px;
+}
+.ft-count-options-players .ft-count-num { font-size: 20px; }
+.ft-count-options-players .ft-count-turns { font-size: 11px; margin-top: 4px; }
+@media (max-width: 520px) {
+  .ft-count-options-players { grid-template-columns: repeat(2, 1fr); }
+}
 .ft-count-options-players {
   display: grid !important;
   grid-template-columns: 1fr 1fr;
