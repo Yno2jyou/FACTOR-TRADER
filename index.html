@@ -3937,7 +3937,7 @@ function ActionPanel(props) {
             <div className="ft-hack-label">
               <Heptagram size={16} className="icon-avant" style={{marginRight:4}} />
               <span style={{color:"var(--ft-purple)", fontWeight:600}}>奥義：AVANT-GARDE-妨害</span>
-              <span style={{fontSize:"11px", opacity:0.7, marginLeft:8}}>他者の株価1〜99999円指定・防衛で無効化される</span>
+              <span style={{fontSize:"11px", opacity:0.7, marginLeft:8}}>自分以外の株価指定・防衛で無効化</span>
               {human.avantUsed ? (
                 <span style={{fontSize:"11px", opacity:0.7, marginLeft:8, color:"var(--ft-purple)"}}>使用済み</span>
               ) : null}
@@ -4039,7 +4039,7 @@ function ActionPanel(props) {
                   return (
                     <span style={{ display: "block" }}>
                       <b style={{ color: "var(--ft-purple)" }}>奥義：AVANT-GARDE-妨害</b>
-                      <span style={{ opacity: 0.85 }}>（COIN10枚・一度限り／自分以外／防衛で無効化される）</span>
+                      <span style={{ opacity: 0.85 }}>（COIN10枚・一度限り／自分以外の株価指定・防衛で無効化）</span>
                       <br />
                       自分以外の株価を <b style={{ color: "var(--ft-purple)" }}>{ap.toLocaleString()}円</b> に強制（1〜99999円）
                       <br />
