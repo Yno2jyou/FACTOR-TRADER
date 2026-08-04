@@ -3110,14 +3110,20 @@ function SetupScreen({ playerCount, setPlayerCount, humanCount, setHumanCount, h
                 ))}
               </div>
             </div>
-            <div className="ft-count-options" style={{ marginBottom: 10 }}>
+            <div className="ft-label" style={{ marginTop: 4 }}>難易度</div>
+            <div className="ft-count-options" style={{ marginBottom: 8 }}>
               <button className={"ft-count-btn" + (!seriousMode ? " active" : "")} onClick={() => setSeriousMode(false)}>
                 <div className="ft-count-num">NORMAL</div>
+                <div className="ft-count-turns">COIN {baseCoins}</div>
               </button>
               <button className={"ft-count-btn" + (seriousMode ? " active" : "")} onClick={() => setSeriousMode(true)}>
                 <div className="ft-count-num">SERIOUS</div>
+                <div className="ft-count-turns">COIN {baseCoins + SERIOUS_COIN_BONUS}</div>
               </button>
             </div>
+            <p style={{ fontSize: 11, opacity: 0.75, marginBottom: 12, lineHeight: 1.6 }}>
+              SERIOUSはCOINがNORMALプレイより10枚多いです。
+            </p>
             <button className="ft-start-btn" onClick={onCreateRoom}>部屋を作成 ▶</button>
             <div style={{ margin: "18px 0 8px", textAlign: "center", opacity: 0.5, fontSize: 12 }}>または</div>
             <div className="ft-label">部屋に参加（ゲスト）</div>
