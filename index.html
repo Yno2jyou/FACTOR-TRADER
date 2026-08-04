@@ -292,9 +292,9 @@ function isPowerOfTwo(n) {
 
 // ---------- ゲーム設定 ----------
 // 人数別: TERN数 / COIN枚数（操作・妨害共用）
-const TURN_TABLE = { 2: 22, 3: 22, 5: 32, 9: 32 };
+const TURN_TABLE = { 2: 22, 3: 22, 6: 32, 9: 32, 12: 32, 15: 32 };
 
-const CARDS_TABLE = { 2: 30, 3: 30, 5: 40, 9: 40 };
+const CARDS_TABLE = { 2: 30, 3: 30, 6: 40, 9: 40, 12: 50, 15: 50 };
 /** SERIOUSはNORMALよりCOIN+10 */
 const SERIOUS_COIN_BONUS = 10;
 
@@ -365,7 +365,12 @@ function clampOrder(order, cash, holdings, priceBefore, turn, totalTurns) {
 }
 
 const STARTING_CASH = 10000;
-const AI_NAMES = ["Albert Einstein", "Sir Isaac Newton", "Marie Curie", "Leonardo da Vinci", "Nikola Tesla", "Charles Darwin", "Galileo Galilei", "Ada Lovelace"];
+const AI_NAMES = [
+  "Albert Einstein", "Sir Isaac Newton", "Marie Curie", "Leonardo da Vinci",
+  "Nikola Tesla", "Charles Darwin", "Galileo Galilei", "Ada Lovelace",
+  "Alan Turing", "James Clerk Maxwell", "Rosalind Franklin", "Richard Feynman",
+  "Hypatia", "Archimedes", "Carl Friedrich Gauss", "Emmy Noether"
+];
 
 function randBase() {
   return 10000 + Math.floor(Math.random() * 80000);
@@ -897,6 +902,7 @@ function settleTurn(players, orders, hacks, nStart, priceBefore) {
       bankrupt: wentBankrupt,
       bailout: bailoutCards > 0,
       bailoutCards,
+      coinRescue: (hacks[p.id] && hacks[p.id].coinRescue) || "",
     };
 
     const defCostUsed = (hacks[p.id]?.defense) ? 5 : 0;
@@ -1170,21 +1176,25 @@ function aiDecideCards(cards, turn, totalTurns, order, nStart, priceBefore, allO
       const heavyHeat = totalOthersTradeShares >= 800 || bestSabScore >= 80000;
       if (bestSabScore >= 3000) {
         // 序盤寄りの中盤は控えめ、中盤〜終盤にかけて上げる
-        if (progress < 0.35) sabChance = 0.12;
-        else if (progress < 0.55) sabChance = 0.32;
-        else if (progress < 0.6) sabChance = 0.45;
-        else if (progress <= 0.8) sabChance = 0.62; // 中盤60〜80%は特に積極
-        else sabChance = 0.55;
+        const playerN = (playersList || []).length;
+        // 多人数時は序盤を抑え、中盤〜終盤に温存して使う
+        if (progress < 0.35) sabChance = playerN >= 5 ? 0.04 : 0.12;
+        else if (progress < 0.5) sabChance = playerN >= 5 ? 0.18 : 0.32;
+        else if (progress < 0.6) sabChance = playerN >= 5 ? 0.38 : 0.45;
+        else if (progress <= 0.8) sabChance = 0.65; // 中盤60〜80%は積極
+        else sabChance = 0.58; // 終盤も継続使用
         if (marketHeat) sabChance = Math.min(0.95, sabChance + 0.2);
         if (heavyHeat) sabChance = Math.min(0.97, sabChance + 0.25);
         if (bestSabScore >= 30000) sabChance = Math.min(0.97, sabChance + 0.2);
         if (bestSabScore >= 100000) sabChance = Math.min(0.99, sabChance + 0.25);
-        // 進行度60〜80%で他者大口が目立つときはさらに上げる
-        if (progress >= 0.6 && progress <= 0.8) {
-          sabChance = Math.min(0.98, sabChance + (marketHeat ? 0.18 : 0.1));
-        } else if (progress >= 0.35 && progress < 0.6 && marketHeat) {
+        if (progress >= 0.6 && progress <= 0.85) {
+          sabChance = Math.min(0.98, sabChance + (marketHeat ? 0.2 : 0.12));
+        } else if (progress >= 0.5 && progress < 0.6 && marketHeat) {
           sabChance = Math.min(0.95, sabChance + 0.12);
         }
+        // 多人数・序盤はさらに抑制
+        if (playerN >= 5 && progress < 0.4) sabChance *= 0.35;
+        if (playerN >= 5 && progress < 0.5) sabChance *= 0.7;
       }
     }
 
@@ -1225,17 +1235,40 @@ function aiDecideCards(cards, turn, totalTurns, order, nStart, priceBefore, allO
       avChance *= 0.85;
       sabChance *= 0.85;
     }
-    // 状況で使い分け: 自分の大口利益 > 他者への大損害 なら操作、逆なら妨害
-    // 自分の想定利益スケール
+    const playerN = (playersList || []).length;
+    // 多人数: CPUごとに操作寄り / 妨害寄りを割り当ててバランス
+    // 少人数: 状況を見て念入りに使い分け
+    let styleBias = 0; // -1 操作寄り, +1 妨害寄り
+    if (playerN >= 5) {
+      styleBias = (Math.abs(idHash) % 2 === 0) ? -1 : 1;
+      if (styleBias < 0) {
+        avChance = Math.min(0.96, avChance * 1.4 + 0.05);
+        sabChance *= 0.5;
+      } else {
+        sabChance = Math.min(0.96, sabChance * 1.35 + 0.05);
+        avChance *= 0.55;
+      }
+    }
     const selfGainScale = (selfAction === "buy" || selfAction === "sell")
       ? selfShares * Math.max(1, Math.abs((priceBefore || 1) - (selfAction === "buy" ? 1 : 99999)))
       : 0;
-    // どちらか一方のみ
-    const pickSab = (
-      sabChance > 0 && bestSabScore > 0 &&
-      (selfAction === "stay" || bestSabScore >= selfGainScale * 0.6 || sabChance >= avChance + 0.08)
-    );
-    if (pickSab && Math.random() < Math.min(0.98, Math.max(sabChance, 0.35))) {
+    let pickSab = false;
+    if (sabChance > 0 && bestSabScore > 0) {
+      if (playerN < 5) {
+        // 少人数: 他者への損害が自分の奥義利益を明確に上回るときだけ妨害
+        const clearSabWin = bestSabScore >= selfGainScale * 1.15 || selfAction === "stay";
+        const marginal = bestSabScore >= selfGainScale * 0.85 && sabChance >= avChance + 0.12;
+        pickSab = clearSabWin || marginal;
+      } else {
+        // 多人数: 傾向に沿いつつ状況も見る
+        if (styleBias > 0) {
+          pickSab = selfAction === "stay" || bestSabScore >= selfGainScale * 0.45 || sabChance >= avChance;
+        } else {
+          pickSab = (selfAction === "stay" && bestSabScore >= 20000) || bestSabScore >= selfGainScale * 1.4;
+        }
+      }
+    }
+    if (pickSab && Math.random() < Math.min(0.98, Math.max(sabChance, playerN < 5 ? 0.28 : 0.35))) {
       avantSab = 1;
       avantPrice = sabPrice;
       bestQuick = 0;
@@ -2169,6 +2202,9 @@ function FactorTrader() {
     const endgame = isLastFiveTurns(turn, totalTurns);
     let rescuedPlayers = (playersBase || players).map((p) => ({ ...p, cards: { ...(p.cards || {}) }, history: [...(p.history || [])] }));
 
+    // COIN補充の記録（TRADERS表示用）
+    const coinRescueMap = {};
+
     // 人間の COIN 補充を適用
     rescuedPlayers = rescuedPlayers.map((p) => {
       if (p.isBankrupt || p.isAI) return p;
@@ -2180,6 +2216,7 @@ function FactorTrader() {
       if (choice === "half5" && st > 5) return p;
       if (st > 5) return p;
       const next = applyCoinRescue(p, choice, priceBefore);
+      coinRescueMap[p.id] = choice;
       if (choice === "half5") pushLog("COIN " + p.name + " COIN補充: 総資産の50%と引き換えに COIN+5");
       if (choice === "zero10") pushLog("COIN " + p.name + " COIN補充: 総資産の75%と引き換えに COIN+10");
       return next;
@@ -2211,6 +2248,7 @@ function FactorTrader() {
       }
       if (!choice) return p;
       const next = applyCoinRescue(p, choice, priceBefore);
+      coinRescueMap[p.id] = choice;
       pushLog("COIN " + (p.name || p.id) + " がCOIN補充（" + coinRescueLabel(choice) + "）");
       return next;
     });
@@ -2218,23 +2256,26 @@ function FactorTrader() {
     const newHacks = { ...humanHacksSoFar };
     rescuedPlayers.forEach((p) => {
       if (newHacks[p.id] && !p.isAI) {
-        // 人間は既に入力済み（coinRescue キーは settle に不要）
-        const { coinRescue, ...rest } = newHacks[p.id];
-        newHacks[p.id] = rest;
+        // 人間は既に入力済み。coinRescue は TRADERS 表示用に残す
+        const choice = coinRescueMap[p.id] || newHacks[p.id].coinRescue || "";
+        newHacks[p.id] = { ...newHacks[p.id], coinRescue: choice || "" };
         return;
       }
       if (newHacks[p.id]) return;
       if (p.isBankrupt) {
-        newHacks[p.id] = { quick: 0, heavy: 0, defense: 0, reflect: 0, avant: 0, avantSab: 0 };
+        newHacks[p.id] = { quick: 0, heavy: 0, defense: 0, reflect: 0, avant: 0, avantSab: 0, coinRescue: "" };
         return;
       }
       if (!p.isAI) {
-        newHacks[p.id] = { quick: 0, heavy: 0, defense: 0, reflect: 0, avant: 0, avantSab: 0 };
+        newHacks[p.id] = { quick: 0, heavy: 0, defense: 0, reflect: 0, avant: 0, avantSab: 0, coinRescue: coinRescueMap[p.id] || "" };
         return;
       }
-      newHacks[p.id] = aiDecideCards(
-        p.cards, turn, totalTurns, orders[p.id], nStart, priceBefore, orders, p.id, rescuedPlayers
-      );
+      newHacks[p.id] = {
+        ...aiDecideCards(
+          p.cards, turn, totalTurns, orders[p.id], nStart, priceBefore, orders, p.id, rescuedPlayers
+        ),
+        coinRescue: coinRescueMap[p.id] || "",
+      };
     });
 
     // 妨害の同時撃ちは少なめ
@@ -2703,10 +2744,10 @@ function FactorTrader() {
               <div className="ft-select-count" style={{ marginBottom: 12 }}>
                 <div className="ft-label">席数（不足分はCPU）</div>
                 <div className="ft-count-options ft-count-options-players">
-                  {[2, 3, 5, 9].map((n) => (
+                  {[2, 3, 6, 9, 12, 15].map((n) => (
                     <button key={n} className={"ft-count-btn" + (playerCount === n ? " active" : "")} onClick={() => setPlayerCount(n)}>
                       <div className="ft-count-num">{n}<span className="ft-count-people"> PEOPLE</span></div>
-                      <div className="ft-count-turns">{TURN_TABLE[n]} TERN</div>
+                      <div className="ft-count-turns">{TURN_TABLE[n]} TERN · COIN {CARDS_TABLE[n]}</div>
                     </button>
                   ))}
                 </div>
@@ -3061,10 +3102,10 @@ function SetupScreen({ playerCount, setPlayerCount, humanCount, setHumanCount, h
             <div className="ft-select-count" style={{ marginBottom: 8 }}>
               <div className="ft-label" style={{ opacity: 0.7 }}>席数（後からロビーでも変更可・不足はCPU）</div>
               <div className="ft-count-options ft-count-options-players">
-                {[2, 3, 5, 9].map((n) => (
+                {[2, 3, 6, 9, 12, 15].map((n) => (
                   <button key={n} className={"ft-count-btn" + (playerCount === n ? " active" : "")} onClick={() => setPlayerCount(n)}>
                     <div className="ft-count-num">{n}<span className="ft-count-people"> PEOPLE</span></div>
-                    <div className="ft-count-turns">{TURN_TABLE[n]} TERN</div>
+                    <div className="ft-count-turns">{TURN_TABLE[n]} TERN · COIN {CARDS_TABLE[n]}</div>
                   </button>
                 ))}
               </div>
@@ -3119,14 +3160,14 @@ function SetupScreen({ playerCount, setPlayerCount, humanCount, setHumanCount, h
         <div className="ft-select-count">
           <div className="ft-label">対戦人数を選択</div>
           <div className="ft-count-options ft-count-options-players">
-            {[2, 3, 5, 9].map((n) => (
+            {[2, 3, 6, 9, 12, 15].map((n) => (
               <button
                 key={n}
                 className={"ft-count-btn" + (playerCount === n ? " active" : "")}
                 onClick={() => changePlayerCount(n)}
               >
                 <div className="ft-count-num">{n}<span className="ft-count-people"> PEOPLE</span></div>
-                <div className="ft-count-turns">{TURN_TABLE[n]} TERN</div>
+                <div className="ft-count-turns">{TURN_TABLE[n]} TERN · COIN {CARDS_TABLE[n]}</div>
               </button>
             ))}
           </div>
@@ -3413,6 +3454,14 @@ function PlayersPanel({ players, orders, phase, currentPrice, revealData }) {
       const n = ex.bailoutCards || 10;
       const who = p.name;
       notes.push({ cls: "note-bailout", text: who + "がCOIN" + n + "枚を消費し、買い注文を帳消ししました" });
+    });
+    // --- 5. COIN補充 ---
+    players.forEach((p) => {
+      const ex = revealData.execResults[p.id];
+      if (!ex || !ex.coinRescue) return;
+      const who = p.name;
+      const lab = coinRescueLabel(ex.coinRescue) || ex.coinRescue;
+      notes.push({ cls: "note-bailout", text: who + "がCOIN補充（" + lab + "）" });
     });
   }
   return (
@@ -4582,6 +4631,9 @@ const CSS = `
   margin-bottom: 8px;
 }
 .ft-count-options { display: flex; gap: 8px; flex-wrap: wrap; }
+.ft-count-options-players .ft-count-btn { min-width: 88px; flex: 1 1 88px; max-width: 140px; }
+.ft-count-options-players .ft-count-num { font-size: 18px; }
+.ft-count-options-players .ft-count-turns { font-size: 10px; }
 .ft-count-options-players {
   display: grid !important;
   grid-template-columns: 1fr 1fr;
