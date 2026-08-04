@@ -3943,7 +3943,9 @@ function ActionPanel(props) {
             <div className="ft-hack-label">
               <Heptagram size={16} className="icon-avant" style={{marginRight:4}} />
               <span style={{color:"var(--ft-purple)", fontWeight:600}}>奥義：AVANT-GARDE-操作</span>
-              <span style={{fontSize:"11px", opacity:0.7, marginLeft:8}}>自分の株価指定</span>
+              {!humanHackDraft.avant ? (
+                <span style={{fontSize:"11px", opacity:0.7, marginLeft:8}}>自分の株価指定</span>
+              ) : null}
             </div>
             <div className="ft-hack-stepper" style={{display:"flex", alignItems:"center", gap:8}}>
               {!!humanHackDraft.avant && (
@@ -3981,9 +3983,11 @@ function ActionPanel(props) {
             <div className="ft-hack-label">
               <Heptagram size={16} className="icon-avant" style={{marginRight:4}} />
               <span style={{color:"var(--ft-purple)", fontWeight:600}}>奥義：AVANT-GARDE-妨害</span>
-              <span style={{fontSize:"11px", opacity:0.7, marginLeft:8}}>
-                {turn <= 3 ? "最初の3TERNは使用不可" : "自分以外の株価指定"}
-              </span>
+              {!humanHackDraft.avantSab ? (
+                <span style={{fontSize:"11px", opacity:0.7, marginLeft:8}}>
+                  {turn <= 3 ? "最初の3TERNは使用不可" : "自分以外の株価指定"}
+                </span>
+              ) : null}
             </div>
             <div className="ft-hack-stepper" style={{display:"flex", alignItems:"center", gap:8}}>
               {!!humanHackDraft.avantSab && turn > 3 && (
@@ -5127,7 +5131,18 @@ const CSS = `
 .ft-pc-cash { font-family: var(--ft-font-display); font-weight: 700; color: var(--ft-text); margin-bottom: 4px; }
 .ft-pc-holdings { color: var(--ft-text-dim); font-size: 10px; margin-bottom: 4px; }
 .ft-pc-cards { display: inline-flex; align-items: center; gap: 4px; color: var(--ft-text-dim); }
-.ft-pc-order { margin-top: 5px; font-size: 10px; padding: 2px 6px; border-radius: 10px; display: inline-block; }
+.ft-pc-order {
+  margin-top: 5px;
+  margin-left: auto;
+  float: right;
+  clear: right;
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 10px;
+  display: block;
+  width: fit-content;
+  text-align: right;
+}
 .tag-buy { background: rgba(57,255,156,0.12); color: var(--ft-accent); }
 .tag-sell { background: rgba(255,77,109,0.12); color: var(--ft-red); }
 .tag-stay { background: rgba(255,255,255,0.06); color: var(--ft-text-dim); }
