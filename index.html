@@ -1121,40 +1121,62 @@ function aiDecideCards(cards, turn, totalTurns, order, nStart, priceBefore, allO
     selfPl && !selfPl.avantUsed && !selfPl.isBankrupt &&
     stockLeft >= 10
   ) {
-    // --- 奥義（妨害）: 大口の相手注文を不利な価格に固定 ---
+    // --- 奥義（妨害）: 最初の3TERN不可。中盤以降、他者の大口売買で損失が大きくなるときに積極使用 ---
     let sabChance = 0;
     let sabPrice = 1000;
     let bestSabScore = 0;
-    (playersList || []).forEach((pl) => {
-      if (!pl || String(pl.id) === String(selfId) || pl.isBankrupt) return;
-      const tOrder = allOrders && allOrders[pl.id];
-      const tAction = tOrder?.action || "stay";
-      const tShares = tOrder?.shares || 0;
-      if (tAction !== "buy" && tAction !== "sell") return;
-      if (tShares < 1) return;
-      // 買い相手 → 高値を押し付け / 売り相手 → 安値を押し付ける
-      const forced = tAction === "buy" ? 99999 : 1;
-      const before = personalExecPrice(nStart, 0, 0, tAction);
-      const delta = tAction === "buy" ? forced - before : before - forced;
-      if (delta <= 0) return;
-      let bankruptShot = false;
-      if (tAction === "buy") {
-        const req = tShares * forced;
-        const liq = (pl.cash || 0) + (pl.holdings || 0) * forced;
-        bankruptShot = req > liq + 1e-9;
+    let totalOthersTradeShares = 0;
+    let othersTradingCount = 0;
+    if (turn > 3) {
+      (playersList || []).forEach((pl) => {
+        if (!pl || String(pl.id) === String(selfId) || pl.isBankrupt) return;
+        const tOrder = allOrders && allOrders[pl.id];
+        const tAction = tOrder?.action || "stay";
+        const tShares = tOrder?.shares || 0;
+        if (tAction !== "buy" && tAction !== "sell") return;
+        if (tShares < 1) return;
+        othersTradingCount += 1;
+        totalOthersTradeShares += tShares;
+        // 買い相手 → 高値を押し付け / 売り相手 → 安値を押し付ける
+        const forced = tAction === "buy" ? 99999 : 1;
+        const before = personalExecPrice(nStart, 0, 0, tAction);
+        const delta = tAction === "buy" ? forced - before : before - forced;
+        if (delta <= 0) return;
+        let bankruptShot = false;
+        if (tAction === "buy") {
+          const req = tShares * forced;
+          const liq = (pl.cash || 0) + (pl.holdings || 0) * forced;
+          bankruptShot = req > liq + 1e-9;
+        }
+        const totalLoss = delta * tShares;
+        let score = totalLoss + (bankruptShot ? 80000 : 0);
+        if (!pl.isAI) score *= 1.35;
+        // 株数が多いほど損失規模が大きい
+        if (tShares >= 50) score *= 1.15;
+        if (tShares >= 200) score *= 1.25;
+        if (score > bestSabScore) {
+          bestSabScore = score;
+          sabPrice = forced;
+        }
+      });
+      // 他者が多く売買しているほど積極（損失インパクトが大きい局面）
+      const marketHeat = totalOthersTradeShares >= 300 || othersTradingCount >= 2;
+      const heavyHeat = totalOthersTradeShares >= 800 || bestSabScore >= 80000;
+      if (bestSabScore >= 3000) {
+        // 序盤寄りの中盤は控えめ、中盤〜終盤にかけて上げる
+        if (progress < 0.35) sabChance = 0.12;
+        else if (progress < 0.55) sabChance = 0.28;
+        else if (progress < 0.75) sabChance = 0.42;
+        else sabChance = 0.55;
+        if (marketHeat) sabChance = Math.min(0.92, sabChance + 0.18);
+        if (heavyHeat) sabChance = Math.min(0.95, sabChance + 0.22);
+        if (bestSabScore >= 30000) sabChance = Math.min(0.95, sabChance + 0.2);
+        if (bestSabScore >= 100000) sabChance = Math.min(0.98, sabChance + 0.25);
+        // 中盤（0.35〜0.75）で他者大口が目立つときはさらに上げる
+        if (progress >= 0.35 && progress <= 0.8 && marketHeat) {
+          sabChance = Math.min(0.95, sabChance + 0.12);
+        }
       }
-      const totalLoss = delta * tShares;
-      let score = totalLoss + (bankruptShot ? 80000 : 0);
-      if (!pl.isAI) score *= 1.3;
-      if (score > bestSabScore) {
-        bestSabScore = score;
-        sabPrice = forced;
-      }
-    });
-    if (bestSabScore >= 5000) {
-      sabChance = progress < 0.4 ? 0.08 : progress < 0.7 ? 0.18 : 0.32;
-      if (bestSabScore >= 50000) sabChance = Math.min(0.85, sabChance + 0.35);
-      if (bestSabScore >= 100000) sabChance = Math.min(0.92, sabChance + 0.2);
     }
 
     // --- 奥義（操作）: 自分の大口売買向け ---
@@ -2018,6 +2040,7 @@ function FactorTrader() {
       if (choice === "half5" && stock > 5) choice = "";
       let avant = (!me.avantUsed && humanHackDraft.avant && !humanHackDraft.avantSab) ? 1 : 0;
       let avantSab = (!me.avantUsed && humanHackDraft.avantSab && !humanHackDraft.avant) ? 1 : 0;
+      if (turn <= 3) avantSab = 0;
       if (avant && avantSab) { avantSab = 0; }
       let avantPrice = Math.max(1, Math.min(99999, Math.floor(Number(humanHackDraft.avantPrice) || 1)));
       const anyAvant = avant || avantSab;
@@ -2074,6 +2097,7 @@ function FactorTrader() {
       if (choice === "half5" && stock > 5) choice = "";
       let avant = (!cur.avantUsed && humanHackDraft.avant && !humanHackDraft.avantSab) ? 1 : 0;
       let avantSab = (!cur.avantUsed && humanHackDraft.avantSab && !humanHackDraft.avant) ? 1 : 0;
+      if (turn <= 3) avantSab = 0;
       if (avant && avantSab) { avantSab = 0; }
       let avantPrice = Math.max(1, Math.min(99999, Math.floor(Number(humanHackDraft.avantPrice) || 1)));
       const anyAvant = avant || avantSab;
@@ -2926,6 +2950,7 @@ function RulesContent() {
               <li>自分以外の株価を1〜99999円で指定</li>
               <li>妨害の上位互換</li>
               <li>相手の防衛で無効化される</li>
+              <li>最初の3TERNは使用不可</li>
               <li>重複時は総資産少が優先</li>
             </ul>
           </div>
@@ -3937,13 +3962,15 @@ function ActionPanel(props) {
             <div className="ft-hack-label">
               <Heptagram size={16} className="icon-avant" style={{marginRight:4}} />
               <span style={{color:"var(--ft-purple)", fontWeight:600}}>奥義：AVANT-GARDE-妨害</span>
-              <span style={{fontSize:"11px", opacity:0.7, marginLeft:8}}>自分以外の株価指定</span>
+              <span style={{fontSize:"11px", opacity:0.7, marginLeft:8}}>
+                {turn <= 3 ? "最初の3TERNは使用不可" : "自分以外の株価指定"}
+              </span>
               {human.avantUsed ? (
                 <span style={{fontSize:"11px", opacity:0.7, marginLeft:8, color:"var(--ft-purple)"}}>使用済み</span>
               ) : null}
             </div>
             <div className="ft-hack-stepper" style={{display:"flex", alignItems:"center", gap:8}}>
-              {!!humanHackDraft.avantSab && (
+              {!!humanHackDraft.avantSab && turn > 3 && (
                 <input
                   type="number"
                   className="ft-avant-price-input"
@@ -3961,9 +3988,10 @@ function ActionPanel(props) {
               <button
                 type="button"
                 className={"ft-defense-toggle" + (humanHackDraft.avantSab ? " is-avant-on" : "")}
-                disabled={!!human.avantUsed || (!humanHackDraft.avantSab && (human.cards.stock || 0) < 10)}
+                disabled={turn <= 3 || !!human.avantUsed || (!humanHackDraft.avantSab && (human.cards.stock || 0) < 10)}
                 onClick={() =>
                   setHumanHackDraft((d) => {
+                    if (turn <= 3) return d;
                     if (human.avantUsed) return d;
                     if (d.avantSab) return { ...d, avantSab: 0 };
                     if ((human.cards.stock || 0) < 10) return d;
@@ -3971,7 +3999,7 @@ function ActionPanel(props) {
                     return { ...d, avantSab: 1, avant: 0, quick: 0, heavy: 0, defense: 0, reflect: 0, avantPrice: d.avantPrice || 1000 };
                   })
                 }
-              >{human.avantUsed ? "済" : (humanHackDraft.avantSab ? "ON" : "OFF")}</button>
+              >{turn <= 3 ? "不可" : (human.avantUsed ? "済" : (humanHackDraft.avantSab ? "ON" : "OFF"))}</button>
             </div>
           </div>
         </div>
