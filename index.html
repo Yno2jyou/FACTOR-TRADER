@@ -1060,61 +1060,67 @@ function aiDecideCards(cards, turn, totalTurns, order, nStart, priceBefore, allO
 
   if (bestQuick + (bestHeavy > 0 ? 5 : 0) > stock) bestHeavy = 0;
 
-  // --- 防衛: 破産回避を最優先。被妨害で支払い不能になる大口買いでは高確率で防衛 ---
+  // --- 防衛 / 反射: 反射は妨害を跳ね返すため、防衛候補局面では積極的に反射を優先しうる ---
   let useDefense = 0;
+  let useReflect = 0;
   const afterQH = bestQuick + (bestHeavy > 0 ? 5 : 0);
   const leftAfter = stock - afterQH;
   if (turn > 3 && leftAfter >= 5 && selfAction === "buy" && selfShares >= 1) {
     const selfPlDef = (playersList || []).find((pl) => pl && String(pl.id) === String(selfId));
     const cash0 = selfPlDef ? (selfPlDef.cash || 0) : 0;
     const hold0 = selfPlDef ? (selfPlDef.holdings || 0) : 0;
-    // 被妨害時は操作無効 → heavy=1 で価格を試算
     const priceHit = personalExecPrice(nStart, bestQuick, 1, "buy");
     const priceSafe = personalExecPrice(nStart, bestQuick, 0, "buy");
     const reqHit = selfShares * priceHit;
     const liqHit = cash0 + hold0 * priceHit;
     const willBankruptIfHit = reqHit > liqHit + 1e-9;
-    // 帳消し（10枚）は大幅減るので極力避ける → 防衛（5枚）で先に防ぐ
     const handIfNoDef = leftAfter;
     const wouldNeedBailout = willBankruptIfHit && handIfNoDef >= 10;
     const cannotBailout = willBankruptIfHit && handIfNoDef < 10;
 
-    let defChance = 0;
-    if (wouldNeedBailout) {
-      // 被妨害→支払い不能→帳消しコース: 防衛を積極使用（帳消し10枚より防衛5枚）
-      defChance = 0.96;
-    } else if (cannotBailout) {
-      // 帳消しすらできず破産確定: ほぼ必ず防衛
-      defChance = 0.99;
-    } else {
-      // 破産までいかなくても大口＋操作中は軽く検討
+    let protectChance = 0;
+    if (wouldNeedBailout) protectChance = 0.96;
+    else if (cannotBailout) protectChance = 0.99;
+    else {
       const overpayRisk = priceHit > priceSafe * 1.5 && selfShares >= 10;
-      if (overpayRisk) defChance = 0.2;
-      if (selfShares >= 25 && bestQuick > 0) defChance = Math.max(defChance, 0.15);
-      if (progress < 0.45) defChance *= 0.4;
-      if (stock < 12) defChance *= 0.5;
+      if (overpayRisk) protectChance = 0.28;
+      if (selfShares >= 25 && bestQuick > 0) protectChance = Math.max(protectChance, 0.22);
+      if (progress < 0.45) protectChance *= 0.55;
+      if (stock < 12) protectChance *= 0.55;
     }
-    if (Math.random() < defChance) useDefense = 1;
-  } else if (turn > 3 && leftAfter >= 5 && selfAction === "sell" && selfShares >= 20) {
-    // 大口売りは価格保護の優先度は低め（破産は買いに特有）
-    let defChance = progress > 0.7 ? 0.12 : 0.05;
-    if (bestQuick > 0) defChance += 0.06;
-    if (stock < 12) defChance *= 0.5;
-    if (Math.random() < defChance) useDefense = 1;
+    if (Math.random() < protectChance) {
+      // 反射は妨害を相手に返すため、防衛より強い局面が多い → 反射を優先
+      // 破産回避が最優先で確実に防ぎたいときのみ防衛寄り
+      const preferReflect = !(cannotBailout && selfShares >= 40);
+      if (preferReflect && Math.random() < 0.72) useReflect = 1;
+      else useDefense = 1;
+    }
+  } else if (turn > 3 && leftAfter >= 5 && selfAction === "sell" && selfShares >= 15) {
+    let protectChance = progress > 0.6 ? 0.22 : 0.12;
+    if (bestQuick > 0) protectChance += 0.08;
+    if (stock < 12) protectChance *= 0.5;
+    if (Math.random() < protectChance) {
+      if (Math.random() < 0.65) useReflect = 1;
+      else useDefense = 1;
+    }
+  } else if (turn > 3 && leftAfter >= 5 && selfAction === "stay") {
+    // 様子見でも反射で相手の妨害を跳ね返す余地
+    let refChance = progress > 0.5 ? 0.18 : 0.1;
+    if (stock >= 15) refChance += 0.08;
+    if (Math.random() < refChance) useReflect = 1;
   }
-  if (useDefense && bestQuick + (bestHeavy > 0 ? 5 : 0) + 5 > stock) {
-    // 防衛（破産回避）優先: 妨害→操作の順に削る
+  if ((useDefense || useReflect) && bestQuick + (bestHeavy > 0 ? 5 : 0) + 5 > stock) {
     bestHeavy = 0;
     if (bestQuick + 5 > stock) bestQuick = Math.max(0, stock - 5);
   }
-  // 念のためTERN1-3は防衛しない
-  if (turn <= 3) useDefense = 0;
+  if (useDefense && useReflect) useReflect = 0; // 同時不可・防衛優先はsettle側でも処理
+  if (turn <= 3) { useDefense = 0; useReflect = 0; }
 
   let avant = 0;
   let avantSab = 0;
   let avantPrice = 1000;
   const selfPl = (playersList || []).find((pl) => pl && String(pl.id) === String(selfId));
-  const stockLeft = stock - bestQuick - (bestHeavy > 0 ? 5 : 0) - (useDefense ? 5 : 0);
+  const stockLeft = stock - bestQuick - (bestHeavy > 0 ? 5 : 0) - (useDefense ? 5 : 0) - (useReflect ? 5 : 0);
   // 奥義は大口取引向け。小口では控える。10万株以上の売買で積極使用。
   const AVANT_BIG = 100000;
   if (
@@ -1165,38 +1171,47 @@ function aiDecideCards(cards, turn, totalTurns, order, nStart, priceBefore, allO
       if (bestSabScore >= 3000) {
         // 序盤寄りの中盤は控えめ、中盤〜終盤にかけて上げる
         if (progress < 0.35) sabChance = 0.12;
-        else if (progress < 0.55) sabChance = 0.28;
-        else if (progress < 0.75) sabChance = 0.42;
+        else if (progress < 0.55) sabChance = 0.32;
+        else if (progress < 0.6) sabChance = 0.45;
+        else if (progress <= 0.8) sabChance = 0.62; // 中盤60〜80%は特に積極
         else sabChance = 0.55;
-        if (marketHeat) sabChance = Math.min(0.92, sabChance + 0.18);
-        if (heavyHeat) sabChance = Math.min(0.95, sabChance + 0.22);
-        if (bestSabScore >= 30000) sabChance = Math.min(0.95, sabChance + 0.2);
-        if (bestSabScore >= 100000) sabChance = Math.min(0.98, sabChance + 0.25);
-        // 中盤（0.35〜0.75）で他者大口が目立つときはさらに上げる
-        if (progress >= 0.35 && progress <= 0.8 && marketHeat) {
+        if (marketHeat) sabChance = Math.min(0.95, sabChance + 0.2);
+        if (heavyHeat) sabChance = Math.min(0.97, sabChance + 0.25);
+        if (bestSabScore >= 30000) sabChance = Math.min(0.97, sabChance + 0.2);
+        if (bestSabScore >= 100000) sabChance = Math.min(0.99, sabChance + 0.25);
+        // 進行度60〜80%で他者大口が目立つときはさらに上げる
+        if (progress >= 0.6 && progress <= 0.8) {
+          sabChance = Math.min(0.98, sabChance + (marketHeat ? 0.18 : 0.1));
+        } else if (progress >= 0.35 && progress < 0.6 && marketHeat) {
           sabChance = Math.min(0.95, sabChance + 0.12);
         }
       }
     }
 
-    // --- 奥義（操作）: 自分の大口売買向け ---
+    // --- 奥義（操作）: 自分の売買を有利に。妨害型と状況で使い分け ---
     let avChance = 0;
     let avPrice = 1000;
     if (selfAction !== "stay" && selfShares > 0) {
+      // 閾値を下げてCPUも積極使用（大口ほど高く）
       if (selfShares >= AVANT_BIG) {
-        avChance = 0.72;
-        if (selfShares >= AVANT_BIG * 2) avChance = 0.88;
-        if (progress > 0.5) avChance = Math.min(0.95, avChance + 0.08);
-      } else if (selfShares >= 20000) {
-        avChance = 0.08 + Math.min(0.12, (selfShares / AVANT_BIG) * 0.12);
-      } else if (selfShares >= 5000) {
-        avChance = 0.02;
+        avChance = 0.78;
+        if (selfShares >= AVANT_BIG * 2) avChance = 0.92;
+      } else if (selfShares >= 30000) {
+        avChance = 0.35 + Math.min(0.35, (selfShares / AVANT_BIG) * 0.35);
+      } else if (selfShares >= 8000) {
+        avChance = 0.18 + Math.min(0.2, (selfShares / 30000) * 0.2);
+      } else if (selfShares >= 2000) {
+        avChance = 0.08;
+      } else if (selfShares >= 500) {
+        avChance = 0.03;
       }
-      if (selfAction === "buy" && selfShares >= 5000) {
+      if (progress > 0.45) avChance = Math.min(0.95, avChance + 0.08);
+      if (progress > 0.7) avChance = Math.min(0.95, avChance + 0.06);
+      if (selfAction === "buy" && selfShares >= 2000) {
         const priceHit = personalExecPrice(nStart, bestQuick, 1, "buy");
         const req = selfShares * priceHit;
         const liq = (selfPl.cash || 0) + (selfPl.holdings || 0) * priceHit;
-        if (req > liq + 1e-9) avChance = Math.max(avChance, selfShares >= AVANT_BIG ? 0.9 : 0.25);
+        if (req > liq + 1e-9) avChance = Math.max(avChance, selfShares >= 10000 ? 0.85 : 0.4);
       }
       if (selfAction === "buy") avPrice = 1;
       else if (selfAction === "sell") avPrice = 99999;
@@ -1210,30 +1225,34 @@ function aiDecideCards(cards, turn, totalTurns, order, nStart, priceBefore, allO
       avChance *= 0.85;
       sabChance *= 0.85;
     }
-    // どちらか一方のみ（操作と妨害は同時不可、奥義は一度限り）
-    const roll = Math.random();
-    if (sabChance > 0 && (sabChance >= avChance ? roll < sabChance : roll < sabChance && roll >= avChance * 0.5)) {
-      // 妨害優先判定: スコアが高いとき、または操作よりチャンスが高いとき
-      if (bestSabScore > 0 && (bestSabScore >= 30000 || sabChance >= avChance || selfAction === "stay")) {
-        if (Math.random() < Math.max(sabChance, 0.5)) {
-          avantSab = 1;
-          avantPrice = sabPrice;
-          bestQuick = 0;
-          bestHeavy = 0;
-          useDefense = 0;
-        }
-      }
-    }
-    if (!avantSab && avChance > 0 && Math.random() < avChance) {
+    // 状況で使い分け: 自分の大口利益 > 他者への大損害 なら操作、逆なら妨害
+    // 自分の想定利益スケール
+    const selfGainScale = (selfAction === "buy" || selfAction === "sell")
+      ? selfShares * Math.max(1, Math.abs((priceBefore || 1) - (selfAction === "buy" ? 1 : 99999)))
+      : 0;
+    // どちらか一方のみ
+    const pickSab = (
+      sabChance > 0 && bestSabScore > 0 &&
+      (selfAction === "stay" || bestSabScore >= selfGainScale * 0.6 || sabChance >= avChance + 0.08)
+    );
+    if (pickSab && Math.random() < Math.min(0.98, Math.max(sabChance, 0.35))) {
+      avantSab = 1;
+      avantPrice = sabPrice;
+      bestQuick = 0;
+      bestHeavy = 0;
+      useDefense = 0;
+      useReflect = 0;
+    } else if (!avantSab && avChance > 0 && Math.random() < avChance) {
       avant = 1;
       avantPrice = avPrice;
       bestQuick = 0;
       bestHeavy = 0;
       useDefense = 0;
+      useReflect = 0;
     }
   }
 
-  return { quick: bestQuick, heavy: bestHeavy, defense: useDefense, reflect: 0, avant: avant, avantSab: avantSab, avantPrice: avantPrice };
+  return { quick: bestQuick, heavy: bestHeavy, defense: useDefense, reflect: useReflect, avant: avant, avantSab: avantSab, avantPrice: avantPrice };
 }
 
 // ---------- UI 補助 ----------
@@ -1242,6 +1261,9 @@ function yen(n) {
   return sign + "¥" + Math.abs(Math.round(n)).toLocaleString();
 }
 function yenNum(n) {
+  return Math.round(Number(n) || 0).toLocaleString();
+}
+function sharesFmt(n) {
   return Math.round(Number(n) || 0).toLocaleString();
 }
 
@@ -2355,10 +2377,10 @@ function FactorTrader() {
       if (!ex) return null;
       if (ex.bankrupt) return `${p.name}: 破産`;
       if (ex.action === "buy" && ex.sharesFilled > 0) {
-        return `${p.name}: 買い ${ex.sharesFilled}株 @ ${yenNum(ex.execPrice)}円 (操作+${ex.ownQuick}/被妨害${ex.incomingHeavy})${ex.note ? "("+ex.note+")" : ""}`;
+        return `${p.name}: 買い ${sharesFmt(ex.sharesFilled)}株 @ ${yenNum(ex.execPrice)}円 (操作+${ex.ownQuick}/被妨害${ex.incomingHeavy})${ex.note ? "("+ex.note+")" : ""}`;
       }
       if (ex.action === "sell" && ex.sharesFilled > 0) {
-        return `${p.name}: 売り ${ex.sharesFilled}株 @ ${yenNum(ex.execPrice)}円 (操作+${ex.ownQuick}/被妨害${ex.incomingHeavy})${ex.note ? "("+ex.note+")" : ""}`;
+        return `${p.name}: 売り ${sharesFmt(ex.sharesFilled)}株 @ ${yenNum(ex.execPrice)}円 (操作+${ex.ownQuick}/被妨害${ex.incomingHeavy})${ex.note ? "("+ex.note+")" : ""}`;
       }
       if (ex.note) return `${p.name}: ${ex.note}`;
       return `${p.name}: 様子見`;
@@ -3161,7 +3183,7 @@ function TopBar({ turn, totalTurns, human, currentPrice, onQuit, onShowRules, mu
         <div className="ft-tb-item">
           <span className="ft-tb-label">現金 / 保有株</span>
           <span className="ft-tb-value ft-tb-sub2">
-            {yen(human.cash)} / {human.holdings}株
+            {yen(human.cash)} / {sharesFmt(human.holdings)}株
           </span>
         </div>
         <div className="ft-tb-item">
@@ -3421,11 +3443,11 @@ function PlayersPanel({ players, orders, phase, currentPrice, revealData }) {
             <span className="ft-pc-rank">{rankMap[p.id]}位</span>
             <div className="ft-pc-name">{p.isAI ? <Cpu size={13} /> : <User size={13} />} {p.name}</div>
             <div className="ft-pc-cash">{p.isBankrupt ? "破産" : yen(totalValue(p, currentPrice))}</div>
-            <div className="ft-pc-holdings">現金{yen(p.cash)} ／ {p.holdings}株{p.holdings > 0 ? `(@${p.avgPrice.toFixed(1)})` : ""}</div>
+            <div className="ft-pc-holdings">現金{yen(p.cash)} ／ {sharesFmt(p.holdings)}株{p.holdings > 0 ? `(@${p.avgPrice.toFixed(1)})` : ""}</div>
             <div className="ft-pc-cards"><Coin size={12} className="icon-coin" /> {p.cards.stock != null ? p.cards.stock : 0}</div>
             {phase !== "market" && phase !== "order" && orders[p.id] && (
               <div className={"ft-pc-order tag-" + orders[p.id].action}>
-                {orders[p.id].action === "buy" ? `買い ${orders[p.id].shares}株` : orders[p.id].action === "sell" ? `売り ${orders[p.id].shares}株` : "様子見"}
+                {orders[p.id].action === "buy" ? `買い ${sharesFmt(orders[p.id].shares)}株` : orders[p.id].action === "sell" ? `売り ${sharesFmt(orders[p.id].shares)}株` : "様子見"}
               </div>
             )}
           </div>
@@ -3642,7 +3664,7 @@ function ActionPanel(props) {
         </div>
         <div className="ft-holdings-box">
           <div>現金: <b>{yen(human.cash)}</b></div>
-          <div>保有株: <b>{human.holdings}株</b>{human.holdings > 0 && <> (平均取得単価 {human.avgPrice.toFixed(1)}円)</>}</div>
+          <div>保有株: <b>{sharesFmt(human.holdings)}株</b>{human.holdings > 0 && <> (平均取得単価 {human.avgPrice.toFixed(1)}円)</>}</div>
           {human.holdings > 0 && (
             <div>
               評価損益(仮株価基準): {" "}
@@ -3680,9 +3702,9 @@ function ActionPanel(props) {
         {action !== "stay" && (
           <div className="ft-pct-block">
             <div className="ft-label">
-              {action === "buy" ? "購入株数" : "売却株数"}: {shares}株
+              {action === "buy" ? "購入株数" : "売却株数"}: {sharesFmt(shares)}株
               <span className="ft-factor-note">
-                {" "}( {endgameLock ? `最低 ${minSharesNow}〜` : ""}最大 {action === "buy" ? maxBuyShares : maxSellShares}株)
+                {" "}( {endgameLock ? `最低 ${sharesFmt(minSharesNow)}〜` : ""}最大 {sharesFmt(action === "buy" ? maxBuyShares : maxSellShares)}株)
               </span>
             </div>
             <input
@@ -3922,9 +3944,6 @@ function ActionPanel(props) {
               <Heptagram size={16} className="icon-avant" style={{marginRight:4}} />
               <span style={{color:"var(--ft-purple)", fontWeight:600}}>奥義：AVANT-GARDE-操作</span>
               <span style={{fontSize:"11px", opacity:0.7, marginLeft:8}}>自分の株価指定</span>
-              {human.avantUsed ? (
-                <span style={{fontSize:"11px", opacity:0.7, marginLeft:8, color:"var(--ft-purple)"}}>使用済み</span>
-              ) : null}
             </div>
             <div className="ft-hack-stepper" style={{display:"flex", alignItems:"center", gap:8}}>
               {!!humanHackDraft.avant && (
@@ -3965,9 +3984,6 @@ function ActionPanel(props) {
               <span style={{fontSize:"11px", opacity:0.7, marginLeft:8}}>
                 {turn <= 3 ? "最初の3TERNは使用不可" : "自分以外の株価指定"}
               </span>
-              {human.avantUsed ? (
-                <span style={{fontSize:"11px", opacity:0.7, marginLeft:8, color:"var(--ft-purple)"}}>使用済み</span>
-              ) : null}
             </div>
             <div className="ft-hack-stepper" style={{display:"flex", alignItems:"center", gap:8}}>
               {!!humanHackDraft.avantSab && turn > 3 && (
@@ -4049,7 +4065,7 @@ function ActionPanel(props) {
                       <br />
                       {tradeNote}
                       <br />
-                      保有株 <b>{hold0}株 → {hold1}株</b>
+                      保有株 <b>{sharesFmt(hold0)}株 → {sharesFmt(hold1)}株</b>
                       <br />
                       現金 <b>{cash0.toLocaleString()}円 → {cash1.toLocaleString()}円</b>
                       <br />
@@ -4333,14 +4349,14 @@ function ActionPanel(props) {
                 : view.humanOrder.action === "sell"
                 ? "売り"
                 : "様子見"}
-              {view.humanOrder.action !== "stay" && ` ${view.humanOrder.shares}株`}
+              {view.humanOrder.action !== "stay" && ` ${sharesFmt(view.humanOrder.shares)}株`}
             </b>
           </div>
           {view.humanOrder.action !== "stay" && (
             <div className="ft-reveal-row">
               <span>株価株数 @ 最終株価</span>
               <b>
-                {view.humanExec.sharesFilled}株 @ {yenNum(view.priceFinal)}円
+                {sharesFmt(view.humanExec.sharesFilled)}株 @ {yenNum(view.priceFinal)}円
                 {view.humanExec.note && <span className="ft-factor-note"> {view.humanExec.note}</span>}
               </b>
             </div>
@@ -4352,7 +4368,7 @@ function ActionPanel(props) {
           <div className="ft-reveal-row">
             <span>保有株</span>
             <b>
-              {view.humanHoldingsBefore}株 → {view.humanHoldingsAfter}株
+              {sharesFmt(view.humanHoldingsBefore)}株 → {sharesFmt(view.humanHoldingsAfter)}株
               {view.humanHoldingsAfter > 0 && ` (平均${view.humanAvgPriceAfter.toFixed(1)}円)`}
             </b>
           </div>
