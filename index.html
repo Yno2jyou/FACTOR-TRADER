@@ -3910,25 +3910,7 @@ function PlayersPanel({ players, orders, phase, currentPrice, revealData, equipp
             <span className="ft-pc-rank">{rankMap[p.id]}位</span>
             <div className="ft-pc-name">{p.isAI ? <Cpu size={13} /> : <User size={13} />} {p.name}</div>
             {!p.isAI && equippedTitleName && (p.id === myPlayerId || (!myPlayerId && String(p.id) === "human-0") || (!myPlayerId && !p.isRemote)) ? (
-              <div className="ft-pc-title-wrap">
-                <svg className="ft-pc-title-ornament" viewBox="0 0 120 10" preserveAspectRatio="none" aria-hidden="true">
-                  <path d="M2 5 H42" stroke="currentColor" strokeWidth="0.7" fill="none"/>
-                  <path d="M42 5 C46 5 48 2.2 52 2.2 C55 2.2 56.5 4 60 5 C63.5 4 65 2.2 68 2.2 C72 2.2 74 5 78 5" stroke="currentColor" strokeWidth="0.75" fill="none"/>
-                  <path d="M52 2.2 C54 3.5 56 4.2 60 5 C64 4.2 66 3.5 68 2.2" stroke="currentColor" strokeWidth="0.55" fill="none" opacity="0.85"/>
-                  <path d="M78 5 H118" stroke="currentColor" strokeWidth="0.7" fill="none"/>
-                  <circle cx="2" cy="5" r="0.9" fill="currentColor"/>
-                  <circle cx="118" cy="5" r="0.9" fill="currentColor"/>
-                </svg>
-                <div className="ft-pc-title">{equippedTitleName}</div>
-                <svg className="ft-pc-title-ornament is-bottom" viewBox="0 0 120 10" preserveAspectRatio="none" aria-hidden="true">
-                  <path d="M2 5 H42" stroke="currentColor" strokeWidth="0.7" fill="none"/>
-                  <path d="M42 5 C46 5 48 7.8 52 7.8 C55 7.8 56.5 6 60 5 C63.5 6 65 7.8 68 7.8 C72 7.8 74 5 78 5" stroke="currentColor" strokeWidth="0.75" fill="none"/>
-                  <path d="M52 7.8 C54 6.5 56 5.8 60 5 C64 5.8 66 6.5 68 7.8" stroke="currentColor" strokeWidth="0.55" fill="none" opacity="0.85"/>
-                  <path d="M78 5 H118" stroke="currentColor" strokeWidth="0.7" fill="none"/>
-                  <circle cx="2" cy="5" r="0.9" fill="currentColor"/>
-                  <circle cx="118" cy="5" r="0.9" fill="currentColor"/>
-                </svg>
-              </div>
+              <div className="ft-pc-title">{equippedTitleName}</div>
             ) : null}
             <div className="ft-pc-cash">{p.isBankrupt ? "破産" : yen(totalValue(p, currentPrice))}</div>
             <div className="ft-pc-holdings">現金{yen(p.cash)} ／ {sharesFmt(p.holdings)}株{p.holdings > 0 ? `(@${p.avgPrice.toFixed(1)})` : ""}</div>
@@ -4994,25 +4976,7 @@ function GameOverScreen({ ranked, currentPrice, onRestart, newTitleIds, titleSav
               <span className="ft-rank-name">
                 {p.isAI ? <Cpu size={13} /> : <User size={13} />} {p.name}
                 {!p.isAI && eqName ? (
-                  <span className="ft-pc-title-wrap" style={{ display: "inline-flex", marginTop: 4 }}>
-                    <svg className="ft-pc-title-ornament" viewBox="0 0 120 10" preserveAspectRatio="none" aria-hidden="true">
-                      <path d="M2 5 H42" stroke="currentColor" strokeWidth="0.7" fill="none"/>
-                      <path d="M42 5 C46 5 48 2.2 52 2.2 C55 2.2 56.5 4 60 5 C63.5 4 65 2.2 68 2.2 C72 2.2 74 5 78 5" stroke="currentColor" strokeWidth="0.75" fill="none"/>
-                      <path d="M52 2.2 C54 3.5 56 4.2 60 5 C64 4.2 66 3.5 68 2.2" stroke="currentColor" strokeWidth="0.55" fill="none" opacity="0.85"/>
-                      <path d="M78 5 H118" stroke="currentColor" strokeWidth="0.7" fill="none"/>
-                      <circle cx="2" cy="5" r="0.9" fill="currentColor"/>
-                      <circle cx="118" cy="5" r="0.9" fill="currentColor"/>
-                    </svg>
-                    <span className="ft-pc-title">{eqName}</span>
-                    <svg className="ft-pc-title-ornament is-bottom" viewBox="0 0 120 10" preserveAspectRatio="none" aria-hidden="true">
-                      <path d="M2 5 H42" stroke="currentColor" strokeWidth="0.7" fill="none"/>
-                      <path d="M42 5 C46 5 48 7.8 52 7.8 C55 7.8 56.5 6 60 5 C63.5 6 65 7.8 68 7.8 C72 7.8 74 5 78 5" stroke="currentColor" strokeWidth="0.75" fill="none"/>
-                      <path d="M52 7.8 C54 6.5 56 5.8 60 5 C64 5.8 66 6.5 68 7.8" stroke="currentColor" strokeWidth="0.55" fill="none" opacity="0.85"/>
-                      <path d="M78 5 H118" stroke="currentColor" strokeWidth="0.7" fill="none"/>
-                      <circle cx="2" cy="5" r="0.9" fill="currentColor"/>
-                      <circle cx="118" cy="5" r="0.9" fill="currentColor"/>
-                    </svg>
-                  </span>
+                  <span className="ft-pc-title">{eqName}</span>
                 ) : null}
               </span>
               <span className="ft-rank-cash">{p.isBankrupt ? "破産" : yen(totalValue(p, currentPrice))}</span>
@@ -5759,45 +5723,41 @@ const CSS = `
 }
 
 .ft-pc-name { display: flex; align-items: center; gap: 5px; color: var(--ft-text-dim); margin-bottom: 2px; }
-.ft-pc-title-wrap {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1px;
-  margin: 3px 0 6px;
-  width: 100%;
-  max-width: 100%;
-}
-.ft-pc-title-ornament {
-  display: block;
-  width: 100%;
-  max-width: 118px;
-  height: 9px;
-  color: #d4a84b;
-  filter: drop-shadow(0 0 2px rgba(212, 168, 75, 0.45));
-  flex-shrink: 0;
-}
-.ft-pc-title-ornament.is-bottom {
-  transform: scaleY(1);
-}
 .ft-pc-title {
-  display: block;
+  display: inline-block;
   max-width: 100%;
   box-sizing: border-box;
+  position: relative;
   font-size: 10px;
   font-weight: 700;
-  color: #f0d78c;
-  letter-spacing: 0.1em;
-  padding: 1px 6px;
+  color: #e8e4d4;
+  letter-spacing: 0.06em;
+  margin: 3px 0 6px;
+  padding: 4px 10px;
   font-family: var(--ft-font-display);
-  line-height: 1.3;
+  line-height: 1.35;
   text-align: center;
-  background: transparent;
-  border: none;
-  box-shadow: none;
-  text-shadow:
-    0 0 6px rgba(212, 168, 75, 0.4),
-    0 1px 0 rgba(80, 50, 10, 0.5);
+  border-radius: 2px;
+  background: linear-gradient(180deg, #1a1c16 0%, #0e100c 55%, #12140f 100%);
+  border: 1.5px solid rgba(180, 190, 140, 0.55);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 220, 0.08),
+    inset 0 0 12px rgba(80, 120, 40, 0.12),
+    0 1px 3px rgba(0, 0, 0, 0.45);
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.65);
+}
+/* 四隅の点（枠の内側） */
+.ft-pc-title::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background:
+    radial-gradient(circle, #c5c9a8 0 1.25px, transparent 1.45px) 4px 4px / 3px 3px no-repeat,
+    radial-gradient(circle, #c5c9a8 0 1.25px, transparent 1.45px) calc(100% - 7px) 4px / 3px 3px no-repeat,
+    radial-gradient(circle, #c5c9a8 0 1.25px, transparent 1.45px) 4px calc(100% - 7px) / 3px 3px no-repeat,
+    radial-gradient(circle, #c5c9a8 0 1.25px, transparent 1.45px) calc(100% - 7px) calc(100% - 7px) / 3px 3px no-repeat;
 }
 .ft-pc-rank {
   position: absolute;
