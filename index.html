@@ -206,6 +206,23 @@ function Scales(props) {
     </svg>
   );
 }
+
+/** リバース／逆転アイコン */
+function Reverse(props) {
+  const size = props.size || 16;
+  const className = props.className || "";
+  const style = props.style || {};
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} style={style} xmlns="http://www.w3.org/2000/svg">
+      <path d="M7 7h11v3" />
+      <path d="M18 7l-4-4" />
+      <path d="M18 7l-4 4" />
+      <path d="M17 17H6v-3" />
+      <path d="M6 17l4 4" />
+      <path d="M6 17l4-4" />
+    </svg>
+  );
+}
 function TrendingUp(props) {
   return (
     <Icon {...props}>
@@ -331,76 +348,77 @@ const SERIOUS_COIN_BONUS = 10;
 /* ========== 称号システム（LOCAL取得 / localStorage永続） ========== */
 const FT_TITLE_KEY = "factor_trader_titles_v1";
 const TITLE_RANK_COLORS = {
-  1: "#9ca3af",
-  2: "#c2783b",
-  3: "#d1d5db",
-  4: "#eab308",
-  5: "#f8fafc",
-  6: "#34d399",
-  7: "#60a5fa",
-  8: "#c084fc",
-  9: "#fbbf24",
+  ash: "#9ca3af",
+  copper: "#c2783b",
+  silver: "#d1d5db",
+  gold: "#eab308",
+  white: "#f8fafc",
+  azure: "#60a5fa",
+  purple: "#a78bfa",
+  crimson: "#f43f5e",
+  rainbow: "rainbow",
 };
 const TITLE_DEFS = [
   // A 取引・資産（王冠）
-  { id: "rich_1e8", cat: "A", name: "億万長者", desc: "1ゲーム終了時 総資産1億円以上", kind: "game", icon: "crown", rank: 1 },
-  { id: "rich_1e12", cat: "A", name: "兆万長者", desc: "1ゲーム終了時 総資産1兆円以上", kind: "game", icon: "crown", rank: 2 },
-  { id: "rich_1e13", cat: "A", name: "大富豪", desc: "1ゲーム終了時 総資産10兆円以上", kind: "game", icon: "crown", rank: 3 },
-  { id: "rich_1e14", cat: "A", name: "超大富豪", desc: "1ゲーム終了時 総資産100兆円以上", kind: "game", icon: "crown", rank: 4 },
-  { id: "rich_1e15", cat: "A", name: "支配者", desc: "1ゲーム終了時 総資産1000兆円以上", kind: "game", icon: "crown", rank: 5 },
-  { id: "rich_1e16", cat: "A", name: "征服者", desc: "1ゲーム終了時 総資産1京円以上", kind: "game", icon: "crown", rank: 6 },
-  { id: "rich_1e17", cat: "A", name: "帝王", desc: "1ゲーム終了時 総資産10京円以上", kind: "game", icon: "crown", rank: 7 },
-  { id: "rich_1e18", cat: "A", name: "覇王", desc: "1ゲーム終了時 総資産100京円以上", kind: "game", icon: "crown", rank: 8 },
-  { id: "rich_1e19", cat: "A", name: "絶対神", desc: "1ゲーム終了時 総資産1000京円以上", kind: "game", icon: "crown", rank: 9 },
-  { id: "comeback", cat: "A", name: "逆転劇", desc: "ゲーム途中最下位→最終1位", kind: "game", icon: "crown", rank: 4 },
-  // B 操作
-  { id: "q10", cat: "B", name: "操作オタク", desc: "操作を合計10枚以上使用", kind: "game", icon: "quick", rank: 1 },
-  { id: "q15", cat: "B", name: "操作達人", desc: "操作を合計15枚以上使用", kind: "game", icon: "quick", rank: 2 },
-  { id: "q20", cat: "B", name: "操作博士", desc: "操作を合計20枚以上使用", kind: "game", icon: "quick", rank: 3 },
-  { id: "q25", cat: "B", name: "操作仙人", desc: "操作を合計25枚以上使用", kind: "game", icon: "quick", rank: 4 },
-  { id: "q30", cat: "B", name: "操作神", desc: "操作を合計30枚以上使用", kind: "game", icon: "quick", rank: 5 },
-  // B 妨害
-  { id: "h1", cat: "B", name: "妨害マニア", desc: "妨害で相手を1人破産させる", kind: "game", icon: "heavy", rank: 1 },
-  { id: "h3", cat: "B", name: "妨害名人", desc: "妨害で相手を3人破産させる", kind: "game", icon: "heavy", rank: 2 },
-  { id: "h5", cat: "B", name: "妨害学者", desc: "妨害で相手を5人破産させる", kind: "game", icon: "heavy", rank: 3 },
-  { id: "h7", cat: "B", name: "妨害教祖", desc: "妨害で相手を7人破産させる", kind: "game", icon: "heavy", rank: 4 },
-  { id: "h9", cat: "B", name: "妨害悪魔", desc: "妨害で自分含めた9人を破産させる", kind: "game", icon: "heavy", rank: 5 },
-  // B 防衛
-  { id: "d10", cat: "B", name: "防衛愛好家", desc: "防衛で被妨害を10回以上無効化", kind: "game", icon: "defense", rank: 1 },
-  { id: "d20", cat: "B", name: "防衛玄人", desc: "防衛で被妨害を20回以上無効化", kind: "game", icon: "defense", rank: 2 },
-  { id: "d30", cat: "B", name: "防衛識者", desc: "防衛で被妨害を30回以上無効化", kind: "game", icon: "defense", rank: 3 },
-  { id: "d40", cat: "B", name: "防衛聖者", desc: "防衛で被妨害を40回以上無効化", kind: "game", icon: "defense", rank: 4 },
-  { id: "d50", cat: "B", name: "防衛至上者", desc: "防衛で被妨害を50回以上無効化", kind: "game", icon: "defense", rank: 5 },
-  // B 反射
-  { id: "r5", cat: "B", name: "反射コレクター", desc: "反射で妨害を5回以上返す", kind: "game", icon: "reflect", rank: 1 },
-  { id: "r10", cat: "B", name: "反射名人", desc: "反射で妨害を10回以上返す", kind: "game", icon: "reflect", rank: 2 },
-  { id: "r15", cat: "B", name: "反射専門家", desc: "反射で妨害を15回以上返す", kind: "game", icon: "reflect", rank: 3 },
-  { id: "r20", cat: "B", name: "反射隠士", desc: "反射で妨害を20回以上返す", kind: "game", icon: "reflect", rank: 4 },
-  { id: "r25", cat: "B", name: "反射天才", desc: "反射で妨害を25回以上返す", kind: "game", icon: "reflect", rank: 5 },
-  // B 帳消し
-  { id: "bail2", cat: "B", name: "債務帳消し", desc: "COIN10枚帳消しを2回使用", kind: "game", icon: "scales", rank: 1 },
-  { id: "bail3", cat: "B", name: "特大債務帳消し", desc: "COIN10枚帳消しを3回使用", kind: "game", icon: "scales", rank: 2 },
-  { id: "bail5", cat: "B", name: "超特大債務帳消し", desc: "COIN10枚帳消しを5回使用", kind: "game", icon: "scales", rank: 3 },
-  // B 累計 アバンギャルド
-  { id: "av10", cat: "B", name: "アバンギャルドフリーク", desc: "AVANT-GARDEを累計10回成立", kind: "cumul", icon: "avant", rank: 1 },
-  { id: "av20", cat: "B", name: "アバンギャルドマスター", desc: "AVANT-GARDEを累計20回成立", kind: "cumul", icon: "avant", rank: 2 },
-  { id: "av30", cat: "B", name: "アバンギャルド通", desc: "AVANT-GARDEを累計30回成立", kind: "cumul", icon: "avant", rank: 3 },
-  { id: "av40", cat: "B", name: "アバンギャルドの申し子", desc: "AVANT-GARDEを累計40回成立", kind: "cumul", icon: "avant", rank: 4 },
-  { id: "av50", cat: "B", name: "アバンギャルドの巨匠", desc: "AVANT-GARDEを累計50回成立", kind: "cumul", icon: "avant", rank: 5 },
+  { id: "rich_1e8", cat: "A", name: "億万長者", desc: "1ゲーム終了時 総資産1億円以上", kind: "game", icon: "crown", rank: "ash"},
+  { id: "rich_1e12", cat: "A", name: "兆万長者", desc: "1ゲーム終了時 総資産1兆円以上", kind: "game", icon: "crown", rank: "copper"},
+  { id: "rich_1e13", cat: "A", name: "大富豪", desc: "1ゲーム終了時 総資産10兆円以上", kind: "game", icon: "crown", rank: "silver"},
+  { id: "rich_1e14", cat: "A", name: "超大富豪", desc: "1ゲーム終了時 総資産100兆円以上", kind: "game", icon: "crown", rank: "gold"},
+  { id: "rich_1e15", cat: "A", name: "支配者", desc: "1ゲーム終了時 総資産1000兆円以上", kind: "game", icon: "crown", rank: "white"},
+  { id: "rich_1e16", cat: "A", name: "征服者", desc: "1ゲーム終了時 総資産1京円以上", kind: "game", icon: "crown", rank: "azure"},
+  { id: "rich_1e17", cat: "A", name: "帝王", desc: "1ゲーム終了時 総資産10京円以上", kind: "game", icon: "crown", rank: "purple"},
+  { id: "rich_1e18", cat: "A", name: "覇王", desc: "1ゲーム終了時 総資産100京円以上", kind: "game", icon: "crown", rank: "crimson"},
+  { id: "rich_1e19", cat: "A", name: "絶対神", desc: "1ゲーム終了時 総資産1000京円以上", kind: "game", icon: "crown", rank: "rainbow"},
+  { id: "comeback", cat: "A", name: "逆転劇", desc: "ゲーム途中最下位→最終1位", kind: "game", icon: "reverse", rank: "rainbow"},
+  // C 操作（市場ハック）
+  { id: "q10", cat: "C", name: "操作オタク", desc: "操作を合計10枚以上使用", kind: "game", icon: "quick", rank: "ash"},
+  { id: "q15", cat: "C", name: "操作達人", desc: "操作を合計15枚以上使用", kind: "game", icon: "quick", rank: "copper"},
+  { id: "q20", cat: "C", name: "操作博士", desc: "操作を合計20枚以上使用", kind: "game", icon: "quick", rank: "silver"},
+  { id: "q25", cat: "C", name: "操作仙人", desc: "操作を合計25枚以上使用", kind: "game", icon: "quick", rank: "gold"},
+  { id: "q30", cat: "C", name: "操作神", desc: "操作を合計30枚以上使用", kind: "game", icon: "quick", rank: "rainbow"},
+  // C 妨害（市場ハック）
+  { id: "h1", cat: "C", name: "妨害マニア", desc: "妨害で相手を1人破産させる", kind: "game", icon: "heavy", rank: "ash"},
+  { id: "h3", cat: "C", name: "妨害名人", desc: "妨害で相手を3人破産させる", kind: "game", icon: "heavy", rank: "copper"},
+  { id: "h5", cat: "C", name: "妨害学者", desc: "妨害で相手を5人破産させる", kind: "game", icon: "heavy", rank: "silver"},
+  { id: "h7", cat: "C", name: "妨害教祖", desc: "妨害で相手を7人破産させる", kind: "game", icon: "heavy", rank: "gold"},
+  { id: "h9", cat: "C", name: "妨害悪魔", desc: "妨害で自分含めた9人を破産させる", kind: "game", icon: "heavy", rank: "rainbow"},
+  // C 防衛（市場ハック）
+  { id: "d10", cat: "C", name: "防衛愛好家", desc: "防衛で被妨害を10回以上無効化", kind: "game", icon: "defense", rank: "ash"},
+  { id: "d20", cat: "C", name: "防衛玄人", desc: "防衛で被妨害を20回以上無効化", kind: "game", icon: "defense", rank: "copper"},
+  { id: "d30", cat: "C", name: "防衛識者", desc: "防衛で被妨害を30回以上無効化", kind: "game", icon: "defense", rank: "silver"},
+  { id: "d40", cat: "C", name: "防衛聖者", desc: "防衛で被妨害を40回以上無効化", kind: "game", icon: "defense", rank: "gold"},
+  { id: "d50", cat: "C", name: "防衛至上者", desc: "防衛で被妨害を50回以上無効化", kind: "game", icon: "defense", rank: "rainbow"},
+  // C 反射（市場ハック）
+  { id: "r5", cat: "C", name: "反射コレクター", desc: "反射で妨害を5回以上返す", kind: "game", icon: "reflect", rank: "ash"},
+  { id: "r10", cat: "C", name: "反射名人", desc: "反射で妨害を10回以上返す", kind: "game", icon: "reflect", rank: "copper"},
+  { id: "r15", cat: "C", name: "反射専門家", desc: "反射で妨害を15回以上返す", kind: "game", icon: "reflect", rank: "silver"},
+  { id: "r20", cat: "C", name: "反射隠士", desc: "反射で妨害を20回以上返す", kind: "game", icon: "reflect", rank: "gold"},
+  { id: "r25", cat: "C", name: "反射天才", desc: "反射で妨害を25回以上返す", kind: "game", icon: "reflect", rank: "rainbow"},
+  // B 帳消し（COIN）
+  { id: "bail2", cat: "B", name: "債務帳消し", desc: "COIN10枚帳消しを2回使用", kind: "game", icon: "scales", rank: "ash"},
+  { id: "bail3", cat: "B", name: "特大債務帳消し", desc: "COIN10枚帳消しを3回使用", kind: "game", icon: "scales", rank: "gold"},
+  { id: "bail5", cat: "B", name: "超特大債務帳消し", desc: "COIN10枚帳消しを5回使用", kind: "game", icon: "scales", rank: "rainbow"},
+  // C 累計 アバンギャルド（市場ハック）
+  { id: "av10", cat: "C", name: "アバンギャルドフリーク", desc: "AVANT-GARDEを累計10回成立", kind: "cumul", icon: "avant", rank: "ash"},
+  { id: "av20", cat: "C", name: "アバンギャルドマスター", desc: "AVANT-GARDEを累計20回成立", kind: "cumul", icon: "avant", rank: "copper"},
+  { id: "av30", cat: "C", name: "アバンギャルド通", desc: "AVANT-GARDEを累計30回成立", kind: "cumul", icon: "avant", rank: "silver"},
+  { id: "av40", cat: "C", name: "アバンギャルドの申し子", desc: "AVANT-GARDEを累計40回成立", kind: "cumul", icon: "avant", rank: "gold"},
+  { id: "av50", cat: "C", name: "アバンギャルドの巨匠", desc: "AVANT-GARDEを累計50回成立", kind: "cumul", icon: "avant", rank: "rainbow"},
   // B COIN+
-  { id: "coin_rich1", cat: "B", name: "COIN富豪", desc: "終了時COIN10枚以上温存を1度達成", kind: "cumul", icon: "coin_plus", rank: 1 },
-  { id: "coin_rich3", cat: "B", name: "COIN大富豪", desc: "終了時COIN10枚以上温存を3連続達成", kind: "cumul", icon: "coin_plus", rank: 2 },
-  { id: "coin_rich5", cat: "B", name: "COIN超大富豪", desc: "終了時COIN10枚以上温存を5連続達成", kind: "cumul", icon: "coin_plus", rank: 3 },
+  { id: "coin_rich1", cat: "B", name: "COIN富豪", desc: "終了時COIN10枚以上温存を1度達成", kind: "cumul", icon: "coin_plus", rank: "ash"},
+  { id: "coin_rich3", cat: "B", name: "COIN大富豪", desc: "終了時COIN10枚以上温存を3連続達成", kind: "cumul", icon: "coin_plus", rank: "gold"},
+  { id: "coin_rich5", cat: "B", name: "COIN超大富豪", desc: "終了時COIN10枚以上温存を5連続達成", kind: "cumul", icon: "coin_plus", rank: "rainbow"},
   // B COIN-
-  { id: "coin_poor1", cat: "B", name: "COIN貧民", desc: "COIN0・補充なしで終了を1度達成", kind: "cumul", icon: "coin_minus", rank: 1 },
-  { id: "coin_poor3", cat: "B", name: "COIN大貧民", desc: "COIN0・補充なしで終了を3連続達成", kind: "cumul", icon: "coin_minus", rank: 2 },
-  { id: "coin_poor5", cat: "B", name: "COIN超大貧民", desc: "COIN0・補充なしで終了を5連続達成", kind: "cumul", icon: "coin_minus", rank: 3 },
+  { id: "coin_poor1", cat: "B", name: "COIN貧民", desc: "COIN0・補充なしで終了を1度達成", kind: "cumul", icon: "coin_minus", rank: "ash"},
+  { id: "coin_poor3", cat: "B", name: "COIN大貧民", desc: "COIN0・補充なしで終了を3連続達成", kind: "cumul", icon: "coin_minus", rank: "gold"},
+  { id: "coin_poor5", cat: "B", name: "COIN超大貧民", desc: "COIN0・補充なしで終了を5連続達成", kind: "cumul", icon: "coin_minus", rank: "rainbow"},
 ];
 const TITLE_BY_ID = {};
 TITLE_DEFS.forEach((t) => { TITLE_BY_ID[t.id] = t; });
 
 function TitleBadgeIcon({ icon, size = 14 }) {
   if (icon === "crown") return <Crown size={size} />;
+  if (icon === "reverse") return <Reverse size={size} />;
   if (icon === "quick") return <Zap size={size} />;
   if (icon === "heavy") return <Bomb size={size} />;
   if (icon === "defense") return <Shield size={size} />;
@@ -411,18 +429,27 @@ function TitleBadgeIcon({ icon, size = 14 }) {
   if (icon === "coin_minus") return <Coin size={size} />;
   return <Crown size={size} />;
 }
+function titleRankColor(rank) {
+  const c = TITLE_RANK_COLORS[rank];
+  if (!c || c === "rainbow") return null;
+  return c;
+}
 function TitleBadge({ titleId, size = 16, showName = false }) {
   const t = TITLE_BY_ID[titleId];
   if (!t) return null;
-  const color = TITLE_RANK_COLORS[t.rank] || TITLE_RANK_COLORS[1];
+  const isRainbow = t.rank === "rainbow";
+  const color = titleRankColor(t.rank) || "#e2e8f0";
   return (
-    <span className="ft-title-badge" style={{ color }} title={t.name + " — " + t.desc}>
-      <span className="ft-title-badge-icon" style={{ color, borderColor: color, boxShadow: "0 0 8px " + color + "55" }}>
+    <span className={"ft-title-badge" + (isRainbow ? " is-rainbow" : "")} style={isRainbow ? undefined : { color }} title={t.name + " — " + t.desc}>
+      <span
+        className={"ft-title-badge-icon" + (isRainbow ? " is-rainbow" : "")}
+        style={isRainbow ? undefined : { color, borderColor: color, boxShadow: "0 0 8px " + color + "55" }}
+      >
         <TitleBadgeIcon icon={t.icon} size={size * 0.72} />
         {t.icon === "coin_plus" ? <span className="ft-title-badge-sign">+</span> : null}
         {t.icon === "coin_minus" ? <span className="ft-title-badge-sign">−</span> : null}
       </span>
-      {showName ? <span className="ft-pc-title" style={{ color, borderBottomColor: color }}>{t.name}</span> : null}
+      {showName ? <span className={"ft-pc-title" + (isRainbow ? " is-rainbow" : "")} style={isRainbow ? undefined : { color, borderBottomColor: color }}>{t.name}</span> : null}
     </span>
   );
 }
@@ -3700,7 +3727,7 @@ function TopBar({ turn, totalTurns, human, currentPrice, onQuit, onShowRules, mu
             <span className="ft-tb-label">称号</span>
             <span className="ft-tb-value ft-tb-title-row">
               <TitleBadge titleId={eqTitle.id} size={18} />
-              <span className="ft-pc-title" style={{ color: TITLE_RANK_COLORS[eqTitle.rank] || "#9ca3af", borderBottomColor: TITLE_RANK_COLORS[eqTitle.rank] || "#9ca3af" }}>{eqTitle.name}</span>
+              <span className={"ft-pc-title" + (eqTitle.rank === "rainbow" ? " is-rainbow" : "")} style={eqTitle.rank === "rainbow" ? undefined : { color: titleRankColor(eqTitle.rank) || "#9ca3af", borderBottomColor: titleRankColor(eqTitle.rank) || "#9ca3af" }}>{eqTitle.name}</span>
             </span>
           </div>
         ) : null}
@@ -5066,7 +5093,7 @@ function GameOverScreen({ ranked, currentPrice, onRestart, newTitleIds, titleSav
                 {!p.isAI && titleSave && titleSave.equipped ? (
                   <span className="ft-tb-title-row" style={{ marginLeft: 8 }}>
                     <TitleBadge titleId={titleSave.equipped} size={16} />
-                    <span className="ft-pc-title" style={{ color: TITLE_RANK_COLORS[(TITLE_BY_ID[titleSave.equipped] || {}).rank] || "#9ca3af", borderBottomColor: TITLE_RANK_COLORS[(TITLE_BY_ID[titleSave.equipped] || {}).rank] || "#9ca3af" }}>{(TITLE_BY_ID[titleSave.equipped] || {}).name}</span>
+                    <span className={"ft-pc-title" + (((TITLE_BY_ID[titleSave.equipped] || {}).rank === "rainbow") ? " is-rainbow" : "")} style={((TITLE_BY_ID[titleSave.equipped] || {}).rank === "rainbow") ? undefined : { color: titleRankColor((TITLE_BY_ID[titleSave.equipped] || {}).rank) || "#9ca3af", borderBottomColor: titleRankColor((TITLE_BY_ID[titleSave.equipped] || {}).rank) || "#9ca3af" }}>{(TITLE_BY_ID[titleSave.equipped] || {}).name}</span>
                   </span>
                 ) : null}
               </span>
@@ -5101,7 +5128,8 @@ function TitlesModal({ titleSave, onClose, onEquip, canEquip }) {
   const equipped = titleSave && titleSave.equipped;
   const cats = [
     { key: "A", label: "A 取引・資産" },
-    { key: "B", label: "B 市場HACK・COIN" },
+    { key: "B", label: "B COIN" },
+    { key: "C", label: "C 市場ハック" },
   ];
   return (
     <div className="ft-modal-overlay" onClick={onClose}>
@@ -5129,7 +5157,7 @@ function TitlesModal({ titleSave, onClose, onEquip, canEquip }) {
                       <TitleBadge titleId={t.id} size={20} />
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: got ? (TITLE_RANK_COLORS[t.rank] || "var(--ft-accent)") : "var(--ft-text-dim)" }}>
+                      <div className={got && t.rank === "rainbow" ? "ft-rainbow-text" : undefined} style={{ fontSize: 13, fontWeight: 700, color: got ? (t.rank === "rainbow" ? undefined : (titleRankColor(t.rank) || "var(--ft-accent)")) : "var(--ft-text-dim)" }}>
                         {got ? t.name : "？？？"}
                         {isEq ? <span style={{ marginLeft: 8, fontSize: 10, color: "var(--ft-amber)" }}>装備中</span> : null}
                       </div>
@@ -5874,6 +5902,31 @@ const CSS = `
   color: inherit;
   text-shadow: 0 0 4px rgba(0,0,0,0.8);
 }
+
+.ft-title-badge-icon.is-rainbow {
+  color: #fff;
+  border-color: transparent;
+  background:
+    linear-gradient(rgba(0,0,0,0.55), rgba(0,0,0,0.55)) padding-box,
+    linear-gradient(135deg, #f43f5e, #eab308, #34d399, #60a5fa, #c084fc) border-box;
+  border: 1.5px solid transparent;
+  box-shadow: 0 0 10px rgba(192, 132, 252, 0.45);
+}
+.ft-title-badge.is-rainbow { color: #e2e8f0; }
+.ft-pc-title.is-rainbow,
+.ft-rainbow-text {
+  background: linear-gradient(90deg, #f43f5e, #eab308, #34d399, #60a5fa, #c084fc);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent !important;
+  border-bottom: 1px solid rgba(192, 132, 252, 0.55);
+  text-shadow: none;
+}
+.ft-rainbow-text {
+  border-bottom: none;
+  display: inline;
+}
+
 .ft-tb-title-row {
   display: inline-flex !important;
   align-items: center;
