@@ -3481,6 +3481,24 @@ function PlayersPanel({ players, orders, phase, currentPrice, revealData }) {
         text: who + "が反射を使用（COIN5枚）" + (out > 0 ? " → 被妨害×" + out + " を相手に反射" : ""),
       });
     });
+    // --- 2c. 反射で返ってきた被妨害 ---
+    players.forEach((p) => {
+      const ex = revealData.execResults[p.id];
+      if (!ex) return;
+      const bounced = ex.reflectedTo || 0;
+      if (bounced <= 0) return;
+      const total = ex.incomingHeavy || 0;
+      const direct = Math.max(0, total - bounced);
+      const who = p.name;
+      let detail = "";
+      if (direct > 0) detail = "（被妨害合計×" + total + "＝直接×" + direct + " + 反射戻り×" + bounced + "）";
+      else detail = "（被妨害合計×" + total + "＝すべて反射戻り）";
+      notes.push({
+        cls: "note-heavy",
+        icon: "heavy",
+        text: who + "が反射された妨害×" + bounced + " を受けた" + detail,
+      });
+    });
     // --- 3. 操作 ---
     players.forEach((p) => {
       const ex = revealData.execResults[p.id];
@@ -4384,20 +4402,37 @@ function ActionPanel(props) {
                 AVANT-GARDE-妨害で株価固定
               </span>
             )}
-            {myQuick > 0 && (
-              <span className={"ft-card-banner-chip " + (hitHeavy > 0 ? "heavy" : "quick")}>
-                <Zap size={15} style={{ marginRight: 6, verticalAlign: "middle", flexShrink: 0 }} />
-                {hitHeavy > 0
-                  ? `操作 ×${myQuick} → 被妨害で無効`
-                  : `操作 ×${myQuick}`}
-              </span>
-            )}
-            {hitHeavy > 0 && (
-              <span className="ft-card-banner-chip heavy">
-                <Bomb size={15} style={{ marginRight: 6, verticalAlign: "middle", flexShrink: 0 }} />
-                妨害 ×{hitHeavy}
-              </span>
-            )}
+            {myQuick > 0 && (() => {
+              const nullified = !!hex.quickNullified;
+              // 反射で被妨害を防いだ場合は操作有効を明記
+              const reflectedAway = !!hex.reflect && (hex.reflectedOut || 0) > 0 && !nullified;
+              let label = `操作 ×${myQuick}`;
+              if (nullified) label = `操作 ×${myQuick} → 被妨害で無効`;
+              else if (reflectedAway) label = `操作 ×${myQuick}（有効・反射で被妨害を回避）`;
+              return (
+                <span className={"ft-card-banner-chip " + (nullified ? "heavy" : "quick")}>
+                  <Zap size={15} style={{ marginRight: 6, verticalAlign: "middle", flexShrink: 0 }} />
+                  {label}
+                </span>
+              );
+            })()}
+            {/* 実際に受けた妨害のみ表示（反射で防いだ分は反射チップで分かるため非表示） */}
+            {hitHeavy > 0 && (() => {
+              const bounced = Math.max(0, Math.min(hitHeavy, hex.reflectedTo || 0));
+              const direct = Math.max(0, hitHeavy - bounced);
+              let detail = "";
+              if (bounced > 0 && direct > 0) {
+                detail = `（直接×${direct} + 反射戻り×${bounced}）`;
+              } else if (bounced > 0) {
+                detail = `（すべて反射戻り×${bounced}）`;
+              }
+              return (
+                <span className="ft-card-banner-chip heavy">
+                  <Bomb size={15} style={{ marginRight: 6, verticalAlign: "middle", flexShrink: 0 }} />
+                  妨害 ×{hitHeavy}{detail}
+                </span>
+              );
+            })()}
             {myDefense ? (
               <span className="ft-card-banner-chip defense">
                 <Shield size={15} style={{ marginRight: 6, verticalAlign: "middle", flexShrink: 0 }} />
@@ -4431,22 +4466,37 @@ function ActionPanel(props) {
             <span>N_start</span>
             <b>{revealData.nStart.toLocaleString()}</b>
           </div>
-          {myQuick > 0 && (
-            <div className="ft-reveal-row quick">
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                <Zap size={14} className="icon-quick" /> 操作
-              </span>
-              <b>+{myQuick}</b>
-            </div>
-          )}
-          {hitHeavy > 0 && (
-            <div className="ft-reveal-row heavy">
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                <Bomb size={14} className="icon-heavy" /> 妨害
-              </span>
-              <b>+{hitHeavy}</b>
-            </div>
-          )}
+          {myQuick > 0 && (() => {
+            const nullified = !!hex.quickNullified;
+            const reflectedAway = !!hex.reflect && (hex.reflectedOut || 0) > 0 && !nullified;
+            let detail = "";
+            if (nullified) detail = "（被妨害で無効）";
+            else if (reflectedAway) detail = "（有効・反射で被妨害を回避）";
+            return (
+              <div className={"ft-reveal-row " + (nullified ? "heavy" : "quick")}>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  <Zap size={14} className="icon-quick" /> 操作
+                </span>
+                <b>{nullified ? `+${myQuick}${detail}` : `+${myQuick}${detail}`}</b>
+              </div>
+            );
+          })()}
+          {/* 実際に適用された被妨害のみ。反射で防いだ分は行を出さない */}
+          {hitHeavy > 0 && (() => {
+            const bounced = Math.max(0, Math.min(hitHeavy, hex.reflectedTo || 0));
+            const direct = Math.max(0, hitHeavy - bounced);
+            let detail = "";
+            if (bounced > 0 && direct > 0) detail = `（直接+${direct} / 反射戻り+${bounced}）`;
+            else if (bounced > 0) detail = `（反射戻り+${bounced}）`;
+            return (
+              <div className="ft-reveal-row heavy">
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  <Bomb size={14} className="icon-heavy" /> 妨害
+                </span>
+                <b>+{hitHeavy}{detail}</b>
+              </div>
+            );
+          })()}
           {myDefense && (
             <div className="ft-reveal-row" style={{ color: "var(--ft-amber)" }}>
               <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
