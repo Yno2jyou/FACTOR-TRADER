@@ -3491,8 +3491,8 @@ function PlayersPanel({ players, orders, phase, currentPrice, revealData }) {
       const direct = Math.max(0, total - bounced);
       const who = p.name;
       let detail = "";
-      if (direct > 0) detail = "（被妨害合計×" + total + "＝直接×" + direct + " + 反射戻り×" + bounced + "）";
-      else detail = "（被妨害合計×" + total + "＝すべて反射戻り）";
+      if (direct > 0) detail = "（被妨害合計×" + total + "＝全体×" + direct + " + 反射×" + bounced + "）";
+      else detail = "（被妨害合計×" + total + "＝反射×" + bounced + "）";
       notes.push({
         cls: "note-heavy",
         icon: "heavy",
@@ -4422,9 +4422,11 @@ function ActionPanel(props) {
               const direct = Math.max(0, hitHeavy - bounced);
               let detail = "";
               if (bounced > 0 && direct > 0) {
-                detail = `（直接×${direct} + 反射戻り×${bounced}）`;
+                detail = `（全体×${direct} + 反射×${bounced}）`;
               } else if (bounced > 0) {
-                detail = `（すべて反射戻り×${bounced}）`;
+                detail = `（反射×${bounced}）`;
+              } else if (direct > 0) {
+                detail = `（全体×${direct}）`;
               }
               return (
                 <span className="ft-card-banner-chip heavy">
@@ -4486,8 +4488,9 @@ function ActionPanel(props) {
             const bounced = Math.max(0, Math.min(hitHeavy, hex.reflectedTo || 0));
             const direct = Math.max(0, hitHeavy - bounced);
             let detail = "";
-            if (bounced > 0 && direct > 0) detail = `（直接+${direct} / 反射戻り+${bounced}）`;
-            else if (bounced > 0) detail = `（反射戻り+${bounced}）`;
+            if (bounced > 0 && direct > 0) detail = `（全体+${direct} / 反射+${bounced}）`;
+            else if (bounced > 0) detail = `（反射+${bounced}）`;
+            else if (direct > 0) detail = `（全体+${direct}）`;
             return (
               <div className="ft-reveal-row heavy">
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
