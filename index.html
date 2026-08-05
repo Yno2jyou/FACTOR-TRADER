@@ -1047,17 +1047,23 @@ function aiDecideCards(cards, turn, totalTurns, order, nStart, priceBefore, allO
     if (bestTarget && (canAffordHeavy || bestIsBankruptShot)) {
       let fireChance = 0;
       if (bestIsBankruptShot) {
-        // 破産確定級 → 積極的に妨害（ただし前半は少し抑える）
-        fireChance = progress < 0.35 ? 0.55 : progress < 0.6 ? 0.72 : 0.88;
-        if (!bestTarget.isAI) fireChance = Math.min(0.95, fireChance + 0.08);
+        // 破産確定級 → 中盤〜後半は特に積極
+        fireChance = progress < 0.35 ? 0.5 : progress < 0.5 ? 0.75 : progress < 0.8 ? 0.92 : 0.85;
+        if (!bestTarget.isAI) fireChance = Math.min(0.97, fireChance + 0.08);
       } else {
-        // NORMALの大損害のみ低確率（COIN温存）
-        fireChance = progress < 0.45 ? 0.04 : progress < 0.75 ? 0.1 : 0.18;
-        if (!bestTarget.isAI) fireChance += 0.05;
-        if (isPreferredTurn) fireChance += 0.04;
+        // 中盤〜後半でより積極（前半は温存）
+        fireChance = progress < 0.4 ? 0.05
+          : progress < 0.55 ? 0.18
+          : progress < 0.75 ? 0.32
+          : progress < 0.9 ? 0.4
+          : 0.28;
+        if (!bestTarget.isAI) fireChance += 0.08;
+        if (isPreferredTurn) fireChance += 0.05;
+        if (bestScore >= 15000) fireChance = Math.min(0.85, fireChance + 0.12);
+        if (bestScore >= 40000) fireChance = Math.min(0.9, fireChance + 0.1);
       }
       // 手元が薄いときは破産級以外ほぼ撃たない
-      if (stock < 12 && !bestIsBankruptShot) fireChance *= 0.35;
+      if (stock < 12 && !bestIsBankruptShot) fireChance *= 0.4;
       if (stock < 8 && bestIsBankruptShot) fireChance *= 0.75;
 
       if (Math.random() < fireChance) bestHeavy = 1;
@@ -1127,9 +1133,11 @@ function aiDecideCards(cards, turn, totalTurns, order, nStart, priceBefore, allO
   let avantPrice = 1000;
   const selfPl = (playersList || []).find((pl) => pl && String(pl.id) === String(selfId));
   const stockLeft = stock - bestQuick - (bestHeavy > 0 ? 5 : 0) - (useDefense ? 5 : 0) - (useReflect ? 5 : 0);
-  // 奥義は大口取引向け。小口では控える。10万株以上の売買で積極使用。
+  // 奥義は進行度40%〜90%のみ。大口向け。CPU同士の重複はfinalize側で抑制。
   const AVANT_BIG = 100000;
+  const avantWindow = progress >= 0.4 && progress <= 0.9;
   if (
+    avantWindow &&
     selfPl && !selfPl.avantUsed && !selfPl.isBankrupt &&
     stockLeft >= 10
   ) {
@@ -2290,6 +2298,31 @@ function FactorTrader() {
       aiHeavy.forEach((p) => {
         if (!keep.has(p.id)) newHacks[p.id] = { ...newHacks[p.id], heavy: 0 };
       });
+    }
+
+    // CPU同士の奥義は同一TERNに1体まで（人間同士・人間とCPUの重複は可）
+    {
+      const cpuAvant = rescuedPlayers.filter(
+        (p) => p.isAI && !p.isBankrupt && newHacks[p.id] && (newHacks[p.id].avant || newHacks[p.id].avantSab)
+      );
+      if (cpuAvant.length > 1) {
+        // 総資産が少ないCPUを優先（重複解決ルールに近い）
+        let winner = cpuAvant[0];
+        let winTv = totalValue(winner, priceBefore);
+        cpuAvant.forEach((p) => {
+          const tv = totalValue(p, priceBefore);
+          if (tv < winTv || (tv === winTv && String(p.id) < String(winner.id))) {
+            winner = p;
+            winTv = tv;
+          }
+        });
+        cpuAvant.forEach((p) => {
+          if (p.id === winner.id) return;
+          const hk = newHacks[p.id];
+          newHacks[p.id] = { ...hk, avant: 0, avantSab: 0, avantPrice: 0 };
+          // COINは未消費扱い（後段で返却ログなし・使用前の抑制）
+        });
+      }
     }
 
     // 奥義AVANT-GARDE重複解決（操作・妨害それぞれ）
