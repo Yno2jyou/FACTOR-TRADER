@@ -5724,16 +5724,17 @@ const CSS = `
 
 .ft-pc-name { display: flex; align-items: center; gap: 5px; color: var(--ft-text-dim); margin-bottom: 2px; }
 .ft-pc-title {
-  display: inline-block;
+  display: block;
+  width: 100%;
   max-width: 100%;
   box-sizing: border-box;
   position: relative;
   font-size: 10px;
   font-weight: 700;
   color: #e8e4d4;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
   margin: 3px 0 6px;
-  padding: 4px 10px;
+  padding: 4px 14px;
   font-family: var(--ft-font-display);
   line-height: 1.35;
   text-align: center;
@@ -5746,7 +5747,7 @@ const CSS = `
     0 1px 3px rgba(0, 0, 0, 0.45);
   text-shadow: 0 1px 1px rgba(0, 0, 0, 0.65);
 }
-/* 四隅の点（枠の内側） */
+/* 四隅の点（枠の内側ギリギリ） */
 .ft-pc-title::before {
   content: "";
   position: absolute;
@@ -5754,10 +5755,10 @@ const CSS = `
   pointer-events: none;
   border-radius: inherit;
   background:
-    radial-gradient(circle, #c5c9a8 0 1.25px, transparent 1.45px) 4px 4px / 3px 3px no-repeat,
-    radial-gradient(circle, #c5c9a8 0 1.25px, transparent 1.45px) calc(100% - 7px) 4px / 3px 3px no-repeat,
-    radial-gradient(circle, #c5c9a8 0 1.25px, transparent 1.45px) 4px calc(100% - 7px) / 3px 3px no-repeat,
-    radial-gradient(circle, #c5c9a8 0 1.25px, transparent 1.45px) calc(100% - 7px) calc(100% - 7px) / 3px 3px no-repeat;
+    radial-gradient(circle, #c5c9a8 0 1.15px, transparent 1.35px) 1.5px 1.5px / 2.5px 2.5px no-repeat,
+    radial-gradient(circle, #c5c9a8 0 1.15px, transparent 1.35px) calc(100% - 4px) 1.5px / 2.5px 2.5px no-repeat,
+    radial-gradient(circle, #c5c9a8 0 1.15px, transparent 1.35px) 1.5px calc(100% - 4px) / 2.5px 2.5px no-repeat,
+    radial-gradient(circle, #c5c9a8 0 1.15px, transparent 1.35px) calc(100% - 4px) calc(100% - 4px) / 2.5px 2.5px no-repeat;
 }
 .ft-pc-rank {
   position: absolute;
