@@ -213,13 +213,11 @@ function Reverse(props) {
   const className = props.className || "";
   const style = props.style || {};
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} style={style} xmlns="http://www.w3.org/2000/svg">
-      <path d="M7 7h11v3" />
-      <path d="M18 7l-4-4" />
-      <path d="M18 7l-4 4" />
-      <path d="M17 17H6v-3" />
-      <path d="M6 17l4 4" />
-      <path d="M6 17l4-4" />
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className={className} style={style} xmlns="http://www.w3.org/2000/svg">
+      <path d="M8 3.5v13a3 3 0 0 0 6 0V10" />
+      <path d="M4.5 7.5L8 3.5l3.5 4" />
+      <path d="M16 20.5V7.5a3 3 0 0 0-6 0V14" />
+      <path d="M19.5 16.5L16 20.5l-3.5-4" />
     </svg>
   );
 }
@@ -3269,7 +3267,7 @@ function FactorTrader() {
           <div className="ft-main">
             <div className="ft-col-left">
               <ChartPanel priceHistory={priceHistory} nStart={nStart} priceBefore={priceBefore} refPrice={refPrice} phase={phase} />
-              <PlayersPanel players={players} orders={orders} phase={phase} currentPrice={priceBefore} revealData={revealData} equippedTitleName={(TITLE_BY_ID[titleSave.equipped] || {}).name || ""} myPlayerId={myPlayerId} />
+              <PlayersPanel players={players} orders={orders} phase={phase} currentPrice={priceBefore} revealData={revealData} equippedTitleName={(TITLE_BY_ID[titleSave.equipped] || {}).name || ""} equippedTitleId={titleSave.equipped || null} myPlayerId={myPlayerId} />
             </div>
             <div className="ft-col-right">
               <ActionPanel
@@ -3725,9 +3723,8 @@ function TopBar({ turn, totalTurns, human, currentPrice, onQuit, onShowRules, mu
         {eqTitle ? (
           <div className="ft-tb-item ft-tb-title">
             <span className="ft-tb-label">称号</span>
-            <span className="ft-tb-value ft-tb-title-row">
-              <TitleBadge titleId={eqTitle.id} size={18} />
-              <span className={"ft-pc-title" + (eqTitle.rank === "rainbow" ? " is-rainbow" : "")} style={eqTitle.rank === "rainbow" ? undefined : { color: titleRankColor(eqTitle.rank) || "#9ca3af", borderBottomColor: titleRankColor(eqTitle.rank) || "#9ca3af" }}>{eqTitle.name}</span>
+            <span className="ft-tb-value ft-tb-title-row" title={eqTitle.name}>
+              <TitleBadge titleId={eqTitle.id} size={20} />
             </span>
           </div>
         ) : null}
@@ -3837,7 +3834,7 @@ function ChartPanel({ priceHistory, nStart, priceBefore, refPrice, phase }) {
   );
 }
 
-function PlayersPanel({ players, orders, phase, currentPrice, revealData, equippedTitleName, myPlayerId }) {
+function PlayersPanel({ players, orders, phase, currentPrice, revealData, equippedTitleName, equippedTitleId, myPlayerId }) {
   const rankMap = useMemo(() => {
     const sorted = [...players].sort(
       (a, b) => totalValue(b, currentPrice) - totalValue(a, currentPrice)
@@ -4026,6 +4023,11 @@ function PlayersPanel({ players, orders, phase, currentPrice, revealData, equipp
             <span className="ft-pc-rank">{rankMap[p.id]}位</span>
             <div className="ft-pc-name">
               {p.isAI ? <Cpu size={13} /> : <User size={13} />} {p.name}
+              {!p.isAI && equippedTitleId ? (
+                <span className="ft-tb-title-row" style={{ marginLeft: 4 }} title={(TITLE_BY_ID[equippedTitleId] || {}).name || ""}>
+                  <TitleBadge titleId={equippedTitleId} size={15} />
+                </span>
+              ) : null}
             </div>
             <div className="ft-pc-cash">{p.isBankrupt ? "破産" : yen(totalValue(p, currentPrice))}</div>
             <div className="ft-pc-holdings">現金{yen(p.cash)} ／ {sharesFmt(p.holdings)}株{p.holdings > 0 ? `(@${p.avgPrice.toFixed(1)})` : ""}</div>
@@ -5091,9 +5093,8 @@ function GameOverScreen({ ranked, currentPrice, onRestart, newTitleIds, titleSav
               <span className="ft-rank-name">
                 {p.isAI ? <Cpu size={13} /> : <User size={13} />} {p.name}
                 {!p.isAI && titleSave && titleSave.equipped ? (
-                  <span className="ft-tb-title-row" style={{ marginLeft: 8 }}>
+                  <span className="ft-tb-title-row" style={{ marginLeft: 6 }} title={(TITLE_BY_ID[titleSave.equipped] || {}).name || ""}>
                     <TitleBadge titleId={titleSave.equipped} size={16} />
-                    <span className={"ft-pc-title" + (((TITLE_BY_ID[titleSave.equipped] || {}).rank === "rainbow") ? " is-rainbow" : "")} style={((TITLE_BY_ID[titleSave.equipped] || {}).rank === "rainbow") ? undefined : { color: titleRankColor((TITLE_BY_ID[titleSave.equipped] || {}).rank) || "#9ca3af", borderBottomColor: titleRankColor((TITLE_BY_ID[titleSave.equipped] || {}).rank) || "#9ca3af" }}>{(TITLE_BY_ID[titleSave.equipped] || {}).name}</span>
                   </span>
                 ) : null}
               </span>
