@@ -298,6 +298,189 @@ const CARDS_TABLE = { 2: 30, 3: 30, 6: 40, 9: 40 };
 /** SERIOUSはNORMALよりCOIN+10 */
 const SERIOUS_COIN_BONUS = 10;
 
+/* ========== 称号システム（LOCAL取得 / localStorage永続） ========== */
+const FT_TITLE_KEY = "factor_trader_titles_v1";
+const TITLE_DEFS = [
+  // A 取引・資産
+  { id: "rich_1e8", cat: "A", name: "億万長者", desc: "1ゲーム終了時 総資産1億以上", kind: "game" },
+  { id: "rich_1e12", cat: "A", name: "兆万長者", desc: "1ゲーム終了時 総資産1兆以上", kind: "game" },
+  { id: "rich_1e13", cat: "A", name: "大富豪", desc: "1ゲーム終了時 総資産10兆以上", kind: "game" },
+  { id: "rich_1e14", cat: "A", name: "超大富豪", desc: "1ゲーム終了時 総資産100兆以上", kind: "game" },
+  { id: "rich_1e15", cat: "A", name: "支配者", desc: "1ゲーム終了時 総資産1000兆以上", kind: "game" },
+  { id: "rich_1e16", cat: "A", name: "征服者", desc: "1ゲーム終了時 総資産1京以上", kind: "game" },
+  { id: "rich_1e17", cat: "A", name: "帝王", desc: "1ゲーム終了時 総資産10京以上", kind: "game" },
+  { id: "rich_1e18", cat: "A", name: "覇王", desc: "1ゲーム終了時 総資産100京以上", kind: "game" },
+  { id: "rich_1e19", cat: "A", name: "絶対神", desc: "1ゲーム終了時 総資産1000京以上", kind: "game" },
+  { id: "comeback", cat: "A", name: "逆転劇", desc: "ゲーム途中最下位→最終1位", kind: "game" },
+  // B 1ゲーム内
+  { id: "q10", cat: "B", name: "操作オタク", desc: "操作を合計10枚以上使用", kind: "game" },
+  { id: "q15", cat: "B", name: "操作達人", desc: "操作を合計15枚以上使用", kind: "game" },
+  { id: "q20", cat: "B", name: "操作博士", desc: "操作を合計20枚以上使用", kind: "game" },
+  { id: "q25", cat: "B", name: "操作仙人", desc: "操作を合計25枚以上使用", kind: "game" },
+  { id: "q30", cat: "B", name: "操作神", desc: "操作を合計30枚以上使用", kind: "game" },
+  { id: "h1", cat: "B", name: "妨害マニア", desc: "妨害で相手を1人破産させる", kind: "game" },
+  { id: "h3", cat: "B", name: "妨害名人", desc: "妨害で相手を3人破産させる", kind: "game" },
+  { id: "h5", cat: "B", name: "妨害学者", desc: "妨害で相手を5人破産させる", kind: "game" },
+  { id: "h7", cat: "B", name: "妨害教祖", desc: "妨害で相手を7人破産させる", kind: "game" },
+  { id: "h9", cat: "B", name: "妨害悪魔", desc: "妨害で自分含めた9人を破産させる", kind: "game" },
+  { id: "d10", cat: "B", name: "防衛愛好家", desc: "防衛で被妨害を10回以上無効化", kind: "game" },
+  { id: "d20", cat: "B", name: "防衛玄人", desc: "防衛で被妨害を20回以上無効化", kind: "game" },
+  { id: "d30", cat: "B", name: "防衛識者", desc: "防衛で被妨害を30回以上無効化", kind: "game" },
+  { id: "d40", cat: "B", name: "防衛聖者", desc: "防衛で被妨害を40回以上無効化", kind: "game" },
+  { id: "d50", cat: "B", name: "防衛至上者", desc: "防衛で被妨害を50回以上無効化", kind: "game" },
+  { id: "r5", cat: "B", name: "反射コレクター", desc: "反射で妨害を5回以上返す", kind: "game" },
+  { id: "r10", cat: "B", name: "反射名人", desc: "反射で妨害を10回以上返す", kind: "game" },
+  { id: "r15", cat: "B", name: "反射専門家", desc: "反射で妨害を15回以上返す", kind: "game" },
+  { id: "r20", cat: "B", name: "反射隠士", desc: "反射で妨害を20回以上返す", kind: "game" },
+  { id: "r25", cat: "B", name: "反射天才", desc: "反射で妨害を25回以上返す", kind: "game" },
+  { id: "bail2", cat: "B", name: "債務帳消し", desc: "COIN10枚帳消しを2回使用", kind: "game" },
+  { id: "bail3", cat: "B", name: "特大債務帳消し", desc: "COIN10枚帳消しを3回使用", kind: "game" },
+  { id: "bail5", cat: "B", name: "超特大債務帳消し", desc: "COIN10枚帳消しを5回使用", kind: "game" },
+  // B 累計
+  { id: "av10", cat: "B", name: "アバンギャルドフリーク", desc: "AVANT-GARDEを累計10回成立", kind: "cumul" },
+  { id: "av20", cat: "B", name: "アバンギャルドマスター", desc: "AVANT-GARDEを累計20回成立", kind: "cumul" },
+  { id: "av30", cat: "B", name: "アバンギャルド通", desc: "AVANT-GARDEを累計30回成立", kind: "cumul" },
+  { id: "av40", cat: "B", name: "アバンギャルドの申し子", desc: "AVANT-GARDEを累計40回成立", kind: "cumul" },
+  { id: "av50", cat: "B", name: "アバンギャルドの巨匠", desc: "AVANT-GARDEを累計50回成立", kind: "cumul" },
+  { id: "coin_rich1", cat: "B", name: "COIN富豪", desc: "終了時COIN10枚以上温存を1度達成", kind: "cumul" },
+  { id: "coin_rich3", cat: "B", name: "COIN大富豪", desc: "終了時COIN10枚以上温存を3連続達成", kind: "cumul" },
+  { id: "coin_rich5", cat: "B", name: "COIN超大富豪", desc: "終了時COIN10枚以上温存を5連続達成", kind: "cumul" },
+  { id: "coin_poor1", cat: "B", name: "COIN貧民", desc: "COIN0・補充なしで終了を1度達成", kind: "cumul" },
+  { id: "coin_poor3", cat: "B", name: "COIN大貧民", desc: "COIN0・補充なしで終了を3連続達成", kind: "cumul" },
+  { id: "coin_poor5", cat: "B", name: "COIN超大貧民", desc: "COIN0・補充なしで終了を5連続達成", kind: "cumul" },
+];
+const TITLE_BY_ID = {};
+TITLE_DEFS.forEach((t) => { TITLE_BY_ID[t.id] = t; });
+
+function loadTitleSave() {
+  try {
+    const raw = localStorage.getItem(FT_TITLE_KEY);
+    if (!raw) {
+      return { unlocked: {}, equipped: null, avantTotal: 0, coinRichStreak: 0, coinPoorStreak: 0 };
+    }
+    const o = JSON.parse(raw);
+    return {
+      unlocked: o.unlocked && typeof o.unlocked === "object" ? o.unlocked : {},
+      equipped: o.equipped || null,
+      avantTotal: Math.max(0, Number(o.avantTotal) || 0),
+      coinRichStreak: Math.max(0, Number(o.coinRichStreak) || 0),
+      coinPoorStreak: Math.max(0, Number(o.coinPoorStreak) || 0),
+    };
+  } catch (e) {
+    return { unlocked: {}, equipped: null, avantTotal: 0, coinRichStreak: 0, coinPoorStreak: 0 };
+  }
+}
+function saveTitleSave(data) {
+  try {
+    localStorage.setItem(FT_TITLE_KEY, JSON.stringify(data));
+  } catch (e) {}
+}
+function emptyGameTitleStats() {
+  return {
+    quickUsed: 0,
+    heavyBankruptIds: {},
+    defenseBlocked: 0,
+    reflectOut: 0,
+    bailouts: 0,
+    wasLast: false,
+    avantThisGame: 0,
+    coinRescueUsed: false,
+  };
+}
+/** LOCAL・1位のときのみ称号判定。新規解除ID配列を返す */
+function evaluateTitlesAfterGame(isLocal, isFirst, finalTV, finalCoins, stats, save) {
+  const newly = [];
+  if (!isLocal || !isFirst || !stats) return { newly, save };
+  const next = {
+    unlocked: { ...(save.unlocked || {}) },
+    equipped: save.equipped || null,
+    avantTotal: Math.max(0, Number(save.avantTotal) || 0) + (stats.avantThisGame || 0),
+    coinRichStreak: Math.max(0, Number(save.coinRichStreak) || 0),
+    coinPoorStreak: Math.max(0, Number(save.coinPoorStreak) || 0),
+  };
+  function unlock(id) {
+    if (!next.unlocked[id]) {
+      next.unlocked[id] = true;
+      newly.push(id);
+    }
+  }
+  const tv = Number(finalTV) || 0;
+  if (tv >= 1e8) unlock("rich_1e8");
+  if (tv >= 1e12) unlock("rich_1e12");
+  if (tv >= 1e13) unlock("rich_1e13");
+  if (tv >= 1e14) unlock("rich_1e14");
+  if (tv >= 1e15) unlock("rich_1e15");
+  if (tv >= 1e16) unlock("rich_1e16");
+  if (tv >= 1e17) unlock("rich_1e17");
+  if (tv >= 1e18) unlock("rich_1e18");
+  if (tv >= 1e19) unlock("rich_1e19");
+  if (stats.wasLast) unlock("comeback");
+
+  const q = stats.quickUsed || 0;
+  if (q >= 10) unlock("q10");
+  if (q >= 15) unlock("q15");
+  if (q >= 20) unlock("q20");
+  if (q >= 25) unlock("q25");
+  if (q >= 30) unlock("q30");
+
+  const hb = Object.keys(stats.heavyBankruptIds || {}).length;
+  if (hb >= 1) unlock("h1");
+  if (hb >= 3) unlock("h3");
+  if (hb >= 5) unlock("h5");
+  if (hb >= 7) unlock("h7");
+  if (hb >= 9) unlock("h9");
+
+  const db = stats.defenseBlocked || 0;
+  if (db >= 10) unlock("d10");
+  if (db >= 20) unlock("d20");
+  if (db >= 30) unlock("d30");
+  if (db >= 40) unlock("d40");
+  if (db >= 50) unlock("d50");
+
+  const ro = stats.reflectOut || 0;
+  if (ro >= 5) unlock("r5");
+  if (ro >= 10) unlock("r10");
+  if (ro >= 15) unlock("r15");
+  if (ro >= 20) unlock("r20");
+  if (ro >= 25) unlock("r25");
+
+  const bl = stats.bailouts || 0;
+  if (bl >= 2) unlock("bail2");
+  if (bl >= 3) unlock("bail3");
+  if (bl >= 5) unlock("bail5");
+
+  if (next.avantTotal >= 10) unlock("av10");
+  if (next.avantTotal >= 20) unlock("av20");
+  if (next.avantTotal >= 30) unlock("av30");
+  if (next.avantTotal >= 40) unlock("av40");
+  if (next.avantTotal >= 50) unlock("av50");
+
+  const coins = Math.max(0, Number(finalCoins) || 0);
+  const richEnd = coins >= 10;
+  const poorEnd = coins <= 0 && !stats.coinRescueUsed;
+  if (richEnd) {
+    next.coinRichStreak = (Number(save.coinRichStreak) || 0) + 1;
+    next.coinPoorStreak = 0;
+  } else if (poorEnd) {
+    next.coinPoorStreak = (Number(save.coinPoorStreak) || 0) + 1;
+    next.coinRichStreak = 0;
+  } else {
+    next.coinRichStreak = 0;
+    next.coinPoorStreak = 0;
+  }
+  if (next.coinRichStreak >= 1) unlock("coin_rich1");
+  if (next.coinRichStreak >= 3) unlock("coin_rich3");
+  if (next.coinRichStreak >= 5) unlock("coin_rich5");
+  if (next.coinPoorStreak >= 1) unlock("coin_poor1");
+  if (next.coinPoorStreak >= 3) unlock("coin_poor3");
+  if (next.coinPoorStreak >= 5) unlock("coin_poor5");
+
+  if (!next.equipped && newly.length) next.equipped = newly[newly.length - 1];
+  saveTitleSave(next);
+  return { newly, save: next };
+}
+
+
 /** ラスト5TERNか */
 function isLastFiveTurns(turn, totalTurns) {
   const t = Number(turn) || 0;
@@ -1392,6 +1575,10 @@ function FactorTrader() {
   const [basePrice, setBasePrice] = useState(0);
   const [showQuitConfirm, setShowQuitConfirm] = useState(false);
   const [showRulesModal, setShowRulesModal] = useState(false);
+  const [showTitlesModal, setShowTitlesModal] = useState(false);
+  const [titleSave, setTitleSave] = useState(() => loadTitleSave());
+  const [newTitleIds, setNewTitleIds] = useState([]);
+  const titleStatsRef = useRef(emptyGameTitleStats());
   const [passBanner, setPassBanner] = useState(null); // { name } 端末渡しメッセージ
   const logEndRef = useRef(null);
   const topRef = useRef(null);
@@ -1723,6 +1910,8 @@ function FactorTrader() {
     setPendingHacks({});
     setSubmittedOrderIds([]);
     setSubmittedHackIds([]);
+    titleStatsRef.current = emptyGameTitleStats();
+    setNewTitleIds([]);
   }
 
   function createOnlineRoom() {
@@ -2487,6 +2676,52 @@ function FactorTrader() {
       return `${p.name}: 様子見`;
     }).filter(Boolean);
 
+    // 称号用：LOCAL人間の1TERN統計
+    if (playMode !== "online") {
+      const hum = primaryHuman(basePlayers);
+      if (hum && !hum.isAI) {
+        const st = titleStatsRef.current || emptyGameTitleStats();
+        const ex = execResults[hum.id] || {};
+        st.quickUsed = (st.quickUsed || 0) + (ex.ownQuick || 0);
+        if (ex.defense) st.defenseBlocked = (st.defenseBlocked || 0) + (ex.blockedHeavy || 0);
+        if (ex.reflect) st.reflectOut = (st.reflectOut || 0) + (ex.reflectedOut || 0);
+        if (ex.bailout) st.bailouts = (st.bailouts || 0) + 1;
+        if (ex.avant || ex.avantSab) st.avantThisGame = (st.avantThisGame || 0) + 1;
+        if (hacks[hum.id] && hacks[hum.id].coinRescue) st.coinRescueUsed = true;
+        if ((ex.usedHeavy || 0) > 0) {
+          basePlayers.forEach((op) => {
+            if (!op || String(op.id) === String(hum.id)) return;
+            const oex = execResults[op.id];
+            if (oex && oex.bankrupt) {
+              st.heavyBankruptIds = st.heavyBankruptIds || {};
+              st.heavyBankruptIds[op.id] = true;
+            }
+          });
+        }
+        // 順位（時価・仮株価基準）
+        const rankedNow = basePlayers
+          .filter((p) => p && !p.isBankrupt)
+          .slice()
+          .sort((a, b) => totalValue(b, priceBeforeR) - totalValue(a, priceBeforeR));
+        if (rankedNow.length >= 2 && rankedNow[rankedNow.length - 1].id === hum.id) {
+          st.wasLast = true;
+        }
+        // 更新後の順位も見る
+        const afterRank = updated
+          .filter((p) => p && !p.isBankrupt)
+          .slice()
+          .sort((a, b) => {
+            const pa = priceMap[a.id] != null ? priceMap[a.id] : priceBeforeR;
+            const pb = priceMap[b.id] != null ? priceMap[b.id] : priceBeforeR;
+            return totalValue(b, pb) - totalValue(a, pa);
+          });
+        if (afterRank.length >= 2 && afterRank[afterRank.length - 1].id === hum.id) {
+          st.wasLast = true;
+        }
+        titleStatsRef.current = st;
+      }
+    }
+
     pushLog(`── TERN${turnR} ── 仮株価 ${yenNum(priceBeforeR)}円 / 個人株価制`);
     cardLines.forEach((l) => pushLog("  " + l));
     orderLines.forEach((l) => pushLog("  " + l));
@@ -2557,6 +2792,25 @@ function FactorTrader() {
     setPhase("reveal");
   }
 
+  function goToGameOver(plsOverride, histOverride) {
+    const pls = plsOverride || players;
+    const hist = histOverride || priceHistory;
+    const price = (hist.length ? hist[hist.length - 1].price : basePrice) || 0;
+    const rankedList = pls.slice().sort((a, b) => totalValue(b, price) - totalValue(a, price));
+    const hum = primaryHuman(pls) || humanPlayersOf(pls)[0];
+    let newly = [];
+    if (playMode !== "online" && hum) {
+      const isFirst = rankedList[0] && rankedList[0].id === hum.id;
+      const tv = totalValue(hum, price);
+      const coins = (hum.cards && hum.cards.stock != null) ? hum.cards.stock : 0;
+      const result = evaluateTitlesAfterGame(true, !!isFirst, tv, coins, titleStatsRef.current, titleSave);
+      newly = result.newly || [];
+      if (result.save) setTitleSave(result.save);
+    }
+    setNewTitleIds(newly);
+    setScreen("over");
+  }
+
   function nextTurn() {
     if (playMode === "online" && onlineRole === "guest") {
       // ゲストはホストの進行を待つ（ホストが next したスナップショット）
@@ -2571,7 +2825,7 @@ function FactorTrader() {
     // 生存者が1人以下（人間含む）なら終了
     const alive = players.filter((p) => !p.isBankrupt);
     if (alive.length <= 1) {
-      setScreen("over");
+      goToGameOver();
       return;
     }
     // CPUが全員破産かつ人間が残っていれば結果へ（対人のみの場合は続行）
@@ -2579,7 +2833,7 @@ function FactorTrader() {
     if (cpus.length > 0 && cpus.every((p) => p.isBankrupt) && humans.every((p) => !p.isBankrupt || humans.filter(h=>!h.isBankrupt).length<=1)) {
       const aliveH = humans.filter((p) => !p.isBankrupt);
       if (aliveH.length <= 1) {
-        setScreen("over");
+        goToGameOver();
         if (playMode === "online" && onlineRole === "host") {
           setTimeout(() => broadcastSnapshotFrom({ screen: "over", players: stateRef.current.players, phase: "reveal" }), 50);
         }
@@ -2587,7 +2841,7 @@ function FactorTrader() {
       }
     }
     if (turn >= totalTurns) {
-      setScreen("over");
+      goToGameOver();
       if (playMode === "online" && onlineRole === "host") {
         setTimeout(() => broadcastSnapshotFrom({ screen: "over", players: stateRef.current.players, phase: "reveal" }), 50);
       }
@@ -2742,7 +2996,7 @@ function FactorTrader() {
     setTurn(totalTurns);
     setRevealData(null);
     setPhase("market");
-    setScreen("over");
+    goToGameOver(pls, hist);
   }
 
   function quitToTop() {
@@ -2787,6 +3041,7 @@ function FactorTrader() {
     <div className="ft-root" ref={topRef}>
       <style>{CSS}</style>
       {screen === "setup" && (
+        <>
         <SetupScreen
           playerCount={playerCount}
           setPlayerCount={setPlayerCount}
@@ -2806,7 +3061,22 @@ function FactorTrader() {
           netStatus={netStatus}
           onCreateRoom={createOnlineRoom}
           onJoinRoom={joinOnlineRoom}
+          onOpenTitles={() => setShowTitlesModal(true)}
+          equippedTitleName={(TITLE_BY_ID[titleSave.equipped] || {}).name || ""}
         />
+        {showTitlesModal ? (
+          <TitlesModal
+            titleSave={titleSave}
+            onClose={() => setShowTitlesModal(false)}
+            canEquip={true}
+            onEquip={(id) => {
+              const next = { ...titleSave, equipped: id };
+              setTitleSave(next);
+              saveTitleSave(next);
+            }}
+          />
+        ) : null}
+        </>
       )}
 
       {screen === "lobby" && (
@@ -2893,7 +3163,7 @@ function FactorTrader() {
           <div className="ft-main">
             <div className="ft-col-left">
               <ChartPanel priceHistory={priceHistory} nStart={nStart} priceBefore={priceBefore} refPrice={refPrice} phase={phase} />
-              <PlayersPanel players={players} orders={orders} phase={phase} currentPrice={priceBefore} revealData={revealData} />
+              <PlayersPanel players={players} orders={orders} phase={phase} currentPrice={priceBefore} revealData={revealData} equippedTitleName={(TITLE_BY_ID[titleSave.equipped] || {}).name || ""} myPlayerId={myPlayerId} />
             </div>
             <div className="ft-col-right">
               <ActionPanel
@@ -2937,7 +3207,28 @@ function FactorTrader() {
       )}
 
       {screen === "over" && (
-        <GameOverScreen ranked={ranked} currentPrice={currentPriceForValue} onRestart={() => setScreen("setup")} />
+        <>
+        <GameOverScreen
+          ranked={ranked}
+          currentPrice={currentPriceForValue}
+          onRestart={() => setScreen("setup")}
+          newTitleIds={newTitleIds}
+          titleSave={titleSave}
+          onOpenTitles={() => setShowTitlesModal(true)}
+        />
+        {showTitlesModal ? (
+          <TitlesModal
+            titleSave={titleSave}
+            onClose={() => setShowTitlesModal(false)}
+            canEquip={true}
+            onEquip={(id) => {
+              const next = { ...titleSave, equipped: id };
+              setTitleSave(next);
+              saveTitleSave(next);
+            }}
+          />
+        ) : null}
+        </>
       )}
 
       {showQuitConfirm && (
@@ -3130,7 +3421,7 @@ function RulesContent() {
   );
 }
 
-function SetupScreen({ playerCount, setPlayerCount, humanCount, setHumanCount, humanNames, setHumanNames, seriousMode, setSeriousMode, onStart, playMode, setPlayMode, myName, setMyName, joinCodeInput, setJoinCodeInput, netStatus, onCreateRoom, onJoinRoom }) {
+function SetupScreen({ playerCount, setPlayerCount, humanCount, setHumanCount, humanNames, setHumanNames, seriousMode, setSeriousMode, onStart, playMode, setPlayMode, myName, setMyName, joinCodeInput, setJoinCodeInput, netStatus, onCreateRoom, onJoinRoom, onOpenTitles, equippedTitleName }) {
   const baseCoins = CARDS_TABLE[playerCount] || CARDS_TABLE[3];
   const coins = baseCoins + (seriousMode ? SERIOUS_COIN_BONUS : 0);
   const hc = Math.max(1, Math.min(playerCount, Number(humanCount) || 1));
@@ -3303,6 +3594,11 @@ function SetupScreen({ playerCount, setPlayerCount, humanCount, setHumanCount, h
         </button>
         </>
         ) : null}
+        {onOpenTitles ? (
+          <button className="ft-rules-btn" style={{ width: "100%", marginTop: 12 }} onClick={onOpenTitles}>
+            称号一覧{equippedTitleName ? "（装備: " + equippedTitleName + "）" : ""}
+          </button>
+        ) : null}
       </div>
     </div>
   );
@@ -3425,7 +3721,7 @@ function ChartPanel({ priceHistory, nStart, priceBefore, refPrice, phase }) {
   );
 }
 
-function PlayersPanel({ players, orders, phase, currentPrice, revealData }) {
+function PlayersPanel({ players, orders, phase, currentPrice, revealData, equippedTitleName, myPlayerId }) {
   const rankMap = useMemo(() => {
     const sorted = [...players].sort(
       (a, b) => totalValue(b, currentPrice) - totalValue(a, currentPrice)
@@ -3611,6 +3907,9 @@ function PlayersPanel({ players, orders, phase, currentPrice, revealData }) {
           <div key={p.id} className={"ft-player-card" + (p.isAI ? " ai" : " human") + glow + (p.isBankrupt ? " bankrupt" : "")}>
             <span className="ft-pc-rank">{rankMap[p.id]}位</span>
             <div className="ft-pc-name">{p.isAI ? <Cpu size={13} /> : <User size={13} />} {p.name}</div>
+            {!p.isAI && equippedTitleName && (p.id === myPlayerId || (!myPlayerId && String(p.id) === "human-0") || (!myPlayerId && !p.isRemote)) ? (
+              <div className="ft-pc-title">{equippedTitleName}</div>
+            ) : null}
             <div className="ft-pc-cash">{p.isBankrupt ? "破産" : yen(totalValue(p, currentPrice))}</div>
             <div className="ft-pc-holdings">現金{yen(p.cash)} ／ {sharesFmt(p.holdings)}株{p.holdings > 0 ? `(@${p.avgPrice.toFixed(1)})` : ""}</div>
             <div className="ft-pc-cards"><Coin size={12} className="icon-coin" /> {p.cards.stock != null ? p.cards.stock : 0}</div>
@@ -4660,7 +4959,9 @@ function LogPanel({ log, logEndRef }) {
   );
 }
 
-function GameOverScreen({ ranked, currentPrice, onRestart }) {
+function GameOverScreen({ ranked, currentPrice, onRestart, newTitleIds, titleSave, onEquipTitle, onOpenTitles }) {
+  const newNames = (newTitleIds || []).map((id) => (TITLE_BY_ID[id] || {}).name).filter(Boolean);
+  const eqName = (TITLE_BY_ID[(titleSave && titleSave.equipped)] || {}).name || "";
   return (
     <div className="ft-setup">
       <div className="ft-setup-card">
@@ -4672,14 +4973,94 @@ function GameOverScreen({ ranked, currentPrice, onRestart }) {
               <span className="ft-rank-pos">#{i + 1}</span>
               <span className="ft-rank-name">
                 {p.isAI ? <Cpu size={13} /> : <User size={13} />} {p.name}
+                {!p.isAI && eqName ? <span className="ft-pc-title" style={{ display: "block", marginTop: 2 }}>{eqName}</span> : null}
               </span>
               <span className="ft-rank-cash">{p.isBankrupt ? "破産" : yen(totalValue(p, currentPrice))}</span>
             </div>
           ))}
         </div>
+        {newNames.length > 0 ? (
+          <div style={{ marginBottom: 16, padding: 12, border: "1px solid rgba(57,255,156,0.35)", borderRadius: 4, background: "rgba(57,255,156,0.06)" }}>
+            <div style={{ fontSize: 11, letterSpacing: 1, color: "var(--ft-accent)", marginBottom: 8 }}>NEW TITLE</div>
+            {newNames.map((n) => (
+              <div key={n} style={{ fontSize: 14, fontWeight: 700, color: "var(--ft-accent)", marginBottom: 4 }}>「{n}」を獲得！</div>
+            ))}
+            <p style={{ fontSize: 11, color: "var(--ft-text-dim)", margin: "8px 0 0" }}>称号一覧から装備を変更できます（LOCAL・1位時のみ獲得）</p>
+          </div>
+        ) : null}
         <button className="ft-start-btn" onClick={onRestart}>
           もう一度市場に挑む ▶
         </button>
+        {onOpenTitles ? (
+          <button className="ft-rules-btn" style={{ width: "100%", marginTop: 10 }} onClick={onOpenTitles}>
+            称号一覧
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function TitlesModal({ titleSave, onClose, onEquip, canEquip }) {
+  const unlocked = (titleSave && titleSave.unlocked) || {};
+  const equipped = titleSave && titleSave.equipped;
+  const cats = [
+    { key: "A", label: "A 取引・資産" },
+    { key: "B", label: "B 市場HACK・COIN" },
+  ];
+  return (
+    <div className="ft-modal-overlay" onClick={onClose}>
+      <div className="ft-modal-box ft-modal-box-wide" onClick={(e) => e.stopPropagation()}>
+        <div className="ft-modal-title">称号一覧</div>
+        <p className="ft-modal-desc" style={{ marginBottom: 12 }}>
+          称号の獲得はLOCALのみ・最終1位が条件です。進捗はブラウザに保存されます。装備した称号は名前の下に表示されます。
+        </p>
+        <div className="ft-modal-scroll">
+          {cats.map((c) => (
+            <div key={c.key} className="ft-rules-section">
+              <div className="ft-rules-h">{c.label}</div>
+              {TITLE_DEFS.filter((t) => t.cat === c.key).map((t) => {
+                const got = !!unlocked[t.id];
+                const isEq = equipped === t.id;
+                return (
+                  <div key={t.id} style={{
+                    display: "flex", alignItems: "center", gap: 10, marginBottom: 8,
+                    padding: "8px 10px", borderRadius: 4,
+                    border: isEq ? "1px solid var(--ft-accent)" : "1px solid var(--ft-border)",
+                    background: got ? "rgba(57,255,156,0.05)" : "var(--ft-panel-alt)",
+                    opacity: got ? 1 : 0.45,
+                  }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: got ? "var(--ft-accent)" : "var(--ft-text-dim)" }}>
+                        {got ? t.name : "？？？"}
+                        {isEq ? <span style={{ marginLeft: 8, fontSize: 10, color: "var(--ft-amber)" }}>装備中</span> : null}
+                      </div>
+                      <div style={{ fontSize: 11, color: "var(--ft-text-dim)", marginTop: 2 }}>{t.desc}</div>
+                    </div>
+                    {got && canEquip ? (
+                      <button
+                        type="button"
+                        className="ft-rules-btn"
+                        style={{ flexShrink: 0, padding: "6px 10px" }}
+                        onClick={() => onEquip && onEquip(isEq ? null : t.id)}
+                      >
+                        {isEq ? "外す" : "装備"}
+                      </button>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+          <div style={{ fontSize: 11, color: "var(--ft-text-dim)", marginTop: 8 }}>
+            AVANT-GARDE累計: {(titleSave && titleSave.avantTotal) || 0}回 ／
+            COIN温存連続: {(titleSave && titleSave.coinRichStreak) || 0} ／
+            COIN0連続: {(titleSave && titleSave.coinPoorStreak) || 0}
+          </div>
+        </div>
+        <div className="ft-modal-btns">
+          <button className="ft-modal-confirm" style={{ flex: 1 }} onClick={onClose}>閉じる</button>
+        </div>
       </div>
     </div>
   );
@@ -5337,7 +5718,16 @@ const CSS = `
   line-height: 1.65;
 }
 
-.ft-pc-name { display: flex; align-items: center; gap: 5px; color: var(--ft-text-dim); margin-bottom: 4px; }
+.ft-pc-name { display: flex; align-items: center; gap: 5px; color: var(--ft-text-dim); margin-bottom: 2px; }
+.ft-pc-title {
+  font-size: 10px;
+  color: var(--ft-amber);
+  letter-spacing: 0.04em;
+  margin-bottom: 4px;
+  font-family: var(--ft-font-display);
+  opacity: 0.95;
+  line-height: 1.3;
+}
 .ft-pc-rank {
   position: absolute;
   top: 6px;
