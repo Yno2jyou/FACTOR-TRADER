@@ -255,7 +255,7 @@ function Activity(props) {
    1TERNのシーケンス:
      1. 市場開示  : N_start を公開し、仮株価 sopf(N_start) を表示
      2. 投資注文  : 各プレイヤー(人間+AI)が 買い/売り/様子見 を秘密裏に決定
-     3. 市場ハック: 生涯COINから操作/妨害を裏向きで決定
+     3. 市場HACK: 生涯COINから操作/妨害を裏向きで決定
      4. 清算（個人株価）:
           - 操作: 自分の N にだけ +1 → 自分の株価だけ操作
           - 妨害: 自分以外の N にだけ +1（重複可） → 相手の株価だけ妨害方向に作用
@@ -291,10 +291,10 @@ function isPowerOfTwo(n) {
 }
 
 // ---------- ゲーム設定 ----------
-// 人数別: TERN数 / COIN枚数（操作・妨害共用）
-const TURN_TABLE = { 2: 22, 3: 22, 5: 32, 9: 32 };
+// TERN数 / COIN枚数
+const TURN_TABLE = { 2: 22, 3: 22, 6: 32, 9: 32, 12: 32, 15: 32 };
 
-const CARDS_TABLE = { 2: 30, 3: 30, 5: 40, 9: 40 };
+const CARDS_TABLE = { 2: 30, 3: 30, 6: 40, 9: 40, 12: 50, 15: 50 };
 /** SERIOUSはNORMALよりCOIN+10 */
 const SERIOUS_COIN_BONUS = 10;
 
@@ -365,7 +365,12 @@ function clampOrder(order, cash, holdings, priceBefore, turn, totalTurns) {
 }
 
 const STARTING_CASH = 10000;
-const AI_NAMES = ["Albert Einstein", "Sir Isaac Newton", "Marie Curie", "Leonardo da Vinci", "Nikola Tesla", "Charles Darwin", "Galileo Galilei", "Ada Lovelace"];
+const AI_NAMES = [
+  "Albert Einstein", "Sir Isaac Newton", "Marie Curie", "Leonardo da Vinci",
+  "Nikola Tesla", "Charles Darwin", "Galileo Galilei", "Ada Lovelace",
+  "Alan Turing", "James Clerk Maxwell", "Rosalind Franklin", "Richard Feynman",
+  "Hypatia", "Archimedes", "Carl Friedrich Gauss", "Emmy Noether"
+];
 
 function randBase() {
   return 10000 + Math.floor(Math.random() * 80000);
@@ -2072,7 +2077,7 @@ function FactorTrader() {
     const ah = aliveHumans(players);
     setInputHumanIdx(0);
     setHumanHackDraft({ quick: 0, heavy: 0, defense: 0, reflect: 0, avant: 0, avantSab: 0, avantPrice: 1000, coinRescue: "" });
-    setPassBanner(ah.length > 1 && ah[0] ? { name: ah[0].name, phaseLabel: "COIN" } : null);
+    setPassBanner(ah.length > 1 && ah[0] ? { name: ah[0].name, phaseLabel: "市場HACK" } : null);
     setPhase("hack");
     scrollToTop();
   }
@@ -2183,7 +2188,7 @@ function FactorTrader() {
         const nextP = ah[nextIdx];
         setInputHumanIdx(nextIdx);
         setHumanHackDraft({ quick: 0, heavy: 0, defense: 0, reflect: 0, avant: 0, avantSab: 0, avantPrice: 1000, coinRescue: "" });
-        setPassBanner({ name: nextP.name, phaseLabel: "COIN" });
+        setPassBanner({ name: nextP.name, phaseLabel: "市場HACK" });
         scrollToTop();
         return;
       }
@@ -2275,7 +2280,7 @@ function FactorTrader() {
 
     // 妨害の同時撃ちは少なめ
     const aiHeavy = rescuedPlayers.filter((p) => p.isAI && newHacks[p.id] && (newHacks[p.id].heavy || 0) > 0);
-    const heavySlots = rescuedPlayers.length >= 5 ? 2 : 1;
+    const heavySlots = rescuedPlayers.length >= 6 ? 2 : 1;
     if (aiHeavy.length > heavySlots) {
       for (let i = aiHeavy.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
@@ -2622,7 +2627,7 @@ function FactorTrader() {
           hks[p.id] = aiDecideCards(p.cards, t, totalTurns, ords[p.id], ns, pb, ords, p.id, pls);
         }
       });
-      // CPU妨害の同一TERN重複は少なめ（基本1体、5人戦のみ最大2体）
+      // CPU妨害の同一TERN重複は少なめ（基本1体、6人以上は最大2体）
       const aiHeavy = pls.filter((p) => p.isAI && (hks[p.id]?.heavy || 0) > 0);
       const heavySlots = pls.length >= 5 ? 2 : 1;
       if (aiHeavy.length > heavySlots) {
@@ -2739,7 +2744,7 @@ function FactorTrader() {
               <div className="ft-select-count" style={{ marginBottom: 12 }}>
                 <div className="ft-label">席数（不足分はCPU）</div>
                 <div className="ft-count-options ft-count-options-players">
-                  {[2, 3, 5, 9].map((n) => (
+                  {[2, 3, 6, 9, 12, 15].map((n) => (
                     <button key={n} className={"ft-count-btn" + (playerCount === n ? " active" : "")} onClick={() => setPlayerCount(n)}>
                       <div className="ft-count-num">{n}<span className="ft-count-people"> PEOPLE</span></div>
                       <div className="ft-count-turns">{TURN_TABLE[n]} TERN</div>
@@ -2935,8 +2940,8 @@ function RulesContent() {
           <div className="ft-flow-step">
             <div className="ft-flow-num">3</div>
             <div className="ft-flow-body">
-              <b className="ft-coin-label"><Coin size={14} className="icon-coin" /> COIN</b>
-              <span>操作・妨害・防衛を使うか決める</span>
+              <b>市場HACK</b>
+              <span>操作・妨害・防衛などを使うか決める</span>
             </div>
           </div>
           <div className="ft-flow-step">
@@ -2951,8 +2956,13 @@ function RulesContent() {
 
       <div className="ft-rules-section">
         <div className="ft-rules-h"><Coin size={14} className="icon-coin" style={{marginRight:6, verticalAlign:"-2px"}} />COIN</div>
-        <p className="ft-rules-note">COINが5枚以下のとき総資産50%で+5枚、0枚のとき総資産75%で+10枚を選択可（市場ハック時・ラスト5TERNは不可）。</p>
-        <p className="ft-rules-note">人数別　2人: COIN30・22TERN　/　3人: COIN30・22TERN　/　5人: COIN40・32TERN　/　9人: COIN40・32TERN（SERIOUSは各+10枚）</p>
+        <p className="ft-rules-note">
+          COINはゲーム開始時に人数・モードに応じて配布される通貨で、使用することにより、市場HACK・買いの帳消しを行うことができます。COINは使い切ったら、補充以外では増えません。補充はCOINが5枚以下のとき総資産50%で+5枚追加可能で、0枚のときには総資産75%で+10枚追加可能です。なお市場HACK時・ラスト5TERNは補充できません。
+        </p>
+      </div>
+
+      <div className="ft-rules-section">
+        <div className="ft-rules-h">市場HACK</div>
         <div className="ft-card-types">
           <div className="ft-card-type op">
             <div className="ft-card-type-title"><Zap size={14} className="icon-quick" /> 操作</div>
@@ -3097,7 +3107,7 @@ function SetupScreen({ playerCount, setPlayerCount, humanCount, setHumanCount, h
             <div className="ft-select-count" style={{ marginBottom: 8 }}>
               <div className="ft-label" style={{ opacity: 0.7 }}>席数（後からロビーでも変更可・不足はCPU）</div>
               <div className="ft-count-options ft-count-options-players">
-                {[2, 3, 5, 9].map((n) => (
+                {[2, 3, 6, 9, 12, 15].map((n) => (
                   <button key={n} className={"ft-count-btn" + (playerCount === n ? " active" : "")} onClick={() => setPlayerCount(n)}>
                     <div className="ft-count-num">{n}<span className="ft-count-people"> PEOPLE</span></div>
                     <div className="ft-count-turns">{TURN_TABLE[n]} TERN</div>
@@ -3105,14 +3115,20 @@ function SetupScreen({ playerCount, setPlayerCount, humanCount, setHumanCount, h
                 ))}
               </div>
             </div>
-            <div className="ft-count-options" style={{ marginBottom: 10 }}>
+            <div className="ft-label" style={{ marginTop: 4 }}>難易度</div>
+            <div className="ft-count-options" style={{ marginBottom: 8 }}>
               <button className={"ft-count-btn" + (!seriousMode ? " active" : "")} onClick={() => setSeriousMode(false)}>
                 <div className="ft-count-num">NORMAL</div>
+                <div className="ft-count-turns">COIN {baseCoins}</div>
               </button>
               <button className={"ft-count-btn" + (seriousMode ? " active" : "")} onClick={() => setSeriousMode(true)}>
                 <div className="ft-count-num">SERIOUS</div>
+                <div className="ft-count-turns">COIN {baseCoins + SERIOUS_COIN_BONUS}</div>
               </button>
             </div>
+            <p style={{ fontSize: 11, opacity: 0.75, marginBottom: 12, lineHeight: 1.6 }}>
+              SERIOUSはCOINがNORMALプレイより10枚多いです。
+            </p>
             <button className="ft-start-btn" onClick={onCreateRoom}>部屋を作成 ▶</button>
             <div style={{ margin: "18px 0 8px", textAlign: "center", opacity: 0.5, fontSize: 12 }}>または</div>
             <div className="ft-label">部屋に参加（ゲスト）</div>
@@ -3155,7 +3171,7 @@ function SetupScreen({ playerCount, setPlayerCount, humanCount, setHumanCount, h
         <div className="ft-select-count">
           <div className="ft-label">対戦人数を選択</div>
           <div className="ft-count-options ft-count-options-players">
-            {[2, 3, 5, 9].map((n) => (
+            {[2, 3, 6, 9, 12, 15].map((n) => (
               <button
                 key={n}
                 className={"ft-count-btn" + (playerCount === n ? " active" : "")}
@@ -3385,7 +3401,7 @@ function PlayersPanel({ players, orders, phase, currentPrice, revealData }) {
       notes.push({
         cls: "note-defense",
         icon: "defense",
-        text: who + "が防衛を使用（COIN5枚）"
+        text: who + "が防衛を使用（COIN5枚）", icon: "coin"
           + (blocked > 0 ? " → 被妨害×" + blocked + " を無効化" : "")
           + (sabBlock ? " → AVANT-GARDE-妨害を無効化" : ""),
       });
@@ -3644,7 +3660,7 @@ function ActionPanel(props) {
         <div className="ft-panel-head">STEP 2 — 投資注文</div>
         <p className="ft-action-desc">
           現仮株価 <b className="ft-highlight">{yenNum(priceBefore)}円</b> を目安に、何株「買う」か「売る」かを決めます。
-          実際の株価は、この後の市場ハックで確定する<b>最終株価</b>で行われます。
+          実際の株価は、この後の市場HACKで確定する<b>最終株価</b>で行われます。
           {endgameLock && (
             <span style={{ display: "block", marginTop: 8, color: "var(--ft-amber)" }}>
               終盤ルール（ラスト5TERN）: 様子見禁止 / 売りは保有の50%以上・買いは買付余力の50%以上から自由に選択
@@ -3802,7 +3818,7 @@ function ActionPanel(props) {
   if (phase === "hack") {
     return (
       <div className="ft-panel ft-action">
-        <div className="ft-panel-head">STEP 3 — 市場ハック（裏向き）</div>
+        <div className="ft-panel-head">STEP 3 — 市場HACK（裏向き）</div>
         <p className="ft-action-desc">生涯COINを投入しますか？ 使えばもう戻りません。</p>
         <div className="ft-hack-controls">
           <div className="ft-hack-row" style={{ marginBottom: 8, opacity: 0.85, fontSize: 12 }}>
@@ -4177,7 +4193,7 @@ function ActionPanel(props) {
         })() : null}
         {multiHuman ? (
           <div style={{ fontSize: 12, marginBottom: 10, color: "var(--ft-amber)" }}>
-            {human.name} のCOIN（{inputHumanIdx + 1}/{humanInputTotal}）
+            {human.name} の市場HACK（{inputHumanIdx + 1}/{humanInputTotal}）
           </div>
         ) : null}
         {isOnline ? (
@@ -4626,6 +4642,25 @@ const CSS = `
   margin-bottom: 8px;
 }
 .ft-count-options { display: flex; gap: 8px; flex-wrap: wrap; }
+.ft-count-options-players {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  width: 100%;
+}
+.ft-count-options-players .ft-count-btn {
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  flex: none;
+  box-sizing: border-box;
+  padding: 14px 10px;
+}
+.ft-count-options-players .ft-count-num { font-size: 20px; }
+.ft-count-options-players .ft-count-turns { font-size: 11px; margin-top: 4px; }
+@media (max-width: 520px) {
+  .ft-count-options-players { grid-template-columns: repeat(2, 1fr); }
+}
 .ft-count-options-players {
   display: grid !important;
   grid-template-columns: 1fr 1fr;
