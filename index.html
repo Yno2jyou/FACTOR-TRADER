@@ -292,9 +292,9 @@ function isPowerOfTwo(n) {
 
 // ---------- ゲーム設定 ----------
 // 人数別: TERN数 / COIN枚数（操作・妨害共用）
-const TURN_TABLE = { 2: 22, 3: 22, 6: 32, 9: 32, 12: 32, 15: 32 };
+const TURN_TABLE = { 2: 22, 3: 22, 5: 32, 9: 32 };
 
-const CARDS_TABLE = { 2: 30, 3: 30, 6: 40, 9: 40, 12: 50, 15: 50 };
+const CARDS_TABLE = { 2: 30, 3: 30, 5: 40, 9: 40 };
 /** SERIOUSはNORMALよりCOIN+10 */
 const SERIOUS_COIN_BONUS = 10;
 
@@ -365,12 +365,7 @@ function clampOrder(order, cash, holdings, priceBefore, turn, totalTurns) {
 }
 
 const STARTING_CASH = 10000;
-const AI_NAMES = [
-  "Albert Einstein", "Sir Isaac Newton", "Marie Curie", "Leonardo da Vinci",
-  "Nikola Tesla", "Charles Darwin", "Galileo Galilei", "Ada Lovelace",
-  "Alan Turing", "James Clerk Maxwell", "Rosalind Franklin", "Richard Feynman",
-  "Hypatia", "Archimedes", "Carl Friedrich Gauss", "Emmy Noether"
-];
+const AI_NAMES = ["Albert Einstein", "Sir Isaac Newton", "Marie Curie", "Leonardo da Vinci", "Nikola Tesla", "Charles Darwin", "Galileo Galilei", "Ada Lovelace"];
 
 function randBase() {
   return 10000 + Math.floor(Math.random() * 80000);
@@ -2744,7 +2739,7 @@ function FactorTrader() {
               <div className="ft-select-count" style={{ marginBottom: 12 }}>
                 <div className="ft-label">席数（不足分はCPU）</div>
                 <div className="ft-count-options ft-count-options-players">
-                  {[2, 3, 6, 9, 12, 15].map((n) => (
+                  {[2, 3, 5, 9].map((n) => (
                     <button key={n} className={"ft-count-btn" + (playerCount === n ? " active" : "")} onClick={() => setPlayerCount(n)}>
                       <div className="ft-count-num">{n}<span className="ft-count-people"> PEOPLE</span></div>
                       <div className="ft-count-turns">{TURN_TABLE[n]} TERN</div>
@@ -3102,7 +3097,7 @@ function SetupScreen({ playerCount, setPlayerCount, humanCount, setHumanCount, h
             <div className="ft-select-count" style={{ marginBottom: 8 }}>
               <div className="ft-label" style={{ opacity: 0.7 }}>席数（後からロビーでも変更可・不足はCPU）</div>
               <div className="ft-count-options ft-count-options-players">
-                {[2, 3, 6, 9, 12, 15].map((n) => (
+                {[2, 3, 5, 9].map((n) => (
                   <button key={n} className={"ft-count-btn" + (playerCount === n ? " active" : "")} onClick={() => setPlayerCount(n)}>
                     <div className="ft-count-num">{n}<span className="ft-count-people"> PEOPLE</span></div>
                     <div className="ft-count-turns">{TURN_TABLE[n]} TERN</div>
@@ -3110,20 +3105,14 @@ function SetupScreen({ playerCount, setPlayerCount, humanCount, setHumanCount, h
                 ))}
               </div>
             </div>
-            <div className="ft-label" style={{ marginTop: 4 }}>難易度</div>
-            <div className="ft-count-options" style={{ marginBottom: 8 }}>
+            <div className="ft-count-options" style={{ marginBottom: 10 }}>
               <button className={"ft-count-btn" + (!seriousMode ? " active" : "")} onClick={() => setSeriousMode(false)}>
                 <div className="ft-count-num">NORMAL</div>
-                <div className="ft-count-turns">COIN {baseCoins}</div>
               </button>
               <button className={"ft-count-btn" + (seriousMode ? " active" : "")} onClick={() => setSeriousMode(true)}>
                 <div className="ft-count-num">SERIOUS</div>
-                <div className="ft-count-turns">COIN {baseCoins + SERIOUS_COIN_BONUS}</div>
               </button>
             </div>
-            <p style={{ fontSize: 11, opacity: 0.75, marginBottom: 12, lineHeight: 1.6 }}>
-              SERIOUSはCOINがNORMALプレイより10枚多いです。
-            </p>
             <button className="ft-start-btn" onClick={onCreateRoom}>部屋を作成 ▶</button>
             <div style={{ margin: "18px 0 8px", textAlign: "center", opacity: 0.5, fontSize: 12 }}>または</div>
             <div className="ft-label">部屋に参加（ゲスト）</div>
@@ -3166,7 +3155,7 @@ function SetupScreen({ playerCount, setPlayerCount, humanCount, setHumanCount, h
         <div className="ft-select-count">
           <div className="ft-label">対戦人数を選択</div>
           <div className="ft-count-options ft-count-options-players">
-            {[2, 3, 6, 9, 12, 15].map((n) => (
+            {[2, 3, 5, 9].map((n) => (
               <button
                 key={n}
                 className={"ft-count-btn" + (playerCount === n ? " active" : "")}
@@ -4637,25 +4626,6 @@ const CSS = `
   margin-bottom: 8px;
 }
 .ft-count-options { display: flex; gap: 8px; flex-wrap: wrap; }
-.ft-count-options-players {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
-  width: 100%;
-}
-.ft-count-options-players .ft-count-btn {
-  width: 100%;
-  min-width: 0;
-  max-width: none;
-  flex: none;
-  box-sizing: border-box;
-  padding: 14px 10px;
-}
-.ft-count-options-players .ft-count-num { font-size: 20px; }
-.ft-count-options-players .ft-count-turns { font-size: 11px; margin-top: 4px; }
-@media (max-width: 520px) {
-  .ft-count-options-players { grid-template-columns: repeat(2, 1fr); }
-}
 .ft-count-options-players {
   display: grid !important;
   grid-template-columns: 1fr 1fr;
