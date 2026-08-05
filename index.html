@@ -1122,6 +1122,34 @@ function aiDecideCards(cards, turn, totalTurns, order, nStart, priceBefore, allO
   if (useDefense && useReflect) useReflect = 0; // 同時不可・防衛優先はsettle側でも処理
   if (turn <= 3) { useDefense = 0; useReflect = 0; }
 
+  // 妨害使用時の反射対策: 反射されて戻ってきた被妨害で破産が確定するなら防衛を併用
+  // （反射は自分の妨害の跳ね返りを防げない。防衛なら跳ね返りも無効化できる）
+  if (bestHeavy > 0 && turn > 3 && selfAction === "buy" && selfShares >= 1) {
+    const selfPlRef = (playersList || []).find((pl) => pl && String(pl.id) === String(selfId));
+    const cashR = selfPlRef ? (selfPlRef.cash || 0) : 0;
+    const holdR = selfPlRef ? (selfPlRef.holdings || 0) : 0;
+    const priceIfBounced = personalExecPrice(nStart, bestQuick, 1, "buy");
+    const reqB = selfShares * priceIfBounced;
+    const liqB = cashR + holdR * priceIfBounced;
+    const bankruptIfReflected = reqB > liqB + 1e-9;
+    if (bankruptIfReflected) {
+      const spentQH = bestQuick + 5;
+      const handAfterQH = Math.max(0, stock - spentQH);
+      // 帳消し不可、または帳消しより防衛の方が安い・確実
+      const cannotBail = handAfterQH < 10;
+      const canAffordDef = handAfterQH >= 5;
+      if (canAffordDef && (cannotBail || Math.random() < 0.92)) {
+        useDefense = 1;
+        useReflect = 0;
+      }
+    }
+  }
+  // 防衛併用で予算超過なら操作を削る（妨害は維持）
+  if (useDefense && bestQuick + (bestHeavy > 0 ? 5 : 0) + 5 > stock) {
+    const room = Math.max(0, stock - (bestHeavy > 0 ? 5 : 0) - 5);
+    bestQuick = Math.min(bestQuick, room);
+  }
+
   let avant = 0;
   let avantSab = 0;
   let avantPrice = 1000;
