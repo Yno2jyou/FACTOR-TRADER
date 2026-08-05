@@ -3908,10 +3908,12 @@ function PlayersPanel({ players, orders, phase, currentPrice, revealData, equipp
           return (
           <div key={p.id} className={"ft-player-card" + (p.isAI ? " ai" : " human") + glow + (p.isBankrupt ? " bankrupt" : "")}>
             <span className="ft-pc-rank">{rankMap[p.id]}位</span>
-            <div className="ft-pc-name">{p.isAI ? <Cpu size={13} /> : <User size={13} />} {p.name}</div>
-            {!p.isAI && equippedTitleName && (p.id === myPlayerId || (!myPlayerId && String(p.id) === "human-0") || (!myPlayerId && !p.isRemote)) ? (
-              <div className="ft-pc-title">{equippedTitleName}</div>
-            ) : null}
+            <div className="ft-pc-name">
+              {p.isAI ? <Cpu size={13} /> : <User size={13} />} {p.name}
+              {!p.isAI && equippedTitleName && (p.id === myPlayerId || (!myPlayerId && String(p.id) === "human-0") || (!myPlayerId && !p.isRemote)) ? (
+                <span className="ft-pc-title">{equippedTitleName}</span>
+              ) : null}
+            </div>
             <div className="ft-pc-cash">{p.isBankrupt ? "破産" : yen(totalValue(p, currentPrice))}</div>
             <div className="ft-pc-holdings">現金{yen(p.cash)} ／ {sharesFmt(p.holdings)}株{p.holdings > 0 ? `(@${p.avgPrice.toFixed(1)})` : ""}</div>
             <div className="ft-pc-cards"><Coin size={12} className="icon-coin" /> {p.cards.stock != null ? p.cards.stock : 0}</div>
@@ -5722,43 +5724,40 @@ const CSS = `
   line-height: 1.65;
 }
 
-.ft-pc-name { display: flex; align-items: center; gap: 5px; color: var(--ft-text-dim); margin-bottom: 2px; }
-.ft-pc-title {
-  display: block;
-  width: 100%;
-  max-width: 100%;
-  box-sizing: border-box;
-  position: relative;
-  font-size: 10px;
-  font-weight: 700;
-  color: #e8e4d4;
-  letter-spacing: 0.08em;
-  margin: 3px 0 6px;
-  padding: 4px 14px;
-  font-family: var(--ft-font-display);
-  line-height: 1.35;
-  text-align: center;
-  border-radius: 2px;
-  background: linear-gradient(180deg, #1a1c16 0%, #0e100c 55%, #12140f 100%);
-  border: 1.5px solid rgba(180, 190, 140, 0.55);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 220, 0.08),
-    inset 0 0 12px rgba(80, 120, 40, 0.12),
-    0 1px 3px rgba(0, 0, 0, 0.45);
-  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.65);
+.ft-pc-name {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px 6px;
+  color: var(--ft-text-dim);
+  margin-bottom: 4px;
 }
-/* 四隅の点（枠の内側ギリギリ） */
+.ft-pc-title {
+  display: inline;
+  position: static;
+  font-size: 10px;
+  font-weight: 600;
+  font-style: italic;
+  color: #d4b56a;
+  letter-spacing: 0.04em;
+  margin: 0;
+  padding: 0;
+  font-family: "Palatino Linotype", Palatino, "Book Antiqua", "Hiragino Mincho ProN", "Yu Mincho", "MS PMincho", serif;
+  line-height: 1.2;
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  text-shadow: 0 0 10px rgba(212, 181, 106, 0.25);
+  white-space: nowrap;
+}
 .ft-pc-title::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  border-radius: inherit;
-  background:
-    radial-gradient(circle, #c5c9a8 0 1.15px, transparent 1.35px) 1.5px 1.5px / 2.5px 2.5px no-repeat,
-    radial-gradient(circle, #c5c9a8 0 1.15px, transparent 1.35px) calc(100% - 4px) 1.5px / 2.5px 2.5px no-repeat,
-    radial-gradient(circle, #c5c9a8 0 1.15px, transparent 1.35px) 1.5px calc(100% - 4px) / 2.5px 2.5px no-repeat,
-    radial-gradient(circle, #c5c9a8 0 1.15px, transparent 1.35px) calc(100% - 4px) calc(100% - 4px) / 2.5px 2.5px no-repeat;
+  content: none;
+  display: none;
+}
+.ft-rank-name .ft-pc-title {
+  margin-left: 6px;
 }
 .ft-pc-rank {
   position: absolute;
