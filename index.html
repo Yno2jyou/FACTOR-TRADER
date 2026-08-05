@@ -1128,10 +1128,12 @@ function aiDecideCards(cards, turn, totalTurns, order, nStart, priceBefore, allO
   const selfPl = (playersList || []).find((pl) => pl && String(pl.id) === String(selfId));
   const stockLeft = stock - bestQuick - (bestHeavy > 0 ? 5 : 0) - (useDefense ? 5 : 0) - (useReflect ? 5 : 0);
   // 奥義は大口取引向け。小口では控える。10万株以上の売買で積極使用。
+  // CPUは進行度40%〜100%（中盤〜後半）でのみ使用。
   const AVANT_BIG = 100000;
   if (
     selfPl && !selfPl.avantUsed && !selfPl.isBankrupt &&
-    stockLeft >= 10
+    stockLeft >= 10 &&
+    progress >= 0.4
   ) {
     // --- 奥義（妨害）: 最初の3TERN不可。中盤以降、他者の大口売買で損失が大きくなるときに積極使用 ---
     let sabChance = 0;
@@ -2292,6 +2294,36 @@ function FactorTrader() {
       });
     }
 
+    // CPU同士の奥義重複回避（人間との重複は許容し、下の一般解決に任せる）
+    {
+      const aiAvantOp = rescuedPlayers.filter((p) => p.isAI && !p.isBankrupt && newHacks[p.id] && newHacks[p.id].avant);
+      if (aiAvantOp.length > 1) {
+        for (let i = aiAvantOp.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          const tmp = aiAvantOp[i]; aiAvantOp[i] = aiAvantOp[j]; aiAvantOp[j] = tmp;
+        }
+        const keepId = aiAvantOp[0].id;
+        aiAvantOp.forEach((p) => {
+          if (p.id === keepId) return;
+          const hk = newHacks[p.id];
+          newHacks[p.id] = { ...hk, avant: 0, avantPrice: hk.avantSab ? hk.avantPrice : 0 };
+        });
+      }
+      const aiAvantSab = rescuedPlayers.filter((p) => p.isAI && !p.isBankrupt && newHacks[p.id] && newHacks[p.id].avantSab);
+      if (aiAvantSab.length > 1) {
+        for (let i = aiAvantSab.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          const tmp = aiAvantSab[i]; aiAvantSab[i] = aiAvantSab[j]; aiAvantSab[j] = tmp;
+        }
+        const keepId = aiAvantSab[0].id;
+        aiAvantSab.forEach((p) => {
+          if (p.id === keepId) return;
+          const hk = newHacks[p.id];
+          newHacks[p.id] = { ...hk, avantSab: 0, avantPrice: hk.avant ? hk.avantPrice : 0 };
+        });
+      }
+    }
+
     // 奥義AVANT-GARDE重複解決（操作・妨害それぞれ）
     {
       // 同一プレイヤーが両方立てていたら操作のみ残す
@@ -2640,6 +2672,35 @@ function FactorTrader() {
           if (!keep.has(p.id)) hks[p.id] = { quick: hks[p.id].quick || 0, heavy: 0, defense: hks[p.id].defense || 0 };
         });
       }
+      // CPU同士の奥義重複回避
+      {
+        const aiOp = pls.filter((p) => p.isAI && !p.isBankrupt && hks[p.id] && hks[p.id].avant);
+        if (aiOp.length > 1) {
+          for (let i = aiOp.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            const tmp = aiOp[i]; aiOp[i] = aiOp[j]; aiOp[j] = tmp;
+          }
+          const keepId = aiOp[0].id;
+          aiOp.forEach((p) => {
+            if (p.id === keepId) return;
+            const hk = hks[p.id];
+            hks[p.id] = { ...hk, avant: 0, avantPrice: hk.avantSab ? hk.avantPrice : 0 };
+          });
+        }
+        const aiSab = pls.filter((p) => p.isAI && !p.isBankrupt && hks[p.id] && hks[p.id].avantSab);
+        if (aiSab.length > 1) {
+          for (let i = aiSab.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            const tmp = aiSab[i]; aiSab[i] = aiSab[j]; aiSab[j] = tmp;
+          }
+          const keepId = aiSab[0].id;
+          aiSab.forEach((p) => {
+            if (p.id === keepId) return;
+            const hk = hks[p.id];
+            hks[p.id] = { ...hk, avantSab: 0, avantPrice: hk.avant ? hk.avantPrice : 0 };
+          });
+        }
+      }
       const settled = settleTurn(pls, ords, hks, ns, pb);
       pls = settled.updated;
       const fid = (primaryHuman(pls) || humanPlayersOf(pls)[0] || pls[0] || {}).id;
@@ -2955,22 +3016,30 @@ function RulesContent() {
       </div>
 
       <div className="ft-rules-section">
+        <div className="ft-rules-h" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <Coin size={14} className="icon-coin" /> COIN
+        </div>
+        <p className="ft-rules-p" style={{ marginBottom: 0 }}>
+          COINはゲーム開始時に人数・モードに応じて配布される通貨で、使用することにより、市場ハック・買いの帳消しを行うことができます。COINは使い切ったら、補充以外では増えません。補充はCOINが5枚以下のとき総資産50%で+5枚追加可能で、0枚のときには総資産75%で+10枚追加可能です。なお市場HACK時・ラスト5TERNは補充できません。
+        </p>
+      </div>
+
+      <div className="ft-rules-section">
         <div className="ft-rules-h">市場HACK</div>
-        <p className="ft-rules-note">COINが5枚以下のとき総資産50%で+5枚、0枚のとき総資産75%で+10枚を選択可（市場HACK時・ラスト5TERNは不可）。</p>
         <div className="ft-card-types">
           <div className="ft-card-type op">
             <div className="ft-card-type-title"><Zap size={14} className="icon-quick" /> 操作</div>
             <ul>
-              <li><Coin size={12} className="icon-coin" style={{marginRight:4, verticalAlign:"-2px"}} />COIN1枚〜</li>
+              <li>COIN1枚〜</li>
               <li>自分の株価を操作</li>
-              <li><Coin size={12} className="icon-coin" style={{marginRight:4, verticalAlign:"-2px"}} />COIN1枚=N+1</li>
+              <li>COIN1枚=N+1</li>
               <li>被妨害時、効果無効</li>
             </ul>
           </div>
           <div className="ft-card-type sab">
             <div className="ft-card-type-title"><Bomb size={14} className="icon-heavy" /> 妨害</div>
             <ul>
-              <li><Coin size={12} className="icon-coin" style={{marginRight:4, verticalAlign:"-2px"}} />COIN5枚</li>
+              <li>COIN5枚</li>
               <li>自分以外の株価を妨害（N+1）</li>
               <li>自分には無効</li>
               <li>重複あり</li>
@@ -2980,7 +3049,7 @@ function RulesContent() {
           <div className="ft-card-type def">
             <div className="ft-card-type-title"><Shield size={14} className="icon-defense" /> 防衛</div>
             <ul>
-              <li><Coin size={12} className="icon-coin" style={{marginRight:4, verticalAlign:"-2px"}} />COIN5枚</li>
+              <li>COIN5枚</li>
               <li>相手からの妨害を無効化</li>
               <li>相手からの反射を無効化</li>
               <li>AVANT-GARDE-妨害も無効化</li>
@@ -2990,7 +3059,7 @@ function RulesContent() {
           <div className="ft-card-type reflect">
             <div className="ft-card-type-title"><Reflect size={14} className="icon-reflect" /> 反射</div>
             <ul>
-              <li><Coin size={12} className="icon-coin" style={{marginRight:4, verticalAlign:"-2px"}} />COIN5枚</li>
+              <li>COIN5枚</li>
               <li>相手からの妨害の効果を反射</li>
               <li>最初の3TERNは使用不可</li>
             </ul>
@@ -2998,7 +3067,7 @@ function RulesContent() {
           <div className="ft-card-type avant">
             <div className="ft-card-type-title"><Heptagram size={14} className="icon-avant" /> 奥義：AVANT-GARDE-操作</div>
             <ul>
-              <li><Coin size={12} className="icon-coin" style={{marginRight:4, verticalAlign:"-2px"}} />COIN10枚・一度限り</li>
+              <li>COIN10枚・一度限り</li>
               <li>自分の株価を1〜99999円で指定</li>
               <li>操作の上位互換</li>
               <li>相手からの妨害無効</li>
@@ -3008,7 +3077,7 @@ function RulesContent() {
           <div className="ft-card-type avant">
             <div className="ft-card-type-title"><Heptagram size={14} className="icon-avant" /> 奥義：AVANT-GARDE-妨害</div>
             <ul>
-              <li><Coin size={12} className="icon-coin" style={{marginRight:4, verticalAlign:"-2px"}} />COIN10枚・一度限り</li>
+              <li>COIN10枚・一度限り</li>
               <li>自分以外の株価を1〜99999円で指定</li>
               <li>妨害の上位互換</li>
               <li>相手の防衛で無効化される</li>
@@ -3395,7 +3464,7 @@ function PlayersPanel({ players, orders, phase, currentPrice, revealData }) {
       notes.push({
         cls: "note-defense",
         icon: "defense",
-        text: who + "が防衛を使用（COIN5枚）", icon: "coin"
+        text: who + "が防衛を使用（COIN5枚）"
           + (blocked > 0 ? " → 被妨害×" + blocked + " を無効化" : "")
           + (sabBlock ? " → AVANT-GARDE-妨害を無効化" : ""),
       });
@@ -3816,7 +3885,7 @@ function ActionPanel(props) {
         <p className="ft-action-desc">生涯COINを投入しますか？ 使えばもう戻りません。</p>
         <div className="ft-hack-controls">
           <div className="ft-hack-row" style={{ marginBottom: 8, opacity: 0.85, fontSize: 12 }}>
-            <Coin size={13} className="icon-coin" style={{marginRight:4, verticalAlign:"-2px"}} />COIN 残り <b>{human.cards.stock != null ? human.cards.stock : 0}</b> 枚
+            COIN 残り <b>{human.cards.stock != null ? human.cards.stock : 0}</b> 枚
             （使用: {(humanHackDraft.quick || 0) + ((humanHackDraft.heavy || 0) > 0 ? 5 : 0) + (humanHackDraft.defense ? 5 : 0) + (humanHackDraft.reflect ? 5 : 0) + ((humanHackDraft.avant || humanHackDraft.avantSab) ? 10 : 0)} 枚）
           </div>
           {!isLastFiveTurns(turn, totalTurns) && (human.cards.stock != null ? human.cards.stock : 0) <= 5 ? (
@@ -4117,7 +4186,7 @@ function ActionPanel(props) {
                   return (
                     <span style={{ display: "block" }}>
                       <b style={{ color: "var(--ft-purple)" }}>奥義：AVANT-GARDE-操作</b>
-                      <span style={{ opacity: 0.85 }}>（<Coin size={12} className="icon-coin" style={{marginRight:3, verticalAlign:"-2px"}} />COIN10枚・一度限り／自分の株価のみ／被妨害無効）</span>
+                      <span style={{ opacity: 0.85 }}>（COIN10枚・一度限り／自分の株価のみ／被妨害無効）</span>
                       <br />
                       指定する自分の株価 <b style={{ color: "var(--ft-purple)" }}>{ap.toLocaleString()}円</b>
                       <br />
@@ -4141,7 +4210,7 @@ function ActionPanel(props) {
                   return (
                     <span style={{ display: "block" }}>
                       <b style={{ color: "var(--ft-purple)" }}>奥義：AVANT-GARDE-妨害</b>
-                      <span style={{ opacity: 0.85 }}>（<Coin size={12} className="icon-coin" style={{marginRight:3, verticalAlign:"-2px"}} />COIN10枚・一度限り／自分以外の株価指定）</span>
+                      <span style={{ opacity: 0.85 }}>（COIN10枚・一度限り／自分以外の株価指定）</span>
                       <br />
                       自分以外の株価を <b style={{ color: "var(--ft-purple)" }}>{ap.toLocaleString()}円</b> に強制（1〜99999円）
                       <br />
@@ -4172,13 +4241,13 @@ function ActionPanel(props) {
                 {!humanHackDraft.avant && !humanHackDraft.avantSab && humanHackDraft.defense ? (
                   <span style={{ display: "block" }}>
                     <b style={{ color: "var(--ft-amber)" }}>防衛</b>：相手からの妨害・反射・AVANT-GARDE-妨害を無効化<br />
-                    <Coin size={12} className="icon-coin" style={{marginRight:4, verticalAlign:"-2px"}} />COIN5枚
+                    COIN5枚
                   </span>
                 ) : null}
                 {!humanHackDraft.avant && !humanHackDraft.avantSab && humanHackDraft.reflect ? (
                   <span style={{ display: "block" }}>
                     <b style={{ color: "var(--ft-text)" }}>反射</b>：妨害の効果を相手に反射<br />
-                    <Coin size={12} className="icon-coin" style={{marginRight:4, verticalAlign:"-2px"}} />COIN5枚
+                    COIN5枚
                   </span>
                 ) : null}
               </p>
