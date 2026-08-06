@@ -348,7 +348,7 @@ const SERIOUS_COIN_BONUS = 10;
 /* ========== 称号システム（LOCAL取得 / localStorage永続） ========== */
 const FT_TITLE_KEY = "factor_trader_titles_v1";
 const TITLE_RANK_COLORS = {
-  ash: "#9ca3af",
+  ash: "#5a5f66",
   copper: "#c2783b",
   silver: "#d1d5db",
   gold: "#eab308",
@@ -6915,7 +6915,8 @@ const CSS = `
 .ft-title-popover {
   position: absolute;
   left: 50%;
-  bottom: calc(100% + 8px);
+  top: calc(100% + 8px);
+  bottom: auto;
   transform: translateX(-50%);
   z-index: 1200;
   min-width: 160px;
@@ -6936,10 +6937,12 @@ const CSS = `
   content: "";
   position: absolute;
   left: 50%;
-  top: 100%;
+  bottom: 100%;
+  top: auto;
   transform: translateX(-50%);
   border: 6px solid transparent;
-  border-top-color: #0c121a;
+  border-bottom-color: #0c121a;
+  border-top-color: transparent;
 }
 .ft-title-popover-name {
   font-size: 13px;
