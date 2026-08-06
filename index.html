@@ -4029,6 +4029,7 @@ function SetupScreen({ playerCount, setPlayerCount, humanCount, setHumanCount, h
     });
   }
   const aiIq = getAiIqInfo();
+  const [showSetupRulesFS, setShowSetupRulesFS] = React.useState(false);
   return (
     <div className="ft-setup">
       <div className="ft-setup-card">
@@ -4061,9 +4062,14 @@ function SetupScreen({ playerCount, setPlayerCount, humanCount, setHumanCount, h
           <div className="ft-setup-rules-col">
             <div className="ft-setup-formula">
               <span className="ft-setup-formula-main">株価 = Nの素因数和</span>
-              <span className="ft-chip up">素数→高い</span>
-              <span className="ft-chip down">2の累乗→安い</span>
+              <span className="ft-setup-formula-chips">
+                <span className="ft-chip up">素数→高い</span>
+                <span className="ft-chip down">2の累乗→安い</span>
+              </span>
             </div>
+            <button type="button" className="ft-rules-btn ft-setup-mobile-rules-btn" onClick={() => setShowSetupRulesFS(true)}>
+              ルール
+            </button>
             <div className="ft-setup-rules-wrap">
               <RulesContent />
             </div>
@@ -4213,6 +4219,20 @@ function SetupScreen({ playerCount, setPlayerCount, humanCount, setHumanCount, h
         </div>
         </div>
       </div>
+
+      {showSetupRulesFS ? (
+        <div className="ft-setup-rules-fs" onClick={() => setShowSetupRulesFS(false)} role="dialog" aria-modal="true">
+          <div className="ft-setup-rules-fs-inner" onClick={(e) => e.stopPropagation()}>
+            <div className="ft-setup-rules-fs-head">
+              <div className="ft-modal-title" style={{ margin: 0, fontSize: 16 }}>ルール & ゲームの流れ</div>
+              <button type="button" className="ft-setup-rules-fs-close" onClick={() => setShowSetupRulesFS(false)}>閉じる</button>
+            </div>
+            <div className="ft-setup-rules-fs-body">
+              <RulesContent />
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -5954,6 +5974,7 @@ const CSS = `
   background: rgba(0,0,0,0.18);
   padding: 10px 12px;
 }
+/* PC・ONLINE時のみ: 右カラムの高さに合わせてルール枠を伸ばす（中身はスクロール） */
 .ft-setup-body.is-online {
   align-items: stretch;
 }
@@ -5961,12 +5982,13 @@ const CSS = `
   display: flex;
   flex-direction: column;
   min-height: 0;
+  align-self: stretch;
 }
 .ft-setup-body.is-online .ft-setup-rules-wrap {
-  flex: 1;
+  flex: 1 1 auto;
   max-height: none;
-  min-height: 520px;
-  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
 }
 .ft-setup-rules-wrap .ft-rules-section {
   margin-bottom: 12px;
@@ -5986,12 +6008,48 @@ const CSS = `
 .ft-setup-controls > .ft-rules-btn {
   width: 100%;
 }
+.ft-setup-formula-chips {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+/* モバイル用ルールボタンはPCでは非表示 */
+.ft-setup-mobile-rules-btn {
+  display: none;
+}
+.ft-setup-rules-fs {
+  display: none;
+}
+
 @media (max-width: 860px) {
   .ft-setup-body {
     grid-template-columns: 1fr;
   }
-  .ft-setup-rules-wrap {
-    max-height: min(40vh, 360px);
+  .ft-setup-body.is-online {
+    align-items: start;
+  }
+  .ft-setup-body.is-online .ft-setup-rules-col {
+    display: block;
+  }
+  /* モバイル: インラインルールは隠し、株価説明の下に称号一覧サイズのルールボタン */
+  .ft-setup-mobile-rules-btn {
+    display: block;
+    width: 100%;
+    margin: 8px 0 0;
+    padding: 10px 12px;
+    text-align: center;
+  }
+  .ft-setup-formula {
+    flex-wrap: wrap;
+  }
+  .ft-setup-formula-chips {
+    flex-wrap: nowrap;
+  }
+  .ft-setup-rules-wrap,
+  .ft-setup-body.is-online .ft-setup-rules-wrap {
+    display: none;
   }
   .ft-setup-card {
     max-width: 640px;
@@ -6002,6 +6060,52 @@ const CSS = `
   }
   .ft-ai-iq-panel {
     flex: 1 1 100%;
+  }
+  .ft-setup-rules-fs {
+    display: flex;
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: rgba(0, 0, 0, 0.72);
+    padding: 0;
+    align-items: stretch;
+    justify-content: stretch;
+  }
+  .ft-setup-rules-fs-inner {
+    width: 100%;
+    height: 100%;
+    max-width: none;
+    background: var(--ft-panel, #0a1018);
+    display: flex;
+    flex-direction: column;
+    border: none;
+    border-radius: 0;
+  }
+  .ft-setup-rules-fs-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--ft-border);
+    flex-shrink: 0;
+  }
+  .ft-setup-rules-fs-close {
+    flex-shrink: 0;
+    padding: 6px 12px;
+    font-size: 12px;
+    line-height: 1.2;
+    border-radius: 3px;
+    border: 1px solid var(--ft-border);
+    background: var(--ft-panel-alt, #121a24);
+    color: var(--ft-text);
+    cursor: pointer;
+  }
+  .ft-setup-rules-fs-body {
+    flex: 1;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 14px 16px 28px;
   }
 }
 
