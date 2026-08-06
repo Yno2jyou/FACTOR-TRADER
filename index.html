@@ -1109,6 +1109,7 @@ function mergeAiLearn(a, b) {
   out.games = Math.max(Number(A.games) || 0, Number(B.games) || 0);
   out.aiBeatsHuman = Math.max(Number(A.aiBeatsHuman) || 0, Number(B.aiBeatsHuman) || 0);
   out.humanBeatsAi = Math.max(Number(A.humanBeatsAi) || 0, Number(B.humanBeatsAi) || 0);
+  out.iq = clampAiIq(Math.max(Number(A.iq) || 80, Number(B.iq) || 80));
   const ws = out.w || (out.w = {});
   const wo = other.w || {};
   Object.keys({ ...ws, ...wo }).forEach((k) => {
@@ -1531,10 +1532,40 @@ function persistLoggedInProgress() {
 
 /* ========== CPU学習（localStorage永続・対局を重ねるほど強化） ========== */
 const FT_AI_LEARN_KEY = "factor_trader_ai_learn_v1";
+/** ONLINE対戦のCPUは常に Hard 相当（表示・学習には出さない） */
+const FT_ONLINE_AI_IQ = 137;
+let FT_AI_FORCE_HARD = false;
+function setAiForceHard(v) {
+  FT_AI_FORCE_HARD = !!v;
+}
+
+const AI_IQ_RANK_DEFS = [
+  { min: 160, id: "extreme", name: "Extreme" },
+  { min: 145, id: "expert", name: "Expert" },
+  { min: 130, id: "hard", name: "Hard" },
+  { min: 115, id: "moderate", name: "Moderate" },
+  { min: 100, id: "easy", name: "Easy" },
+  { min: 80, id: "trivial", name: "Trivial" },
+];
+function clampAiIq(n) {
+  return Math.round(Math.max(80, Math.min(180, Number(n) || 80)));
+}
+function iqToSkill(iq) {
+  // 80→0.18 / 137(Hard)→約0.57 / 180→1.0
+  return Math.min(1, Math.max(0.15, (clampAiIq(iq) - 80) / 100));
+}
+function rankFromIq(iq) {
+  const v = clampAiIq(iq);
+  for (let i = 0; i < AI_IQ_RANK_DEFS.length; i++) {
+    if (v >= AI_IQ_RANK_DEFS[i].min) return AI_IQ_RANK_DEFS[i];
+  }
+  return AI_IQ_RANK_DEFS[AI_IQ_RANK_DEFS.length - 1];
+}
 
 function defaultAiLearn() {
   return {
     games: 0,
+    iq: 80,
     aiBeatsHuman: 0,
     humanBeatsAi: 0,
     w: {
@@ -1576,6 +1607,23 @@ function loadAiLearn() {
       d.games = Math.max(0, Number(o.games) || 0);
       d.aiBeatsHuman = Math.max(0, Number(o.aiBeatsHuman) || 0);
       d.humanBeatsAi = Math.max(0, Number(o.humanBeatsAi) || 0);
+      // 旧セーブに iq が無い場合は勝敗・対局から推定
+      if (o.iq != null && !isNaN(Number(o.iq))) {
+        d.iq = clampAiIq(o.iq);
+      } else {
+        const g = d.games;
+        const totalMatch = Math.max(0, d.aiBeatsHuman + d.humanBeatsAi);
+        let est = 80;
+        if (g > 0) {
+          est = 80 + Math.min(40, g * 1.2);
+          if (totalMatch > 0) {
+            // 人間優勢が多いほどIQ高め（CPUが強くなる）
+            const humRate = d.humanBeatsAi / totalMatch;
+            est += humRate * 35 - (1 - humRate) * 15;
+          }
+        }
+        d.iq = clampAiIq(est);
+      }
       if (o.w && typeof o.w === "object") {
         Object.keys(d.w).forEach((k) => {
           if (o.w[k] != null) d.w[k] = Math.max(0.05, Math.min(0.98, Number(o.w[k]) || d.w[k]));
@@ -1614,47 +1662,37 @@ function saveAiLearn(data) {
   } catch (e) {}
 }
 
-/** skill: 0.2〜1.0 対局数に応じて学習の効きとノイズ低減 */
+/** skill: IQに連動（人間が勝つほどCPUが強くなり、負けると弱くなる） */
 function getAiBrain() {
+  if (FT_AI_FORCE_HARD) {
+    const data = loadAiLearn();
+    const iq = FT_ONLINE_AI_IQ;
+    const skill = iqToSkill(iq);
+    return { data, skill, w: data.w, human: data.human, s: data.s, iq, fixed: true };
+  }
   const data = loadAiLearn();
-  const g = Math.max(0, data.games || 0);
-  const skill = Math.min(1, 0.2 + g / 40);
-  return { data, skill, w: data.w, human: data.human, s: data.s };
+  const iq = clampAiIq(data.iq != null ? data.iq : 80);
+  const skill = iqToSkill(iq);
+  return { data, skill, w: data.w, human: data.human, s: data.s, iq, fixed: false };
 }
 
-/** CPU知能指数（対局学習の可視化） 対局0回=80、対局を重ねるほど上昇（最大180） */
+/** CPU知能指数（LOCAL）人間の勝敗で上下。ONLINEは内部Hard固定 */
 function getAiIqInfo() {
-  const brain = getAiBrain();
-  const d = brain.data || defaultAiLearn();
+  const d = loadAiLearn();
   const g = Math.max(0, d.games || 0);
-  if (g <= 0) {
-    return {
-      iq: 80, rank: "見習い", games: 0, skill: 0.2, winRate: 0,
-      aiBeatsHuman: 0, humanBeatsAi: 0, pct: 0,
-    };
-  }
-  const skill = brain.skill || 0.2;
-  const totalMatch = Math.max(1, (d.aiBeatsHuman || 0) + (d.humanBeatsAi || 0));
-  const winRate = (d.aiBeatsHuman || 0) / totalMatch;
-  const w = d.w || {};
-  const weightBoost =
-    ((w.protect || 0.5) + (w.heavy || 0.5) + (w.stayTrap || 0.5) + (w.aggression || 0.5) + (w.primeBuy || 0.5)) / 5;
-  // 80起点 + 対局数・スキル・勝率・学習重み
-  let iq = 80
-    + Math.min(40, g * 1.4)
-    + skill * 30
-    + winRate * 18
-    + (weightBoost - 0.5) * 16;
-  iq = Math.round(Math.max(80, Math.min(180, iq)));
-  let rank = "見習い";
-  if (iq >= 160) rank = "超一流";
-  else if (iq >= 145) rank = "達人";
-  else if (iq >= 130) rank = "熟練";
-  else if (iq >= 115) rank = "一人前";
-  else if (iq >= 100) rank = "初級";
+  const iq = clampAiIq(d.iq != null ? d.iq : 80);
+  const rk = rankFromIq(iq);
+  const skill = iqToSkill(iq);
+  const totalMatch = Math.max(0, (d.aiBeatsHuman || 0) + (d.humanBeatsAi || 0));
+  const winRate = totalMatch > 0 ? (d.humanBeatsAi || 0) / totalMatch : 0;
   const pct = Math.round(((iq - 80) / (180 - 80)) * 100);
   return {
-    iq, rank, games: g, skill, winRate,
+    iq,
+    rank: rk.name,
+    rankId: rk.id,
+    games: g,
+    skill,
+    winRate,
     aiBeatsHuman: d.aiBeatsHuman || 0,
     humanBeatsAi: d.humanBeatsAi || 0,
     pct,
@@ -1733,35 +1771,57 @@ function recordAiTurnLearn(basePlayers, orders, hacks, execResults, nStart, pric
   } catch (e) {}
 }
 
-/** ゲーム終了時の学習（順位・勝敗で戦略を更新） */
+/** ゲーム終了時の学習（人間が勝てばIQ上昇・負ければ低下。プレイヤーに合わせた難度） */
 function recordAiGameLearn(ranked, price) {
   try {
     const d = loadAiLearn();
     d.games = (d.games || 0) + 1;
+    let iq = clampAiIq(d.iq != null ? d.iq : 80);
     const list = ranked || [];
-    const hum = list.find((p) => p && !p.isAI);
-    const ais = list.filter((p) => p && p.isAI && !p.isBankrupt);
-    if (hum && ais.length) {
+    // 人間プレイヤー全員について、最強CPUとの比較で勝敗を集計（一人一人に反映）
+    const humans = list.filter((p) => p && !p.isAI);
+    const ais = list.filter((p) => p && p.isAI);
+    const bestAiTV = ais.length
+      ? Math.max.apply(null, ais.map((p) => totalValue(p, price)))
+      : 0;
+    let anyHumanWin = false;
+    let anyHumanLose = false;
+    humans.forEach((hum) => {
       const humTV = totalValue(hum, price);
-      const bestAiTV = Math.max.apply(null, ais.map((p) => totalValue(p, price)));
-      if (bestAiTV > humTV) {
-        d.aiBeatsHuman = (d.aiBeatsHuman || 0) + 1;
-        d.w.aggression = clampW(d.w.aggression + 0.02);
-        d.w.heavy = clampW(d.w.heavy + 0.015);
-        d.w.stayTrap = clampW(d.w.stayTrap + 0.01);
-        d.w.noise = clampW(d.w.noise - 0.02);
-      } else {
+      if (!ais.length) return;
+      if (humTV >= bestAiTV) {
+        anyHumanWin = true;
         d.humanBeatsAi = (d.humanBeatsAi || 0) + 1;
-        d.w.protect = clampW(d.w.protect + 0.025);
-        d.w.stayTrap = clampW(d.w.stayTrap + 0.02);
-        d.w.heavy = clampW(d.w.heavy + (d.human.buyRate > 0.45 ? 0.02 : 0.005));
-        d.w.aggression = clampW(d.w.aggression - 0.01);
-        d.w.endgame = clampW(d.w.endgame + 0.015);
+      } else {
+        anyHumanLose = true;
+        d.aiBeatsHuman = (d.aiBeatsHuman || 0) + 1;
       }
+    });
+    if (anyHumanWin && !anyHumanLose) {
+      // 人間側がCPUを上回った → IQ上昇（次の対局でCPUが強くなる）
+      const delta = 5 + Math.floor(Math.random() * 5); // +5〜9
+      iq = clampAiIq(iq + delta);
+      d.w.protect = clampW(d.w.protect + 0.02);
+      d.w.stayTrap = clampW(d.w.stayTrap + 0.015);
+      d.w.heavy = clampW(d.w.heavy + (d.human.buyRate > 0.45 ? 0.02 : 0.008));
+      d.w.aggression = clampW(d.w.aggression - 0.008);
+      d.w.endgame = clampW(d.w.endgame + 0.012);
+      d.w.noise = clampW(d.w.noise - 0.015);
+    } else if (anyHumanLose && !anyHumanWin) {
+      // CPUが人間を上回った → IQ低下
+      const delta = 3 + Math.floor(Math.random() * 5); // -3〜7
+      iq = clampAiIq(iq - delta);
+      d.w.aggression = clampW(d.w.aggression + 0.01);
+      d.w.heavy = clampW(d.w.heavy + 0.008);
+      d.w.noise = clampW(d.w.noise + 0.01);
+    } else if (anyHumanWin && anyHumanLose) {
+      // 混在（複数人間）: わずかに上昇寄り
+      iq = clampAiIq(iq + 2);
+      d.w.noise = clampW(d.w.noise - 0.005);
     }
-    // 対局数に応じてノイズを下げ、学習済み重みを固定寄りに
-    if (d.games >= 10) d.w.noise = clampW(d.w.noise - 0.01);
-    if (d.games >= 30) d.w.noise = clampW(Math.min(d.w.noise, 0.28));
+    d.iq = iq;
+    if (d.games >= 10) d.w.noise = clampW(d.w.noise - 0.008);
+    if (d.games >= 30) d.w.noise = clampW(Math.min(d.w.noise, 0.32));
     saveAiLearn(d);
   } catch (e) {}
 }
@@ -3101,6 +3161,7 @@ function FactorTrader() {
   }
 
   function startGame() {
+    setAiForceHard(false);
     const t = TURN_TABLE[playerCount] || 22;
     // LOCAL は常に人間1人 vs CPU
     const hc = 1;
@@ -3241,6 +3302,7 @@ function FactorTrader() {
   }
 
   function startOnlineGame() {
+    setAiForceHard(true);
     if (onlineRole !== "host") return;
     const connectedGuests = Object.keys(connsRef.current).filter((k) => connsRef.current[k] && connsRef.current[k].open);
     const humanTotal = 1 + connectedGuests.length;
@@ -5018,12 +5080,12 @@ function SetupScreen({ playerCount, setPlayerCount, humanCount, setHumanCount, h
               } catch (e) {}
             }}
           />
-          <div className="ft-ai-iq-panel" title="LOCAL対戦を重ねるほどCPUが学習し、知能指数が上がります">
+          <div className="ft-ai-iq-panel" title="LOCAL: 人間が勝つとIQ上昇（CPU強化）、負けると低下。アカウントごとに記録">
             <div className="ft-ai-iq-label">CPU 知能指数</div>
             <div className="ft-ai-iq-value">
               <span className="ft-ai-iq-iq">IQ</span>
               <b>{aiIq.iq}</b>
-              <span className="ft-ai-iq-rank">{aiIq.rank}</span>
+              <span className={"ft-ai-iq-rank is-" + (aiIq.rankId || "trivial")}>{aiIq.rank}</span>
             </div>
             <div className="ft-title-progress-bar ft-ai-iq-bar">
               <div className="ft-title-progress-fill" style={{ width: aiIq.pct + "%" }} />
@@ -5031,8 +5093,8 @@ function SetupScreen({ playerCount, setPlayerCount, humanCount, setHumanCount, h
             <div className="ft-ai-iq-meta">
               対局 {aiIq.games}回
               {aiIq.games > 0
-                ? " ／ CPU優勢 " + aiIq.aiBeatsHuman + "・人間優勢 " + aiIq.humanBeatsAi
-                : " ／ 未学習（対局で成長）"}
+                ? " ／ 人間勝利 " + aiIq.humanBeatsAi + "・CPU勝利 " + aiIq.aiBeatsHuman
+                : " ／ 未学習（勝敗で難度が変動）"}
             </div>
           </div>
           </div>
@@ -7192,10 +7254,34 @@ const CSS = `
   line-height: 1;
 }
 .ft-ai-iq-rank {
-  font-size: 10px;
-  color: var(--ft-amber);
+  font-size: 11px;
   font-weight: 700;
-  margin-left: 2px;
+  margin-left: 4px;
+  letter-spacing: 0.04em;
+}
+.ft-ai-iq-rank.is-trivial { color: #6b7280; }
+.ft-ai-iq-rank.is-easy { color: #c2783b; }
+.ft-ai-iq-rank.is-moderate { color: #d1d5db; text-shadow: 0 0 6px rgba(209,213,219,0.25); }
+.ft-ai-iq-rank.is-hard { color: #eab308; text-shadow: 0 0 8px rgba(234,179,8,0.35); }
+.ft-ai-iq-rank.is-expert {
+  background: linear-gradient(90deg, #f43f5e, #eab308, #34d399, #60a5fa, #c084fc);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent !important;
+  text-shadow: none;
+}
+.ft-ai-iq-rank.is-extreme {
+  background: linear-gradient(90deg, #f43f5e, #eab308, #34d399, #60a5fa, #c084fc, #f43f5e);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent !important;
+  animation: ft-iq-extreme-shift 3s linear infinite;
+  text-shadow: none;
+}
+@keyframes ft-iq-extreme-shift {
+  0% { background-position: 0% 50%; filter: hue-rotate(0deg); }
+  100% { background-position: 200% 50%; filter: hue-rotate(360deg); }
 }
 .ft-ai-iq-bar {
   margin: 6px 0 5px;
