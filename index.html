@@ -3858,10 +3858,19 @@ function RulesContent() {
         <div className="ft-rules-h">ゴール</div>
         <p className="ft-rules-lead">最終TERN終了時、総資産（現金＋株の評価額）が最も多い人が勝ち。</p>
         <p className="ft-rules-lead">自分以外のプレイヤーが全て破産した場合、その時点で勝ち。</p>
-        <p className="ft-rules-note">LOCAL: あなた1人 vs CPU。ONLINE: 部屋を作成して部屋コードを共有し、別端末から参加（PeerJS / WebRTC）。ホストが進行を管理し、空き席はCPUが埋めます。</p>
-        <p className="ft-rules-note">買い注文の代金を、現金＋全株売却でも支払えない場合は<strong>破産</strong>。ただしCOINが10枚以上あれば、10枚消費してその買いを帳消しにできます。</p>
-        <p className="ft-rules-note" style={{ marginTop: 10 }}>
-          <strong>終盤ルール（ラスト5TERN）</strong><br />
+      </div>
+
+      <div className="ft-rules-section">
+        <div className="ft-rules-h">MODE</div>
+        <p className="ft-rules-note" style={{ marginBottom: 0 }}>
+          <strong>LOCAL</strong>：あなた1人 vs CPU。<br />
+          <strong>ONLINE</strong>：部屋を作成して部屋コードを共有し、別端末から参加（PeerJS / WebRTC）。ホストが進行を管理し、空き席はCPUが埋めます。
+        </p>
+      </div>
+
+      <div className="ft-rules-section">
+        <div className="ft-rules-h">終盤ルール（ラスト5TERN）</div>
+        <p className="ft-rules-note" style={{ marginBottom: 0 }}>
           ・様子見禁止（必ず買いまたは売り）<br />
           ・売りは保有の50%以上、買いは買付余力の50%以上から自由に選択<br />
           ・突入時、生存者全員にCOIN10枚を配布<br />
@@ -3918,8 +3927,11 @@ function RulesContent() {
         <div className="ft-rules-h" style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <Coin size={14} className="icon-coin" /> COIN
         </div>
-        <p className="ft-rules-p" style={{ marginBottom: 0 }}>
-          COINはゲーム開始時に人数・モードに応じて配布される通貨で、使用することにより、市場ハック・買いの帳消しを行うことができます。COINは使い切ったら、補充以外では増えません。補充はCOINが5枚以下のとき総資産50%で+5枚追加可能で、0枚のときには総資産75%で+10枚追加可能です。なお市場HACK時・ラスト5TERNは補充できません。
+        <p className="ft-rules-p" style={{ marginBottom: 8 }}>
+          COINはゲーム開始時に人数・モードに応じて配布される通貨で、市場ハックに使用します。使い切ったら補充以外では増えません。補充はCOINが5枚以下のとき総資産50%で+5枚、0枚のとき総資産75%で+10枚可能です。なお市場HACK時・ラスト5TERNは補充できません。
+        </p>
+        <p className="ft-rules-note" style={{ marginBottom: 0 }}>
+          買い注文の代金を、現金＋全株売却でも支払えない場合は<strong>破産</strong>します。ただしCOINが10枚以上あれば、10枚消費してその買いを<strong>帳消し</strong>にできます。
         </p>
       </div>
 
@@ -4100,8 +4112,13 @@ function SetupScreen({ playerCount, setPlayerCount, humanCount, setHumanCount, h
               spellCheck={false}
               value={myName || ""}
               onChange={(e) => setMyName && setMyName(e.target.value)}
-              style={{ width: "100%", background: "var(--ft-panel-alt)", border: "1px solid var(--ft-border)", color: "var(--ft-text)", padding: "10px 12px", borderRadius: 3, fontSize: 16, marginBottom: 12 }}
+              style={{ width: "100%", background: "var(--ft-panel-alt)", border: "1px solid var(--ft-border)", color: "var(--ft-text)", padding: "10px 12px", borderRadius: 3, fontSize: 16, marginBottom: 10 }}
             />
+            {onOpenTitles ? (
+              <button className="ft-rules-btn" style={{ width: "100%", marginBottom: 14 }} onClick={onOpenTitles}>
+                称号一覧{equippedTitleName ? "（装備: " + equippedTitleName + "）" : ""}
+              </button>
+            ) : null}
             <div className="ft-label">部屋を作る（ホスト）</div>
             <div className="ft-select-count" style={{ marginBottom: 8 }}>
               <div className="ft-label" style={{ opacity: 0.7 }}>席数（後からロビーでも変更可・不足はCPU）</div>
@@ -4211,7 +4228,7 @@ function SetupScreen({ playerCount, setPlayerCount, humanCount, setHumanCount, h
         </button>
         </>
         ) : null}
-        {onOpenTitles ? (
+        {playMode !== "online" && onOpenTitles ? (
           <button className="ft-rules-btn" style={{ width: "100%", marginTop: 10 }} onClick={onOpenTitles}>
             称号一覧{equippedTitleName ? "（装備: " + equippedTitleName + "）" : ""}
           </button>
@@ -5974,21 +5991,27 @@ const CSS = `
   background: rgba(0,0,0,0.18);
   padding: 10px 12px;
 }
-/* PC・ONLINE時のみ: 右カラムの高さに合わせてルール枠を伸ばす（中身はスクロール） */
-.ft-setup-body.is-online {
-  align-items: stretch;
-}
-.ft-setup-body.is-online .ft-setup-rules-col {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  align-self: stretch;
-}
-.ft-setup-body.is-online .ft-setup-rules-wrap {
-  flex: 1 1 auto;
-  max-height: none;
-  min-height: 0;
-  overflow-y: auto;
+/* PC・ONLINE時のみ: 右の操作パネルの高さに合わせて左ルール枠を伸ばす（枠内スクロール） */
+@media (min-width: 861px) {
+  .ft-setup-body.is-online {
+    align-items: stretch;
+  }
+  .ft-setup-body.is-online .ft-setup-rules-col {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    align-self: stretch;
+    height: 100%;
+  }
+  .ft-setup-body.is-online .ft-setup-controls {
+    height: 100%;
+  }
+  .ft-setup-body.is-online .ft-setup-rules-wrap {
+    flex: 1 1 auto;
+    max-height: none;
+    min-height: 0;
+    overflow-y: auto;
+  }
 }
 .ft-setup-rules-wrap .ft-rules-section {
   margin-bottom: 12px;
@@ -6444,8 +6467,22 @@ const CSS = `
 .ft-rules-lead {
   font-size: 13px;
   color: var(--ft-text);
-  line-height: 1.65;
-  margin: 0 0 4px;
+  line-height: 1.7;
+  margin: 0 0 8px;
+}
+.ft-rules-lead:last-child {
+  margin-bottom: 0;
+}
+@media (max-width: 860px) {
+  .ft-rules-lead {
+    font-size: 14px;
+    line-height: 1.75;
+    margin-bottom: 10px;
+  }
+  .ft-setup-rules-fs-body .ft-rules-lead {
+    font-size: 15px;
+    line-height: 1.8;
+  }
 }
 .ft-rules-note {
   font-size: 11px;
