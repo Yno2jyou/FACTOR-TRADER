@@ -436,11 +436,48 @@ function titleRankColor(rank) {
 }
 function TitleBadge({ titleId, size = 16, showName = false }) {
   const t = TITLE_BY_ID[titleId];
+  const [open, setOpen] = React.useState(false);
+  const rootRef = React.useRef(null);
+  React.useEffect(() => {
+    if (!open) return;
+    function onDoc(e) {
+      if (rootRef.current && !rootRef.current.contains(e.target)) setOpen(false);
+    }
+    function onKey(e) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("touchstart", onDoc, { passive: true });
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("touchstart", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
   if (!t) return null;
   const isRainbow = t.rank === "rainbow";
   const color = titleRankColor(t.rank) || "#e2e8f0";
   return (
-    <span className={"ft-title-badge" + (isRainbow ? " is-rainbow" : "")} style={isRainbow ? undefined : { color }} title={t.name + " — " + t.desc}>
+    <span
+      ref={rootRef}
+      className={"ft-title-badge is-interactive" + (isRainbow ? " is-rainbow" : "") + (open ? " is-open" : "")}
+      style={isRainbow ? undefined : { color }}
+      onClick={(e) => {
+        e.stopPropagation();
+        setOpen((v) => !v);
+      }}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          e.stopPropagation();
+          setOpen((v) => !v);
+        }
+      }}
+      aria-label={t.name + " — " + t.desc}
+    >
       <span
         className={"ft-title-badge-icon" + (isRainbow ? " is-rainbow" : "")}
         style={isRainbow ? undefined : { color, borderColor: color, boxShadow: "0 0 8px " + color + "55" }}
@@ -450,6 +487,14 @@ function TitleBadge({ titleId, size = 16, showName = false }) {
         {t.icon === "coin_minus" ? <span className="ft-title-badge-sign">−</span> : null}
       </span>
       {showName ? <span className={"ft-pc-title" + (isRainbow ? " is-rainbow" : "")} style={isRainbow ? undefined : { color, borderBottomColor: color }}>{t.name}</span> : null}
+      {open ? (
+        <span className="ft-title-popover" onClick={(e) => e.stopPropagation()} role="dialog">
+          <span className={"ft-title-popover-name" + (isRainbow ? " is-rainbow ft-rainbow-text" : "")} style={isRainbow ? undefined : { color }}>
+            {t.name}
+          </span>
+          <span className="ft-title-popover-desc">{t.desc}</span>
+        </span>
+      ) : null}
     </span>
   );
 }
@@ -842,6 +887,195 @@ function coinRescueLabel(choice) {
 // - 数万円→数百円級の急落時は現金を大量投入して買う
 // - 素数/2の累乗の特徴も加味しつつ、動くときは振り切る
 // 現物取引なので、買いは現金の範囲内、売りは保有株数の範囲内で株数を決定する
+
+/* ========== CPU学習（localStorage永続・対局を重ねるほど強化） ========== */
+const FT_AI_LEARN_KEY = "factor_trader_ai_learn_v1";
+
+function defaultAiLearn() {
+  return {
+    games: 0,
+    aiBeatsHuman: 0,
+    humanBeatsAi: 0,
+    w: {
+      aggression: 0.55,
+      protect: 0.88,
+      heavy: 0.48,
+      stayTrap: 0.42,
+      primeBuy: 0.55,
+      highSell: 0.55,
+      endgame: 0.5,
+      noise: 0.55,
+    },
+    s: {
+      aiBankrupts: 0,
+      humanBankrupts: 0,
+      heavyHits: 0,
+      heavyTries: 0,
+      protectUsed: 0,
+      buyPrimeOk: 0,
+      buyPrimeN: 0,
+      sellHighOk: 0,
+      sellHighN: 0,
+    },
+    human: {
+      buyRate: 0.4,
+      heavyRate: 0.22,
+      protectRate: 0.28,
+    },
+  };
+}
+
+function loadAiLearn() {
+  try {
+    const raw = localStorage.getItem(FT_AI_LEARN_KEY);
+    if (!raw) return defaultAiLearn();
+    const o = JSON.parse(raw);
+    const d = defaultAiLearn();
+    if (o && typeof o === "object") {
+      d.games = Math.max(0, Number(o.games) || 0);
+      d.aiBeatsHuman = Math.max(0, Number(o.aiBeatsHuman) || 0);
+      d.humanBeatsAi = Math.max(0, Number(o.humanBeatsAi) || 0);
+      if (o.w && typeof o.w === "object") {
+        Object.keys(d.w).forEach((k) => {
+          if (o.w[k] != null) d.w[k] = Math.max(0.05, Math.min(0.98, Number(o.w[k]) || d.w[k]));
+        });
+      }
+      if (o.s && typeof o.s === "object") {
+        Object.keys(d.s).forEach((k) => {
+          if (o.s[k] != null) d.s[k] = Math.max(0, Number(o.s[k]) || 0);
+        });
+      }
+      if (o.human && typeof o.human === "object") {
+        Object.keys(d.human).forEach((k) => {
+          if (o.human[k] != null) d.human[k] = Math.max(0.05, Math.min(0.95, Number(o.human[k]) || d.human[k]));
+        });
+      }
+    }
+    return d;
+  } catch (e) {
+    return defaultAiLearn();
+  }
+}
+
+function saveAiLearn(data) {
+  try {
+    localStorage.setItem(FT_AI_LEARN_KEY, JSON.stringify(data));
+  } catch (e) {}
+}
+
+/** skill: 0.2〜1.0 対局数に応じて学習の効きとノイズ低減 */
+function getAiBrain() {
+  const data = loadAiLearn();
+  const g = Math.max(0, data.games || 0);
+  const skill = Math.min(1, 0.2 + g / 40);
+  return { data, skill, w: data.w, human: data.human, s: data.s };
+}
+
+function clampW(v) {
+  return Math.max(0.08, Math.min(0.97, v));
+}
+
+/** 1TERN終了時の学習（注文・COIN・結果から傾向を更新） */
+function recordAiTurnLearn(basePlayers, orders, hacks, execResults, nStart, priceBefore) {
+  try {
+    const d = loadAiLearn();
+    const prime = isPrime(nStart);
+    const isHigh = priceBefore >= 1100;
+    let humBuy = 0, humN = 0, humHeavy = 0, humProt = 0, humAct = 0;
+    (basePlayers || []).forEach((p) => {
+      if (!p || p.isBankrupt) return;
+      const ord = (orders && orders[p.id]) || { action: "stay", shares: 0 };
+      const hk = (hacks && hacks[p.id]) || {};
+      const ex = (execResults && execResults[p.id]) || {};
+      if (!p.isAI) {
+        humAct += 1;
+        if (ord.action === "buy" && (ord.shares || 0) > 0) humBuy += 1;
+        if ((hk.heavy || 0) > 0) humHeavy += 1;
+        if (hk.defense || hk.reflect) humProt += 1;
+      } else {
+        if ((hk.heavy || 0) > 0) {
+          d.s.heavyTries += 1;
+          let hit = false;
+          (basePlayers || []).forEach((op) => {
+            if (!op || String(op.id) === String(p.id)) return;
+            const oex = execResults[op.id];
+            if (oex && oex.bankrupt) hit = true;
+          });
+          if (hit) d.s.heavyHits += 1;
+        }
+        if (hk.defense || hk.reflect) d.s.protectUsed += 1;
+        if (ex.bankrupt) d.s.aiBankrupts += 1;
+        if (ord.action === "buy" && (ord.shares || 0) > 0 && prime) {
+          d.s.buyPrimeN += 1;
+          if (!ex.bankrupt && (ex.sharesFilled || 0) > 0) d.s.buyPrimeOk += 1;
+        }
+        if (ord.action === "sell" && (ord.shares || 0) > 0 && isHigh) {
+          d.s.sellHighN += 1;
+          if ((ex.sharesFilled || 0) > 0) d.s.sellHighOk += 1;
+        }
+      }
+      if (!p.isAI && ex.bankrupt) d.s.humanBankrupts += 1;
+    });
+    if (humAct > 0) {
+      const a = 0.12;
+      d.human.buyRate = d.human.buyRate * (1 - a) + (humBuy / humAct) * a;
+      d.human.heavyRate = d.human.heavyRate * (1 - a) + (humHeavy / humAct) * a;
+      d.human.protectRate = d.human.protectRate * (1 - a) + (humProt / humAct) * a;
+    }
+    // 軽量な重み微調整（毎ターン）
+    if (d.s.heavyTries >= 5) {
+      const rate = d.s.heavyHits / d.s.heavyTries;
+      d.w.heavy = clampW(d.w.heavy + (rate > 0.25 ? 0.01 : -0.008));
+    }
+    if (d.s.buyPrimeN >= 5) {
+      const rate = d.s.buyPrimeOk / d.s.buyPrimeN;
+      d.w.primeBuy = clampW(d.w.primeBuy + (rate > 0.55 ? 0.01 : -0.008));
+    }
+    if (d.s.sellHighN >= 5) {
+      const rate = d.s.sellHighOk / d.s.sellHighN;
+      d.w.highSell = clampW(d.w.highSell + (rate > 0.55 ? 0.01 : -0.008));
+    }
+    if (d.s.aiBankrupts > 0 && d.games > 0) {
+      d.w.protect = clampW(d.w.protect + 0.004);
+      d.w.aggression = clampW(d.w.aggression - 0.003);
+    }
+    saveAiLearn(d);
+  } catch (e) {}
+}
+
+/** ゲーム終了時の学習（順位・勝敗で戦略を更新） */
+function recordAiGameLearn(ranked, price) {
+  try {
+    const d = loadAiLearn();
+    d.games = (d.games || 0) + 1;
+    const list = ranked || [];
+    const hum = list.find((p) => p && !p.isAI);
+    const ais = list.filter((p) => p && p.isAI && !p.isBankrupt);
+    if (hum && ais.length) {
+      const humTV = totalValue(hum, price);
+      const bestAiTV = Math.max.apply(null, ais.map((p) => totalValue(p, price)));
+      if (bestAiTV > humTV) {
+        d.aiBeatsHuman = (d.aiBeatsHuman || 0) + 1;
+        d.w.aggression = clampW(d.w.aggression + 0.02);
+        d.w.heavy = clampW(d.w.heavy + 0.015);
+        d.w.stayTrap = clampW(d.w.stayTrap + 0.01);
+        d.w.noise = clampW(d.w.noise - 0.02);
+      } else {
+        d.humanBeatsAi = (d.humanBeatsAi || 0) + 1;
+        d.w.protect = clampW(d.w.protect + 0.025);
+        d.w.stayTrap = clampW(d.w.stayTrap + 0.02);
+        d.w.heavy = clampW(d.w.heavy + (d.human.buyRate > 0.45 ? 0.02 : 0.005));
+        d.w.aggression = clampW(d.w.aggression - 0.01);
+        d.w.endgame = clampW(d.w.endgame + 0.015);
+      }
+    }
+    // 対局数に応じてノイズを下げ、学習済み重みを固定寄りに
+    if (d.games >= 10) d.w.noise = clampW(d.w.noise - 0.01);
+    if (d.games >= 30) d.w.noise = clampW(Math.min(d.w.noise, 0.28));
+    saveAiLearn(d);
+  } catch (e) {}
+}
+
 function aiDecideTrade(rnd, nStart, priceBefore, cash, holdings, refPrice, ctx) {
   ctx = ctx || {};
   const maxBuyShares = priceBefore > 0 ? Math.floor(cash / priceBefore) : 0;
@@ -885,15 +1119,29 @@ function aiDecideTrade(rnd, nStart, priceBefore, cash, holdings, refPrice, ctx) 
   if (equityRatio > 0.75) edge -= 0.35;
   if (equityRatio < 0.15) edge += 0.2;
 
+  // 学習済みブレイン
+  const brain = getAiBrain();
+  const skill = brain.skill;
+  const ww = brain.w || {};
+  const humMem = brain.human || {};
+
   // 人間に負けているときは攻める、勝っているときは邪魔しやすい様子見も混ぜる
-  if (behindHuman) edge *= 1.15;
-  // 小さなノイズ
-  edge += (Math.random() - 0.5) * 0.25;
+  if (behindHuman) edge *= 1.1 + 0.2 * (ww.aggression || 0.55);
+  // 素数・高値学習
+  if (prime) edge += 0.35 * ((ww.primeBuy || 0.55) - 0.5) * skill;
+  if (isHigh) edge -= 0.35 * ((ww.highSell || 0.55) - 0.5) * skill;
+  // ノイズは対局を重ねるほど低減
+  const noiseAmp = 0.25 * (1 - 0.7 * skill) * (ww.noise || 0.55);
+  edge += (Math.random() - 0.5) * noiseAmp;
+  edge *= 0.9 + 0.25 * (ww.aggression || 0.55) * skill;
 
   // --- 様子見＋後でCOIN妨害を狙う戦術 ---
   // シグナルが弱〜中程度のとき、あえて注文せずCOINで人間を潰す余地を残す
   // （COINフェーズでは全注文が見える）
-  const sabotageStayChance = behindHuman ? 0.22 : (aheadHuman ? 0.38 : 0.28);
+  let sabotageStayChance = behindHuman ? 0.22 : (aheadHuman ? 0.38 : 0.28);
+  sabotageStayChance *= 0.75 + 0.55 * (ww.stayTrap || 0.42);
+  // 人間が買いが多いと学習 → 様子見で妨害待ちを増やす
+  if ((humMem.buyRate || 0) > 0.45) sabotageStayChance = Math.min(0.55, sabotageStayChance + 0.08 * skill);
   if (!endgameLock && Math.abs(edge) < 0.85 && Math.random() < sabotageStayChance) {
     return { action: "stay", shares: 0 };
   }
@@ -1261,6 +1509,10 @@ function aiDecideCards(cards, turn, totalTurns, order, nStart, priceBefore, allO
   const selfAction = order?.action || "stay";
   const selfShares = order?.shares || 0;
   let stock = cards.stock != null ? cards.stock : ((cards.quick || 0) + (cards.heavy || 0));
+  const brainC = getAiBrain();
+  const skillC = brainC.skill;
+  const wwC = brainC.w || {};
+  const humC = brainC.human || {};
 
   let idHash = 0;
   const idStr = String(selfId || "");
@@ -1377,94 +1629,148 @@ function aiDecideCards(cards, turn, totalTurns, order, nStart, priceBefore, allO
       if (stock < 12 && !bestIsBankruptShot) fireChance *= 0.35;
       if (stock < 8 && bestIsBankruptShot) fireChance *= 0.75;
 
+      // 学習: 妨害成功率・人間の買い傾向で発射率を調整
+      fireChance *= 0.7 + 0.65 * (wwC.heavy || 0.48) * (0.5 + 0.5 * skillC);
+      if ((humC.buyRate || 0) > 0.5) fireChance = Math.min(0.98, fireChance + 0.1 * skillC);
+      if ((humC.protectRate || 0) > 0.5) fireChance *= 0.85; // 人間が防衛多い → 妨害やや抑制
       if (Math.random() < fireChance) bestHeavy = 1;
     }
   }
 
   if (bestQuick + (bestHeavy > 0 ? 5 : 0) > stock) bestHeavy = 0;
 
-  // --- 防衛 / 反射: 反射は妨害を跳ね返すため、防衛候補局面では積極的に反射を優先しうる ---
+  // --- 防衛 / 反射 ---
+  // CPU鉄則: 『破産』を絶対に避ける。破産は買いでのみ発生。
+  // 被妨害で破産確定級の大口買いでは、必ず防衛 or 反射を使う。
   let useDefense = 0;
   let useReflect = 0;
-  const afterQH = bestQuick + (bestHeavy > 0 ? 5 : 0);
-  const leftAfter = stock - afterQH;
-  if (turn > 3 && leftAfter >= 5 && selfAction === "buy" && selfShares >= 1) {
-    const selfPlDef = (playersList || []).find((pl) => pl && String(pl.id) === String(selfId));
-    const cash0 = selfPlDef ? (selfPlDef.cash || 0) : 0;
-    const hold0 = selfPlDef ? (selfPlDef.holdings || 0) : 0;
+  let mustProtectBankruptcy = false;
+  let cancelBuyToAvoidBankruptcy = false;
+
+  const selfPlDef = (playersList || []).find((pl) => pl && String(pl.id) === String(selfId));
+  const cash0 = selfPlDef ? (selfPlDef.cash || 0) : 0;
+  const hold0 = selfPlDef ? (selfPlDef.holdings || 0) : 0;
+
+  function wouldBankruptOnHit(quickAmt, shares) {
+    if (selfAction !== "buy" || shares < 1) return false;
+    const priceHit = personalExecPrice(nStart, quickAmt || 0, 1, "buy");
+    const reqHit = shares * priceHit;
+    const liqHit = cash0 + hold0 * priceHit;
+    return reqHit > liqHit + 1e-9;
+  }
+
+  // ターン1-3は通常妨害不可だが、鉄則判定自体は行う（将来拡張・帳消し計算にも利用）
+  if (selfAction === "buy" && selfShares >= 1) {
+    mustProtectBankruptcy = wouldBankruptOnHit(bestQuick, selfShares);
+  }
+
+  if (turn > 3 && selfAction === "buy" && selfShares >= 1) {
     const priceHit = personalExecPrice(nStart, bestQuick, 1, "buy");
     const priceSafe = personalExecPrice(nStart, bestQuick, 0, "buy");
-    const reqHit = selfShares * priceHit;
-    const liqHit = cash0 + hold0 * priceHit;
-    const willBankruptIfHit = reqHit > liqHit + 1e-9;
-    const handIfNoDef = leftAfter;
-    const wouldNeedBailout = willBankruptIfHit && handIfNoDef >= 10;
-    const cannotBailout = willBankruptIfHit && handIfNoDef < 10;
+    const willBankruptIfHit = mustProtectBankruptcy;
 
-    let protectChance = 0;
-    if (wouldNeedBailout) protectChance = 0.96;
-    else if (cannotBailout) protectChance = 0.99;
-    else {
-      const overpayRisk = priceHit > priceSafe * 1.5 && selfShares >= 10;
-      if (overpayRisk) protectChance = 0.28;
-      if (selfShares >= 25 && bestQuick > 0) protectChance = Math.max(protectChance, 0.22);
-      if (progress < 0.45) protectChance *= 0.55;
-      if (stock < 12) protectChance *= 0.55;
+    // 鉄則: 破産確定級 → 100%防衛/反射。COINが足りなければ妨害・操作を削って枠を確保。
+    if (willBankruptIfHit) {
+      // 鉄則: 破産確定級の大口買い → 必ず防衛 or 反射（反射跳ね返りリスクがあるため基本は防衛）
+      let spent = bestQuick + (bestHeavy > 0 ? 5 : 0);
+      if (stock - spent < 5) {
+        bestHeavy = 0;
+        spent = bestQuick;
+      }
+      if (stock - spent < 5) {
+        bestQuick = Math.max(0, stock - 5);
+        spent = bestQuick;
+      }
+      if (stock >= 5 && stock - spent >= 5) {
+        // 自分が妨害を撃つ/超大口 → 防衛必須。それ以外は防衛優先で反射も可
+        if (bestHeavy > 0 || selfShares >= 30) {
+          useDefense = 1;
+          useReflect = 0;
+        } else if (Math.random() < 0.35) {
+          useReflect = 1;
+          useDefense = 0;
+        } else {
+          useDefense = 1;
+          useReflect = 0;
+        }
+      }
+    } else {
+      // 破産までは行かないが、高値づかみリスクがある場合は従来どおり確率防衛
+      let afterQH = bestQuick + (bestHeavy > 0 ? 5 : 0);
+      let leftAfter = stock - afterQH;
+      if (leftAfter >= 5) {
+        let protectChance = 0;
+        const overpayRisk = priceHit > priceSafe * 1.5 && selfShares >= 10;
+        if (overpayRisk) protectChance = 0.28;
+        if (selfShares >= 25 && bestQuick > 0) protectChance = Math.max(protectChance, 0.22);
+        if (progress < 0.45) protectChance *= 0.55;
+        if (stock < 12) protectChance *= 0.55;
+        protectChance *= 0.75 + 0.5 * (wwC.protect || 0.88);
+        protectChance = Math.min(0.95, protectChance * (0.85 + 0.3 * skillC));
+        if (Math.random() < protectChance) {
+          if (Math.random() < 0.55) useReflect = 1;
+          else useDefense = 1;
+        }
+      }
     }
-    if (Math.random() < protectChance) {
-      // 反射は妨害を相手に返すため、防衛より強い局面が多い → 反射を優先
-      // 破産回避が最優先で確実に防ぎたいときのみ防衛寄り
-      const preferReflect = !(cannotBailout && selfShares >= 40);
-      if (preferReflect && Math.random() < 0.72) useReflect = 1;
-      else useDefense = 1;
+  } else if (turn > 3 && selfAction === "sell" && selfShares >= 15) {
+    const afterQH = bestQuick + (bestHeavy > 0 ? 5 : 0);
+    const leftAfter = stock - afterQH;
+    if (leftAfter >= 5) {
+      let protectChance = progress > 0.6 ? 0.22 : 0.12;
+      if (bestQuick > 0) protectChance += 0.08;
+      if (stock < 12) protectChance *= 0.5;
+      if (Math.random() < protectChance) {
+        if (Math.random() < 0.65) useReflect = 1;
+        else useDefense = 1;
+      }
     }
-  } else if (turn > 3 && leftAfter >= 5 && selfAction === "sell" && selfShares >= 15) {
-    let protectChance = progress > 0.6 ? 0.22 : 0.12;
-    if (bestQuick > 0) protectChance += 0.08;
-    if (stock < 12) protectChance *= 0.5;
-    if (Math.random() < protectChance) {
-      if (Math.random() < 0.65) useReflect = 1;
-      else useDefense = 1;
+  } else if (turn > 3 && selfAction === "stay") {
+    const afterQH = bestQuick + (bestHeavy > 0 ? 5 : 0);
+    const leftAfter = stock - afterQH;
+    if (leftAfter >= 5) {
+      let refChance = progress > 0.5 ? 0.18 : 0.1;
+      if (stock >= 15) refChance += 0.08;
+      if (Math.random() < refChance) useReflect = 1;
     }
-  } else if (turn > 3 && leftAfter >= 5 && selfAction === "stay") {
-    // 様子見でも反射で相手の妨害を跳ね返す余地
-    let refChance = progress > 0.5 ? 0.18 : 0.1;
-    if (stock >= 15) refChance += 0.08;
-    if (Math.random() < refChance) useReflect = 1;
   }
+
+  // 予算超過時は妨害→操作を削って防衛/反射を優先（破産回避が最優先）
   if ((useDefense || useReflect) && bestQuick + (bestHeavy > 0 ? 5 : 0) + 5 > stock) {
     bestHeavy = 0;
     if (bestQuick + 5 > stock) bestQuick = Math.max(0, stock - 5);
   }
-  if (useDefense && useReflect) useReflect = 0; // 同時不可・防衛優先はsettle側でも処理
+  if (useDefense && useReflect) useReflect = 0; // 同時不可・防衛優先
+  // 最初の3TERNは通常妨害が無いため防衛/反射は使わない（COIN温存）
   if (turn <= 3) { useDefense = 0; useReflect = 0; }
 
-  // 妨害使用時の反射対策: 反射されて戻ってきた被妨害で破産が確定するなら防衛を併用
-  // （反射は自分の妨害の跳ね返りを防げない。防衛なら跳ね返りも無効化できる）
+  // 妨害使用時の反射対策: 跳ね返り被妨害で破産するなら防衛必須（反射では防げない）
   if (bestHeavy > 0 && turn > 3 && selfAction === "buy" && selfShares >= 1) {
-    const selfPlRef = (playersList || []).find((pl) => pl && String(pl.id) === String(selfId));
-    const cashR = selfPlRef ? (selfPlRef.cash || 0) : 0;
-    const holdR = selfPlRef ? (selfPlRef.holdings || 0) : 0;
-    const priceIfBounced = personalExecPrice(nStart, bestQuick, 1, "buy");
-    const reqB = selfShares * priceIfBounced;
-    const liqB = cashR + holdR * priceIfBounced;
-    const bankruptIfReflected = reqB > liqB + 1e-9;
-    if (bankruptIfReflected) {
+    if (wouldBankruptOnHit(bestQuick, selfShares)) {
       const spentQH = bestQuick + 5;
-      const handAfterQH = Math.max(0, stock - spentQH);
-      // 帳消し不可、または帳消しより防衛の方が安い・確実
-      const cannotBail = handAfterQH < 10;
-      const canAffordDef = handAfterQH >= 5;
-      if (canAffordDef && (cannotBail || Math.random() < 0.92)) {
+      let handAfterQH = Math.max(0, stock - spentQH);
+      if (handAfterQH < 5) {
+        // 操作を削って防衛枠を確保
+        bestQuick = Math.max(0, stock - 5 - 5);
+        handAfterQH = Math.max(0, stock - bestQuick - 5);
+      }
+      if (handAfterQH >= 5) {
         useDefense = 1;
         useReflect = 0;
       }
     }
   }
-  // 防衛併用で予算超過なら操作を削る（妨害は維持）
-  if (useDefense && bestQuick + (bestHeavy > 0 ? 5 : 0) + 5 > stock) {
+  // 防衛併用で予算超過なら操作を削る
+  if ((useDefense || useReflect) && bestQuick + (bestHeavy > 0 ? 5 : 0) + 5 > stock) {
     const room = Math.max(0, stock - (bestHeavy > 0 ? 5 : 0) - 5);
     bestQuick = Math.min(bestQuick, room);
+  }
+
+  // 鉄則再判定: 防衛/反射を装備できず、被妨害で破産するなら買いをキャンセルするフラグ
+  if (turn > 3 && selfAction === "buy" && selfShares >= 1 && !useDefense && !useReflect) {
+    if (wouldBankruptOnHit(bestQuick, selfShares)) {
+      cancelBuyToAvoidBankruptcy = true;
+    }
   }
 
   let avant = 0;
@@ -1615,7 +1921,15 @@ function aiDecideCards(cards, turn, totalTurns, order, nStart, priceBefore, allO
         }
       }
     }
-    if (pickSab && Math.random() < Math.min(0.98, Math.max(sabChance, playerN < 5 ? 0.28 : 0.35))) {
+    // 鉄則: 破産回避が必要な大口買いでは、妨害型奥義より操作型奥義（自株価固定）を優先
+    if (mustProtectBankruptcy && selfAction === "buy") {
+      pickSab = false;
+      if (stockLeft >= 10 && selfPl && !selfPl.avantUsed) {
+        avChance = Math.max(avChance, 0.92);
+        avPrice = 1;
+      }
+    }
+    if (pickSab && !mustProtectBankruptcy && Math.random() < Math.min(0.98, Math.max(sabChance, playerN < 5 ? 0.28 : 0.35))) {
       avantSab = 1;
       avantPrice = sabPrice;
       bestQuick = 0;
@@ -1627,12 +1941,21 @@ function aiDecideCards(cards, turn, totalTurns, order, nStart, priceBefore, allO
       avantPrice = avPrice;
       bestQuick = 0;
       bestHeavy = 0;
+      // 奥義操作は自株価固定のため被妨害でも破産しない → 防衛不要
       useDefense = 0;
       useReflect = 0;
+      cancelBuyToAvoidBankruptcy = false;
     }
   }
 
-  return { quick: bestQuick, heavy: bestHeavy, defense: useDefense, reflect: useReflect, avant: avant, avantSab: avantSab, avantPrice: avantPrice };
+  // 最終鉄則: 防衛も奥義も使えず破産確定なら買いキャンセル
+  if (mustProtectBankruptcy && !useDefense && !useReflect && !avant) {
+    cancelBuyToAvoidBankruptcy = true;
+  } else if (avant) {
+    cancelBuyToAvoidBankruptcy = false;
+  }
+
+  return { quick: bestQuick, heavy: bestHeavy, defense: useDefense, reflect: useReflect, avant: avant, avantSab: avantSab, avantPrice: avantPrice, cancelBuyToAvoidBankruptcy: !!cancelBuyToAvoidBankruptcy, mustProtectBankruptcy: !!mustProtectBankruptcy };
 }
 
 // ---------- UI 補助 ----------
@@ -2631,6 +2954,28 @@ function FactorTrader() {
       };
     });
 
+    // CPU鉄則: 防衛・反射・奥義で守れない破産確定級の買いはキャンセル
+    {
+      let ordersAdj = { ...(orders || {}) };
+      let changed = false;
+      Object.keys(newHacks).forEach((pid) => {
+        const hk = newHacks[pid];
+        if (!hk || !hk.cancelBuyToAvoidBankruptcy) return;
+        const ord = ordersAdj[pid];
+        if (ord && ord.action === "buy") {
+          ordersAdj[pid] = { action: "stay", shares: 0 };
+          changed = true;
+          const nm = (rescuedPlayers.find((x) => String(x.id) === String(pid)) || {}).name || pid;
+          pushLog(nm + " は破産回避のため買いを取り下げ");
+        }
+        newHacks[pid] = { ...hk, cancelBuyToAvoidBankruptcy: false };
+      });
+      if (changed) {
+        setOrders(ordersAdj);
+        stateRef.current = { ...stateRef.current, orders: ordersAdj };
+      }
+    }
+
     // 妨害の同時撃ちは少なめ
     const aiHeavy = rescuedPlayers.filter((p) => p.isAI && newHacks[p.id] && (newHacks[p.id].heavy || 0) > 0);
     const heavySlots = rescuedPlayers.length >= 6 ? 2 : 1;
@@ -2778,6 +3123,11 @@ function FactorTrader() {
     const { updated, execResults, priceMap, nMap } = settleTurn(
       basePlayers, ordersR, hacks, nStartR, priceBeforeR
     );
+    try {
+      if (playMode !== "online") {
+        recordAiTurnLearn(basePlayers, ordersR, hacks, execResults, nStartR, priceBeforeR);
+      }
+    } catch (e) {}
 
     const totalQuick = basePlayers.reduce((s, p) => s + (hacks[p.id]?.quick || 0), 0);
     const totalHeavy = basePlayers.reduce((s, p) => s + (hacks[p.id]?.heavy || 0), 0);
@@ -2931,6 +3281,9 @@ function FactorTrader() {
     const hist = histOverride || priceHistory;
     const price = (hist.length ? hist[hist.length - 1].price : basePrice) || 0;
     const rankedList = pls.slice().sort((a, b) => totalValue(b, price) - totalValue(a, price));
+    try {
+      if (playMode !== "online") recordAiGameLearn(rankedList, price);
+    } catch (e) {}
     const hum = primaryHuman(pls) || humanPlayersOf(pls)[0];
     let newly = [];
     if (playMode !== "online" && hum) {
@@ -3075,6 +3428,16 @@ function FactorTrader() {
           hks[p.id] = aiDecideCards(p.cards, t, totalTurns, ords[p.id], ns, pb, ords, p.id, pls);
         }
       });
+      // CPU鉄則: 守れない破産確定級の買いはキャンセル
+      Object.keys(hks).forEach((pid) => {
+        const hk = hks[pid];
+        if (!hk || !hk.cancelBuyToAvoidBankruptcy) return;
+        const ord = ords[pid];
+        if (ord && ord.action === "buy") {
+          ords[pid] = { action: "stay", shares: 0 };
+        }
+        hks[pid] = { ...hk, cancelBuyToAvoidBankruptcy: false };
+      });
       // CPU妨害の同一TERN重複は少なめ（基本1体、6人以上は最大2体）
       const aiHeavy = pls.filter((p) => p.isAI && (hks[p.id]?.heavy || 0) > 0);
       const heavySlots = pls.length >= 5 ? 2 : 1;
@@ -3118,6 +3481,11 @@ function FactorTrader() {
         }
       }
       const settled = settleTurn(pls, ords, hks, ns, pb);
+      try {
+        if (playMode !== "online") {
+          recordAiTurnLearn(pls, ords, hks, settled.execResults, ns, pb);
+        }
+      } catch (e) {}
       pls = settled.updated;
       const fid = (primaryHuman(pls) || humanPlayersOf(pls)[0] || pls[0] || {}).id;
       const hp = (fid && settled.priceMap[fid] != null) ? settled.priceMap[fid] : pb;
@@ -6040,7 +6408,60 @@ const CSS = `
   align-items: center;
   gap: 6px;
   vertical-align: middle;
+  position: relative;
 }
+.ft-title-badge.is-interactive {
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.ft-title-badge.is-interactive:focus {
+  outline: none;
+}
+.ft-title-badge.is-interactive:focus-visible .ft-title-badge-icon {
+  box-shadow: 0 0 0 2px rgba(57,255,156,0.45), 0 0 10px rgba(57,255,156,0.25);
+}
+.ft-title-popover {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  transform: translateX(-50%);
+  z-index: 1200;
+  min-width: 160px;
+  max-width: min(260px, 70vw);
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: #0c121a;
+  border: 1px solid var(--ft-border);
+  box-shadow: 0 10px 28px rgba(0,0,0,0.55), 0 0 0 1px rgba(57,255,156,0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  pointer-events: auto;
+  white-space: normal;
+  text-align: left;
+}
+.ft-title-popover::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-top-color: #0c121a;
+}
+.ft-title-popover-name {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.3;
+}
+.ft-title-popover-desc {
+  font-size: 11px;
+  color: var(--ft-text-dim);
+  line-height: 1.55;
+  font-weight: 400;
+}
+
 .ft-title-badge-icon {
   position: relative;
   display: inline-flex;
