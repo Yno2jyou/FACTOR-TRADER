@@ -4219,16 +4219,15 @@ function SetupScreen({ playerCount, setPlayerCount, humanCount, setHumanCount, h
         </div>
 
         <div className={"ft-setup-body" + (playMode === "online" ? " is-online" : "")}>
-          <div className="ft-setup-rules-col" ref={setupRulesColRef}>
-            <button type="button" className="ft-rules-btn ft-setup-mobile-rules-btn" onClick={() => setShowSetupRulesFS(true)}>
-              ルール
-            </button>
+          <div className="ft-setup-rules-col" ref={setupRulesColRef} style={{ display: "none" }}>
             <div className="ft-setup-rules-wrap" ref={setupRulesWrapRef}>
-              <div className="ft-setup-rules-head">RULES</div>
               <RulesContent />
             </div>
           </div>
           <div className="ft-setup-controls" ref={setupControlsRef}>
+        <button type="button" className="ft-rules-btn ft-setup-mobile-rules-btn" onClick={() => setShowSetupRulesFS(true)}>
+          ルール
+        </button>
         <div className="ft-setup-section">
         <div className="ft-select-count">
           <div className="ft-label">MODE</div>
@@ -6312,7 +6311,7 @@ const CSS = `
 .ft-setup-mobile-rules-btn {
   display: block;
   width: 100%;
-  margin: 4px 0 0;
+  margin: 0 0 4px;
   padding: 11px 12px;
   text-align: center;
   border-radius: 6px;
