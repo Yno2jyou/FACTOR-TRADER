@@ -360,8 +360,8 @@ const TITLE_RANK_COLORS = {
 };
 const TITLE_DEFS = [
   // A 取引・資産
-  { id: "rich_1e8", cat: "A", group: "asset", name: "億万長者", desc: "1ゲーム終了時 総資産1億円以上", kind: "game", icon: "crown", rank: "ash"},
-  { id: "rich_1e12", cat: "A", group: "asset", name: "兆万長者", desc: "1ゲーム終了時 総資産1兆円以上", kind: "game", icon: "crown", rank: "copper"},
+  { id: "rich_1e8", cat: "A", group: "asset", name: "億万長者", desc: "1ゲーム終了時 総資産5000万円以上", kind: "game", icon: "crown", rank: "ash"},
+  { id: "rich_1e12", cat: "A", group: "asset", name: "兆万長者", desc: "1ゲーム終了時 総資産1000億円以上", kind: "game", icon: "crown", rank: "copper"},
   { id: "rich_1e13", cat: "A", group: "asset", name: "大富豪", desc: "1ゲーム終了時 総資産10兆円以上", kind: "game", icon: "crown", rank: "silver"},
   { id: "rich_1e14", cat: "A", group: "asset", name: "超大富豪", desc: "1ゲーム終了時 総資産100兆円以上", kind: "game", icon: "crown", rank: "gold"},
   { id: "rich_1e15", cat: "A", group: "asset", name: "支配者", desc: "1ゲーム終了時 総資産1000兆円以上", kind: "game", icon: "crown", rank: "white"},
@@ -369,49 +369,49 @@ const TITLE_DEFS = [
   { id: "rich_1e17", cat: "A", group: "asset", name: "帝王", desc: "1ゲーム終了時 総資産10京円以上", kind: "game", icon: "crown", rank: "purple"},
   { id: "rich_1e18", cat: "A", group: "asset", name: "覇王", desc: "1ゲーム終了時 総資産100京円以上", kind: "game", icon: "crown", rank: "crimson"},
   { id: "rich_1e19", cat: "A", group: "asset", name: "絶対神", desc: "1ゲーム終了時 総資産1000京円以上", kind: "game", icon: "crown", rank: "rainbow"},
-  { id: "comeback", cat: "A", group: "comeback", name: "逆転劇", desc: "ゲーム途中最下位→最終1位", kind: "game", icon: "reverse", rank: "rainbow"},
+  { id: "comeback", cat: "A", group: "comeback", name: "逆転劇", desc: "最下位→最終1位を累計10回達成", kind: "cumul", icon: "reverse", rank: "rainbow", threshold: 10},
   // C 操作
-  { id: "q10", cat: "C", group: "quick", name: "操作オタク", desc: "ゲーム中に操作を合計10枚以上使用", kind: "game", icon: "quick", rank: "ash", threshold: 10},
-  { id: "q15", cat: "C", group: "quick", name: "操作達人", desc: "ゲーム中に操作を合計15枚以上使用", kind: "game", icon: "quick", rank: "copper", threshold: 15},
-  { id: "q20", cat: "C", group: "quick", name: "操作博士", desc: "ゲーム中に操作を合計20枚以上使用", kind: "game", icon: "quick", rank: "silver", threshold: 20},
-  { id: "q25", cat: "C", group: "quick", name: "操作仙人", desc: "ゲーム中に操作を合計25枚以上使用", kind: "game", icon: "quick", rank: "gold", threshold: 25},
-  { id: "q30", cat: "C", group: "quick", name: "操作神", desc: "ゲーム中に操作を合計30枚以上使用", kind: "game", icon: "quick", rank: "rainbow", threshold: 30},
+  { id: "q10", cat: "C", group: "quick", name: "操作オタク", desc: "ゲーム中に操作を合計6枚以上使用", kind: "game", icon: "quick", rank: "ash", threshold: 6},
+  { id: "q15", cat: "C", group: "quick", name: "操作達人", desc: "ゲーム中に操作を合計10枚以上使用", kind: "game", icon: "quick", rank: "copper", threshold: 10},
+  { id: "q20", cat: "C", group: "quick", name: "操作博士", desc: "ゲーム中に操作を合計14枚以上使用", kind: "game", icon: "quick", rank: "silver", threshold: 14},
+  { id: "q25", cat: "C", group: "quick", name: "操作仙人", desc: "ゲーム中に操作を合計18枚以上使用", kind: "game", icon: "quick", rank: "gold", threshold: 18},
+  { id: "q30", cat: "C", group: "quick", name: "操作神", desc: "ゲーム中に操作を合計24枚以上使用", kind: "game", icon: "quick", rank: "rainbow", threshold: 24},
   // C 妨害
   { id: "h1", cat: "C", group: "heavy", name: "妨害マニア", desc: "ゲーム中に妨害で相手を1人破産させる", kind: "game", icon: "heavy", rank: "ash", threshold: 1},
-  { id: "h3", cat: "C", group: "heavy", name: "妨害名人", desc: "ゲーム中に妨害で相手を3人破産させる", kind: "game", icon: "heavy", rank: "copper", threshold: 3},
-  { id: "h5", cat: "C", group: "heavy", name: "妨害学者", desc: "ゲーム中に妨害で相手を5人破産させる", kind: "game", icon: "heavy", rank: "silver", threshold: 5},
-  { id: "h7", cat: "C", group: "heavy", name: "妨害教祖", desc: "ゲーム中に妨害で相手を7人破産させる", kind: "game", icon: "heavy", rank: "gold", threshold: 7},
-  { id: "h9", cat: "C", group: "heavy", name: "妨害悪魔", desc: "ゲーム中に妨害で自分含めた9人を破産させる", kind: "game", icon: "heavy", rank: "rainbow", threshold: 9},
+  { id: "h3", cat: "C", group: "heavy", name: "妨害名人", desc: "ゲーム中に妨害で相手を2人破産させる", kind: "game", icon: "heavy", rank: "copper", threshold: 2},
+  { id: "h5", cat: "C", group: "heavy", name: "妨害学者", desc: "ゲーム中に妨害で相手を3人破産させる", kind: "game", icon: "heavy", rank: "silver", threshold: 3},
+  { id: "h7", cat: "C", group: "heavy", name: "妨害教祖", desc: "ゲーム中に妨害で相手を5人破産させる", kind: "game", icon: "heavy", rank: "gold", threshold: 5},
+  { id: "h9", cat: "C", group: "heavy", name: "妨害悪魔", desc: "ゲーム中に妨害で相手を7人破産させる", kind: "game", icon: "heavy", rank: "rainbow", threshold: 7},
   // C 防衛
-  { id: "d10", cat: "C", group: "defense", name: "防衛愛好家", desc: "ゲーム中に防衛で被妨害を10回以上無効化", kind: "game", icon: "defense", rank: "ash", threshold: 10},
-  { id: "d20", cat: "C", group: "defense", name: "防衛玄人", desc: "ゲーム中に防衛で被妨害を20回以上無効化", kind: "game", icon: "defense", rank: "copper", threshold: 20},
-  { id: "d30", cat: "C", group: "defense", name: "防衛識者", desc: "ゲーム中に防衛で被妨害を30回以上無効化", kind: "game", icon: "defense", rank: "silver", threshold: 30},
-  { id: "d40", cat: "C", group: "defense", name: "防衛聖者", desc: "ゲーム中に防衛で被妨害を40回以上無効化", kind: "game", icon: "defense", rank: "gold", threshold: 40},
-  { id: "d50", cat: "C", group: "defense", name: "防衛至上者", desc: "ゲーム中に防衛で被妨害を50回以上無効化", kind: "game", icon: "defense", rank: "rainbow", threshold: 50},
+  { id: "d10", cat: "C", group: "defense", name: "防衛愛好家", desc: "ゲーム中に防衛で被妨害を5回以上無効化", kind: "game", icon: "defense", rank: "ash", threshold: 5},
+  { id: "d20", cat: "C", group: "defense", name: "防衛玄人", desc: "ゲーム中に防衛で被妨害を12回以上無効化", kind: "game", icon: "defense", rank: "copper", threshold: 12},
+  { id: "d30", cat: "C", group: "defense", name: "防衛識者", desc: "ゲーム中に防衛で被妨害を20回以上無効化", kind: "game", icon: "defense", rank: "silver", threshold: 20},
+  { id: "d40", cat: "C", group: "defense", name: "防衛聖者", desc: "ゲーム中に防衛で被妨害を28回以上無効化", kind: "game", icon: "defense", rank: "gold", threshold: 28},
+  { id: "d50", cat: "C", group: "defense", name: "防衛至上者", desc: "ゲーム中に防衛で被妨害を36回以上無効化", kind: "game", icon: "defense", rank: "rainbow", threshold: 36},
   // C 反射
-  { id: "r5", cat: "C", group: "reflect", name: "反射コレクター", desc: "ゲーム中に反射で妨害を5回以上返す", kind: "game", icon: "reflect", rank: "ash", threshold: 5},
-  { id: "r10", cat: "C", group: "reflect", name: "反射名人", desc: "ゲーム中に反射で妨害を10回以上返す", kind: "game", icon: "reflect", rank: "copper", threshold: 10},
-  { id: "r15", cat: "C", group: "reflect", name: "反射専門家", desc: "ゲーム中に反射で妨害を15回以上返す", kind: "game", icon: "reflect", rank: "silver", threshold: 15},
-  { id: "r20", cat: "C", group: "reflect", name: "反射隠士", desc: "ゲーム中に反射で妨害を20回以上返す", kind: "game", icon: "reflect", rank: "gold", threshold: 20},
-  { id: "r25", cat: "C", group: "reflect", name: "反射天才", desc: "ゲーム中に反射で妨害を25回以上返す", kind: "game", icon: "reflect", rank: "rainbow", threshold: 25},
+  { id: "r5", cat: "C", group: "reflect", name: "反射コレクター", desc: "ゲーム中に反射で妨害を3回以上返す", kind: "game", icon: "reflect", rank: "ash", threshold: 3},
+  { id: "r10", cat: "C", group: "reflect", name: "反射名人", desc: "ゲーム中に反射で妨害を6回以上返す", kind: "game", icon: "reflect", rank: "copper", threshold: 6},
+  { id: "r15", cat: "C", group: "reflect", name: "反射専門家", desc: "ゲーム中に反射で妨害を10回以上返す", kind: "game", icon: "reflect", rank: "silver", threshold: 10},
+  { id: "r20", cat: "C", group: "reflect", name: "反射隠士", desc: "ゲーム中に反射で妨害を14回以上返す", kind: "game", icon: "reflect", rank: "gold", threshold: 14},
+  { id: "r25", cat: "C", group: "reflect", name: "反射天才", desc: "ゲーム中に反射で妨害を18回以上返す", kind: "game", icon: "reflect", rank: "rainbow", threshold: 18},
   // B 帳消し
-  { id: "bail2", cat: "B", group: "bailout", name: "債務帳消し", desc: "ゲーム中にCOIN10枚帳消しを2回使用", kind: "game", icon: "scales", rank: "ash", threshold: 2},
-  { id: "bail3", cat: "B", group: "bailout", name: "特大債務帳消し", desc: "ゲーム中にCOIN10枚帳消しを3回使用", kind: "game", icon: "scales", rank: "gold", threshold: 3},
-  { id: "bail5", cat: "B", group: "bailout", name: "超特大債務帳消し", desc: "ゲーム中にCOIN10枚帳消しを5回使用", kind: "game", icon: "scales", rank: "rainbow", threshold: 5},
+  { id: "bail2", cat: "B", group: "bailout", name: "債務帳消し", desc: "ゲーム中にCOIN10枚帳消しを1回使用", kind: "game", icon: "scales", rank: "ash", threshold: 1},
+  { id: "bail3", cat: "B", group: "bailout", name: "特大債務帳消し", desc: "ゲーム中にCOIN10枚帳消しを2回使用", kind: "game", icon: "scales", rank: "gold", threshold: 2},
+  { id: "bail5", cat: "B", group: "bailout", name: "超特大債務帳消し", desc: "ゲーム中にCOIN10枚帳消しを3回使用", kind: "game", icon: "scales", rank: "rainbow", threshold: 3},
   // C AVANT-GARDE
-  { id: "av10", cat: "C", group: "avant", name: "アバンギャルドフリーク", desc: "AVANT-GARDEを累計10回成立", kind: "cumul", icon: "avant", rank: "ash", threshold: 10},
-  { id: "av20", cat: "C", group: "avant", name: "アバンギャルドマスター", desc: "AVANT-GARDEを累計20回成立", kind: "cumul", icon: "avant", rank: "copper", threshold: 20},
-  { id: "av30", cat: "C", group: "avant", name: "アバンギャルド通", desc: "AVANT-GARDEを累計30回成立", kind: "cumul", icon: "avant", rank: "silver", threshold: 30},
-  { id: "av40", cat: "C", group: "avant", name: "アバンギャルドの申し子", desc: "AVANT-GARDEを累計40回成立", kind: "cumul", icon: "avant", rank: "gold", threshold: 40},
-  { id: "av50", cat: "C", group: "avant", name: "アバンギャルドの巨匠", desc: "AVANT-GARDEを累計50回成立", kind: "cumul", icon: "avant", rank: "rainbow", threshold: 50},
+  { id: "av10", cat: "C", group: "avant", name: "アバンギャルドフリーク", desc: "AVANT-GARDEを累計5回成立", kind: "cumul", icon: "avant", rank: "ash", threshold: 5},
+  { id: "av20", cat: "C", group: "avant", name: "アバンギャルドマスター", desc: "AVANT-GARDEを累計12回成立", kind: "cumul", icon: "avant", rank: "copper", threshold: 12},
+  { id: "av30", cat: "C", group: "avant", name: "アバンギャルド通", desc: "AVANT-GARDEを累計20回成立", kind: "cumul", icon: "avant", rank: "silver", threshold: 20},
+  { id: "av40", cat: "C", group: "avant", name: "アバンギャルドの申し子", desc: "AVANT-GARDEを累計30回成立", kind: "cumul", icon: "avant", rank: "gold", threshold: 30},
+  { id: "av50", cat: "C", group: "avant", name: "アバンギャルドの巨匠", desc: "AVANT-GARDEを累計40回成立", kind: "cumul", icon: "avant", rank: "rainbow", threshold: 40},
   // B COIN+
-  { id: "coin_rich1", cat: "B", group: "coin_rich", name: "COIN富豪", desc: "終了時COIN10枚以上温存を1度達成", kind: "cumul", icon: "coin_plus", rank: "ash", threshold: 1},
-  { id: "coin_rich3", cat: "B", group: "coin_rich", name: "COIN大富豪", desc: "終了時COIN10枚以上温存を3連続達成", kind: "cumul", icon: "coin_plus", rank: "gold", threshold: 3},
-  { id: "coin_rich5", cat: "B", group: "coin_rich", name: "COIN超大富豪", desc: "終了時COIN10枚以上温存を5連続達成", kind: "cumul", icon: "coin_plus", rank: "rainbow", threshold: 5},
+  { id: "coin_rich1", cat: "B", group: "coin_rich", name: "COIN富豪", desc: "終了時COIN10枚以上温存を累計1回達成", kind: "cumul", icon: "coin_plus", rank: "ash", threshold: 1},
+  { id: "coin_rich3", cat: "B", group: "coin_rich", name: "COIN大富豪", desc: "終了時COIN10枚以上温存を累計3回達成", kind: "cumul", icon: "coin_plus", rank: "gold", threshold: 3},
+  { id: "coin_rich5", cat: "B", group: "coin_rich", name: "COIN超大富豪", desc: "終了時COIN10枚以上温存を累計5回達成", kind: "cumul", icon: "coin_plus", rank: "rainbow", threshold: 5},
   // B COIN-
-  { id: "coin_poor1", cat: "B", group: "coin_poor", name: "COIN貧民", desc: "COIN0・補充なしで終了を1度達成", kind: "cumul", icon: "coin_minus", rank: "ash", threshold: 1},
-  { id: "coin_poor3", cat: "B", group: "coin_poor", name: "COIN大貧民", desc: "COIN0・補充なしで終了を3連続達成", kind: "cumul", icon: "coin_minus", rank: "gold", threshold: 3},
-  { id: "coin_poor5", cat: "B", group: "coin_poor", name: "COIN超大貧民", desc: "COIN0・補充なしで終了を5連続達成", kind: "cumul", icon: "coin_minus", rank: "rainbow", threshold: 5},
+  { id: "coin_poor1", cat: "B", group: "coin_poor", name: "COIN貧民", desc: "COIN0・補充なしで終了を累計1回達成", kind: "cumul", icon: "coin_minus", rank: "ash", threshold: 1},
+  { id: "coin_poor3", cat: "B", group: "coin_poor", name: "COIN大貧民", desc: "COIN0・補充なしで終了を累計3回達成", kind: "cumul", icon: "coin_minus", rank: "gold", threshold: 3},
+  { id: "coin_poor5", cat: "B", group: "coin_poor", name: "COIN超大貧民", desc: "COIN0・補充なしで終了を累計5回達成", kind: "cumul", icon: "coin_minus", rank: "rainbow", threshold: 5},
 ];
 const TITLE_BY_ID = {};
 TITLE_DEFS.forEach((t) => { TITLE_BY_ID[t.id] = t; });
@@ -522,18 +522,22 @@ function loadTitleSave() {
   try {
     const raw = localStorage.getItem(FT_TITLE_KEY);
     if (!raw) {
-      return { unlocked: {}, equipped: [], avantTotal: 0, coinRichStreak: 0, coinPoorStreak: 0 };
+      return { unlocked: {}, equipped: [], avantTotal: 0, comebackTotal: 0, coinRichTotal: 0, coinPoorTotal: 0 };
     }
     const o = JSON.parse(raw);
+    // 旧「連続」データを累計へ引き継ぎ
+    const richLegacy = Math.max(0, Number(o.coinRichTotal) || 0, Number(o.coinRichStreak) || 0);
+    const poorLegacy = Math.max(0, Number(o.coinPoorTotal) || 0, Number(o.coinPoorStreak) || 0);
     return {
       unlocked: o.unlocked && typeof o.unlocked === "object" ? o.unlocked : {},
       equipped: normalizeEquipped(o.equipped),
       avantTotal: Math.max(0, Number(o.avantTotal) || 0),
-      coinRichStreak: Math.max(0, Number(o.coinRichStreak) || 0),
-      coinPoorStreak: Math.max(0, Number(o.coinPoorStreak) || 0),
+      comebackTotal: Math.max(0, Number(o.comebackTotal) || 0),
+      coinRichTotal: richLegacy,
+      coinPoorTotal: poorLegacy,
     };
   } catch (e) {
-    return { unlocked: {}, equipped: [], avantTotal: 0, coinRichStreak: 0, coinPoorStreak: 0 };
+    return { unlocked: {}, equipped: [], avantTotal: 0, comebackTotal: 0, coinRichTotal: 0, coinPoorTotal: 0 };
   }
 }
 
@@ -571,8 +575,9 @@ function evaluateTitlesAfterGame(isLocal, isFirst, finalTV, finalCoins, stats, s
     unlocked: { ...(save.unlocked || {}) },
     equipped: normalizeEquipped(save.equipped),
     avantTotal: Math.max(0, Number(save.avantTotal) || 0) + (stats.avantThisGame || 0),
-    coinRichStreak: Math.max(0, Number(save.coinRichStreak) || 0),
-    coinPoorStreak: Math.max(0, Number(save.coinPoorStreak) || 0),
+    comebackTotal: Math.max(0, Number(save.comebackTotal) || 0),
+    coinRichTotal: Math.max(0, Number(save.coinRichTotal) || 0),
+    coinPoorTotal: Math.max(0, Number(save.coinPoorTotal) || 0),
   };
   function unlock(id) {
     if (!next.unlocked[id]) {
@@ -581,8 +586,8 @@ function evaluateTitlesAfterGame(isLocal, isFirst, finalTV, finalCoins, stats, s
     }
   }
   const tv = Number(finalTV) || 0;
-  if (tv >= 1e8) unlock("rich_1e8");
-  if (tv >= 1e12) unlock("rich_1e12");
+  if (tv >= 5e7) unlock("rich_1e8");
+  if (tv >= 1e11) unlock("rich_1e12");
   if (tv >= 1e13) unlock("rich_1e13");
   if (tv >= 1e14) unlock("rich_1e14");
   if (tv >= 1e15) unlock("rich_1e15");
@@ -590,66 +595,61 @@ function evaluateTitlesAfterGame(isLocal, isFirst, finalTV, finalCoins, stats, s
   if (tv >= 1e17) unlock("rich_1e17");
   if (tv >= 1e18) unlock("rich_1e18");
   if (tv >= 1e19) unlock("rich_1e19");
-  if (stats.wasLast) unlock("comeback");
+  if (stats.wasLast) {
+    next.comebackTotal = (next.comebackTotal || 0) + 1;
+  }
+  if (next.comebackTotal >= 10) unlock("comeback");
 
   const q = stats.quickUsed || 0;
-  if (q >= 10) unlock("q10");
-  if (q >= 15) unlock("q15");
-  if (q >= 20) unlock("q20");
-  if (q >= 25) unlock("q25");
-  if (q >= 30) unlock("q30");
+  if (q >= 6) unlock("q10");
+  if (q >= 10) unlock("q15");
+  if (q >= 14) unlock("q20");
+  if (q >= 18) unlock("q25");
+  if (q >= 24) unlock("q30");
 
   const hb = Object.keys(stats.heavyBankruptIds || {}).length;
   if (hb >= 1) unlock("h1");
-  if (hb >= 3) unlock("h3");
-  if (hb >= 5) unlock("h5");
-  if (hb >= 7) unlock("h7");
-  if (hb >= 9) unlock("h9");
+  if (hb >= 2) unlock("h3");
+  if (hb >= 3) unlock("h5");
+  if (hb >= 5) unlock("h7");
+  if (hb >= 7) unlock("h9");
 
   const db = stats.defenseBlocked || 0;
-  if (db >= 10) unlock("d10");
-  if (db >= 20) unlock("d20");
-  if (db >= 30) unlock("d30");
-  if (db >= 40) unlock("d40");
-  if (db >= 50) unlock("d50");
+  if (db >= 5) unlock("d10");
+  if (db >= 12) unlock("d20");
+  if (db >= 20) unlock("d30");
+  if (db >= 28) unlock("d40");
+  if (db >= 36) unlock("d50");
 
   const ro = stats.reflectOut || 0;
-  if (ro >= 5) unlock("r5");
-  if (ro >= 10) unlock("r10");
-  if (ro >= 15) unlock("r15");
-  if (ro >= 20) unlock("r20");
-  if (ro >= 25) unlock("r25");
+  if (ro >= 3) unlock("r5");
+  if (ro >= 6) unlock("r10");
+  if (ro >= 10) unlock("r15");
+  if (ro >= 14) unlock("r20");
+  if (ro >= 18) unlock("r25");
 
   const bl = stats.bailouts || 0;
-  if (bl >= 2) unlock("bail2");
-  if (bl >= 3) unlock("bail3");
-  if (bl >= 5) unlock("bail5");
+  if (bl >= 1) unlock("bail2");
+  if (bl >= 2) unlock("bail3");
+  if (bl >= 3) unlock("bail5");
 
-  if (next.avantTotal >= 10) unlock("av10");
-  if (next.avantTotal >= 20) unlock("av20");
-  if (next.avantTotal >= 30) unlock("av30");
-  if (next.avantTotal >= 40) unlock("av40");
-  if (next.avantTotal >= 50) unlock("av50");
+  if (next.avantTotal >= 5) unlock("av10");
+  if (next.avantTotal >= 12) unlock("av20");
+  if (next.avantTotal >= 20) unlock("av30");
+  if (next.avantTotal >= 30) unlock("av40");
+  if (next.avantTotal >= 40) unlock("av50");
 
   const coins = Math.max(0, Number(finalCoins) || 0);
   const richEnd = coins >= 10;
   const poorEnd = coins <= 0 && !stats.coinRescueUsed;
-  if (richEnd) {
-    next.coinRichStreak = (Number(save.coinRichStreak) || 0) + 1;
-    next.coinPoorStreak = 0;
-  } else if (poorEnd) {
-    next.coinPoorStreak = (Number(save.coinPoorStreak) || 0) + 1;
-    next.coinRichStreak = 0;
-  } else {
-    next.coinRichStreak = 0;
-    next.coinPoorStreak = 0;
-  }
-  if (next.coinRichStreak >= 1) unlock("coin_rich1");
-  if (next.coinRichStreak >= 3) unlock("coin_rich3");
-  if (next.coinRichStreak >= 5) unlock("coin_rich5");
-  if (next.coinPoorStreak >= 1) unlock("coin_poor1");
-  if (next.coinPoorStreak >= 3) unlock("coin_poor3");
-  if (next.coinPoorStreak >= 5) unlock("coin_poor5");
+  if (richEnd) next.coinRichTotal = (next.coinRichTotal || 0) + 1;
+  if (poorEnd) next.coinPoorTotal = (next.coinPoorTotal || 0) + 1;
+  if (next.coinRichTotal >= 1) unlock("coin_rich1");
+  if (next.coinRichTotal >= 3) unlock("coin_rich3");
+  if (next.coinRichTotal >= 5) unlock("coin_rich5");
+  if (next.coinPoorTotal >= 1) unlock("coin_poor1");
+  if (next.coinPoorTotal >= 3) unlock("coin_poor3");
+  if (next.coinPoorTotal >= 5) unlock("coin_poor5");
 
   next.equipped = normalizeEquipped(next.equipped);
   if ((!next.equipped || !next.equipped.length) && newly.length) {
@@ -5778,8 +5778,9 @@ function TitlesModal({ titleSave, onClose, onEquip, canEquip }) {
   const equippedSet = {};
   equippedList.forEach((id) => { equippedSet[id] = true; });
   const avantTotal = Math.max(0, Number(titleSave && titleSave.avantTotal) || 0);
-  const coinRichStreak = Math.max(0, Number(titleSave && titleSave.coinRichStreak) || 0);
-  const coinPoorStreak = Math.max(0, Number(titleSave && titleSave.coinPoorStreak) || 0);
+  const comebackTotal = Math.max(0, Number(titleSave && titleSave.comebackTotal) || 0);
+  const coinRichTotal = Math.max(0, Number(titleSave && titleSave.coinRichTotal) || 0);
+  const coinPoorTotal = Math.max(0, Number(titleSave && titleSave.coinPoorTotal) || 0);
 
   const GROUP_ORDER = {
     A: ["asset", "comeback"],
@@ -5827,8 +5828,9 @@ function TitlesModal({ titleSave, onClose, onEquip, canEquip }) {
     }
     let current = 0;
     if (t.group === "avant") current = avantTotal;
-    else if (t.group === "coin_rich") current = coinRichStreak;
-    else if (t.group === "coin_poor") current = coinPoorStreak;
+    else if (t.group === "comeback") current = comebackTotal;
+    else if (t.group === "coin_rich") current = coinRichTotal;
+    else if (t.group === "coin_poor") current = coinPoorTotal;
     const pct = progressPct(false, current, t.threshold);
     return {
       pct,
@@ -5934,8 +5936,9 @@ function TitlesModal({ titleSave, onClose, onEquip, canEquip }) {
           })}
           <div style={{ fontSize: 11, color: "var(--ft-text-dim)", marginTop: 8 }}>
             AVANT-GARDE累計: {avantTotal}回 ／
-            COIN温存連続: {coinRichStreak} ／
-            COIN0連続: {coinPoorStreak}
+            逆転累計: {comebackTotal}回 ／
+            COIN温存累計: {coinRichTotal} ／
+            COIN0累計: {coinPoorTotal}
           </div>
         </div>
         <div className="ft-modal-btns">
