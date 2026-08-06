@@ -457,24 +457,50 @@ function TitleBadge({ titleId, size = 16, showName = false }) {
 
 
 
+const MAX_EQUIPPED_TITLES = 3;
+function normalizeEquipped(eq) {
+  let list = [];
+  if (Array.isArray(eq)) list = eq.filter((id) => id && TITLE_BY_ID[id]);
+  else if (eq && TITLE_BY_ID[eq]) list = [eq];
+  // 重複除去・最大3
+  const seen = {};
+  const out = [];
+  list.forEach((id) => {
+    if (!seen[id] && out.length < MAX_EQUIPPED_TITLES) {
+      seen[id] = true;
+      out.push(id);
+    }
+  });
+  return out;
+}
 function loadTitleSave() {
   try {
     const raw = localStorage.getItem(FT_TITLE_KEY);
     if (!raw) {
-      return { unlocked: {}, equipped: null, avantTotal: 0, coinRichStreak: 0, coinPoorStreak: 0 };
+      return { unlocked: {}, equipped: [], avantTotal: 0, coinRichStreak: 0, coinPoorStreak: 0 };
     }
     const o = JSON.parse(raw);
     return {
       unlocked: o.unlocked && typeof o.unlocked === "object" ? o.unlocked : {},
-      equipped: o.equipped || null,
+      equipped: normalizeEquipped(o.equipped),
       avantTotal: Math.max(0, Number(o.avantTotal) || 0),
       coinRichStreak: Math.max(0, Number(o.coinRichStreak) || 0),
       coinPoorStreak: Math.max(0, Number(o.coinPoorStreak) || 0),
     };
   } catch (e) {
-    return { unlocked: {}, equipped: null, avantTotal: 0, coinRichStreak: 0, coinPoorStreak: 0 };
+    return { unlocked: {}, equipped: [], avantTotal: 0, coinRichStreak: 0, coinPoorStreak: 0 };
   }
 }
+
+function equippedTitleIds(save) {
+  return normalizeEquipped(save && save.equipped);
+}
+function equippedTitleNamesLabel(save) {
+  const ids = equippedTitleIds(save);
+  if (!ids.length) return "";
+  return ids.map((id) => (TITLE_BY_ID[id] || {}).name || "").filter(Boolean).join(" / ");
+}
+
 function saveTitleSave(data) {
   try {
     localStorage.setItem(FT_TITLE_KEY, JSON.stringify(data));
@@ -498,7 +524,7 @@ function evaluateTitlesAfterGame(isLocal, isFirst, finalTV, finalCoins, stats, s
   if (!isLocal || !isFirst || !stats) return { newly, save };
   const next = {
     unlocked: { ...(save.unlocked || {}) },
-    equipped: save.equipped || null,
+    equipped: normalizeEquipped(save.equipped),
     avantTotal: Math.max(0, Number(save.avantTotal) || 0) + (stats.avantThisGame || 0),
     coinRichStreak: Math.max(0, Number(save.coinRichStreak) || 0),
     coinPoorStreak: Math.max(0, Number(save.coinPoorStreak) || 0),
@@ -580,7 +606,10 @@ function evaluateTitlesAfterGame(isLocal, isFirst, finalTV, finalCoins, stats, s
   if (next.coinPoorStreak >= 3) unlock("coin_poor3");
   if (next.coinPoorStreak >= 5) unlock("coin_poor5");
 
-  if (!next.equipped && newly.length) next.equipped = newly[newly.length - 1];
+  next.equipped = normalizeEquipped(next.equipped);
+  if ((!next.equipped || !next.equipped.length) && newly.length) {
+    next.equipped = normalizeEquipped([newly[newly.length - 1]]);
+  }
   saveTitleSave(next);
   return { newly, save: next };
 }
@@ -3167,7 +3196,7 @@ function FactorTrader() {
           onCreateRoom={createOnlineRoom}
           onJoinRoom={joinOnlineRoom}
           onOpenTitles={() => setShowTitlesModal(true)}
-          equippedTitleName={(TITLE_BY_ID[titleSave.equipped] || {}).name || ""}
+          equippedTitleName={equippedTitleNamesLabel(titleSave)}
         />
         {showTitlesModal ? (
           <TitlesModal
@@ -3175,7 +3204,16 @@ function FactorTrader() {
             onClose={() => setShowTitlesModal(false)}
             canEquip={true}
             onEquip={(id) => {
-              const next = { ...titleSave, equipped: id };
+              let list = normalizeEquipped(titleSave.equipped);
+              if (id == null) return;
+              const idx = list.indexOf(id);
+              if (idx >= 0) list = list.filter((x) => x !== id);
+              else if (list.length < MAX_EQUIPPED_TITLES) list = list.concat([id]);
+              else {
+                // 満杯時は先頭を外して追加
+                list = list.slice(1).concat([id]);
+              }
+              const next = { ...titleSave, equipped: list };
               setTitleSave(next);
               saveTitleSave(next);
             }}
@@ -3253,7 +3291,7 @@ function FactorTrader() {
             currentPrice={priceBefore}
             onQuit={quitToTop}
             onShowRules={() => setShowRulesModal(true)}
-            equippedTitleId={titleSave.equipped || null}
+            equippedTitleIds={equippedTitleIds(titleSave)}
             multiHuman={allHumans.length > 1}
             humanIndex={
               (phase === "order" || phase === "hack") && ahForInput.length
@@ -3269,7 +3307,7 @@ function FactorTrader() {
           <div className="ft-main">
             <div className="ft-col-left">
               <ChartPanel priceHistory={priceHistory} nStart={nStart} priceBefore={priceBefore} refPrice={refPrice} phase={phase} />
-              <PlayersPanel players={players} orders={orders} phase={phase} currentPrice={priceBefore} revealData={revealData} equippedTitleName={(TITLE_BY_ID[titleSave.equipped] || {}).name || ""} equippedTitleId={titleSave.equipped || null} myPlayerId={myPlayerId} />
+              <PlayersPanel players={players} orders={orders} phase={phase} currentPrice={priceBefore} revealData={revealData} equippedTitleIds={equippedTitleIds(titleSave)} myPlayerId={myPlayerId} />
             </div>
             <div className="ft-col-right">
               <ActionPanel
@@ -3328,7 +3366,16 @@ function FactorTrader() {
             onClose={() => setShowTitlesModal(false)}
             canEquip={true}
             onEquip={(id) => {
-              const next = { ...titleSave, equipped: id };
+              let list = normalizeEquipped(titleSave.equipped);
+              if (id == null) return;
+              const idx = list.indexOf(id);
+              if (idx >= 0) list = list.filter((x) => x !== id);
+              else if (list.length < MAX_EQUIPPED_TITLES) list = list.concat([id]);
+              else {
+                // 満杯時は先頭を外して追加
+                list = list.slice(1).concat([id]);
+              }
+              const next = { ...titleSave, equipped: list };
               setTitleSave(next);
               saveTitleSave(next);
             }}
@@ -3710,9 +3757,9 @@ function SetupScreen({ playerCount, setPlayerCount, humanCount, setHumanCount, h
   );
 }
 
-function TopBar({ turn, totalTurns, human, currentPrice, onQuit, onShowRules, multiHuman, humanIndex, humanTotal, equippedTitleId }) {
+function TopBar({ turn, totalTurns, human, currentPrice, onQuit, onShowRules, multiHuman, humanIndex, humanTotal, equippedTitleIds }) {
   const tv = totalValue(human, currentPrice);
-  const eqTitle = equippedTitleId ? TITLE_BY_ID[equippedTitleId] : null;
+  const eqIds = Array.isArray(equippedTitleIds) ? equippedTitleIds.filter((id) => TITLE_BY_ID[id]) : (equippedTitleIds && TITLE_BY_ID[equippedTitleIds] ? [equippedTitleIds] : []);
   return (
     <div className="ft-topbar">
       <div className="ft-tb-stats">
@@ -3722,11 +3769,13 @@ function TopBar({ turn, totalTurns, human, currentPrice, onQuit, onShowRules, mu
             {turn}<span className="ft-tb-sub"> / {totalTurns}</span>
           </span>
         </div>
-        {eqTitle ? (
+        {eqIds.length ? (
           <div className="ft-tb-item ft-tb-title">
             <span className="ft-tb-label">称号</span>
-            <span className="ft-tb-value ft-tb-title-row" title={eqTitle.name}>
-              <TitleBadge titleId={eqTitle.id} size={20} />
+            <span className="ft-tb-value ft-tb-title-row" title={eqIds.map((id) => (TITLE_BY_ID[id] || {}).name).filter(Boolean).join(" / ")}>
+              {eqIds.map((id) => (
+                <TitleBadge key={id} titleId={id} size={18} />
+              ))}
             </span>
           </div>
         ) : null}
@@ -3836,7 +3885,7 @@ function ChartPanel({ priceHistory, nStart, priceBefore, refPrice, phase }) {
   );
 }
 
-function PlayersPanel({ players, orders, phase, currentPrice, revealData, equippedTitleName, equippedTitleId, myPlayerId }) {
+function PlayersPanel({ players, orders, phase, currentPrice, revealData, equippedTitleIds, myPlayerId }) {
   const rankMap = useMemo(() => {
     const sorted = [...players].sort(
       (a, b) => totalValue(b, currentPrice) - totalValue(a, currentPrice)
@@ -4025,9 +4074,11 @@ function PlayersPanel({ players, orders, phase, currentPrice, revealData, equipp
             <span className="ft-pc-rank">{rankMap[p.id]}位</span>
             <div className="ft-pc-name">
               {p.isAI ? <Cpu size={13} /> : <User size={13} />} {p.name}
-              {!p.isAI && equippedTitleId ? (
-                <span className="ft-tb-title-row" style={{ marginLeft: 4 }} title={(TITLE_BY_ID[equippedTitleId] || {}).name || ""}>
-                  <TitleBadge titleId={equippedTitleId} size={15} />
+              {!p.isAI && (Array.isArray(equippedTitleIds) ? equippedTitleIds : []).length ? (
+                <span className="ft-tb-title-row ft-pc-titles" style={{ marginLeft: 4 }} title={(Array.isArray(equippedTitleIds) ? equippedTitleIds : []).map((id) => (TITLE_BY_ID[id] || {}).name).filter(Boolean).join(" / ")}>
+                  {(Array.isArray(equippedTitleIds) ? equippedTitleIds : []).filter((id) => TITLE_BY_ID[id]).map((id) => (
+                    <TitleBadge key={id} titleId={id} size={13} />
+                  ))}
                 </span>
               ) : null}
             </div>
@@ -4462,7 +4513,7 @@ function ActionPanel(props) {
             <div className="ft-hack-stepper">
               <button
                 type="button"
-                className={"ft-defense-toggle" + (humanHackDraft.heavy ? " is-on" : "")}
+                className={"ft-defense-toggle" + (humanHackDraft.heavy ? " is-heavy-on" : "")}
                 disabled={turn <= 3 || (!humanHackDraft.heavy && (humanHackDraft.quick || 0) + 5 + (humanHackDraft.defense ? 5 : 0) > (human.cards.stock || 0))}
                 onClick={() =>
                   setHumanHackDraft((d) => {
@@ -5082,7 +5133,7 @@ function LogPanel({ log, logEndRef }) {
 
 function GameOverScreen({ ranked, currentPrice, onRestart, newTitleIds, titleSave, onEquipTitle, onOpenTitles }) {
   const newNames = (newTitleIds || []).map((id) => (TITLE_BY_ID[id] || {}).name).filter(Boolean);
-  const eqName = (TITLE_BY_ID[(titleSave && titleSave.equipped)] || {}).name || "";
+  const eqIds = equippedTitleIds(titleSave);
   return (
     <div className="ft-setup">
       <div className="ft-setup-card">
@@ -5094,9 +5145,11 @@ function GameOverScreen({ ranked, currentPrice, onRestart, newTitleIds, titleSav
               <span className="ft-rank-pos">#{i + 1}</span>
               <span className="ft-rank-name">
                 {p.isAI ? <Cpu size={13} /> : <User size={13} />} {p.name}
-                {!p.isAI && titleSave && titleSave.equipped ? (
-                  <span className="ft-tb-title-row" style={{ marginLeft: 6 }} title={(TITLE_BY_ID[titleSave.equipped] || {}).name || ""}>
-                    <TitleBadge titleId={titleSave.equipped} size={16} />
+                {!p.isAI && eqIds.length ? (
+                  <span className="ft-tb-title-row ft-pc-titles" style={{ marginLeft: 6 }} title={eqIds.map((id) => (TITLE_BY_ID[id] || {}).name).filter(Boolean).join(" / ")}>
+                    {eqIds.map((id) => (
+                      <TitleBadge key={id} titleId={id} size={14} />
+                    ))}
                   </span>
                 ) : null}
               </span>
@@ -5128,7 +5181,9 @@ function GameOverScreen({ ranked, currentPrice, onRestart, newTitleIds, titleSav
 
 function TitlesModal({ titleSave, onClose, onEquip, canEquip }) {
   const unlocked = (titleSave && titleSave.unlocked) || {};
-  const equipped = titleSave && titleSave.equipped;
+  const equippedList = normalizeEquipped(titleSave && titleSave.equipped);
+  const equippedSet = {};
+  equippedList.forEach((id) => { equippedSet[id] = true; });
   const avantTotal = Math.max(0, Number(titleSave && titleSave.avantTotal) || 0);
   const coinRichStreak = Math.max(0, Number(titleSave && titleSave.coinRichStreak) || 0);
   const coinPoorStreak = Math.max(0, Number(titleSave && titleSave.coinPoorStreak) || 0);
@@ -5199,7 +5254,7 @@ function TitlesModal({ titleSave, onClose, onEquip, canEquip }) {
       <div className="ft-modal-box ft-modal-box-wide" onClick={(e) => e.stopPropagation()}>
         <div className="ft-modal-title">称号一覧</div>
         <p className="ft-modal-desc" style={{ marginBottom: 10 }}>
-          称号の獲得はLOCALのみ・最終1位が条件です。進捗はブラウザに保存されます。装備した称号は名前の下に表示されます。
+          称号の獲得はLOCALのみ・最終1位が条件です。進捗はブラウザに保存されます。称号は最大3つまで装備でき、トレーダー名・トップバーにバッジ表示されます（現在 {equippedList.length}/{MAX_EQUIPPED_TITLES}）。
         </p>
         <div className="ft-title-progress-block" style={{ marginBottom: 14 }}>
           <div className="ft-title-progress-head">
@@ -5241,7 +5296,7 @@ function TitlesModal({ titleSave, onClose, onEquip, canEquip }) {
                       </div>
                       {gTitles.map((t) => {
                         const got = !!unlocked[t.id];
-                        const isEq = equipped === t.id;
+                        const isEq = !!equippedSet[t.id];
                         const prog = titleProgress(t);
                         return (
                           <div key={t.id} className={"ft-title-row" + (got ? " is-got" : "") + (isEq ? " is-eq" : "")}>
@@ -5269,9 +5324,10 @@ function TitlesModal({ titleSave, onClose, onEquip, canEquip }) {
                                 type="button"
                                 className="ft-rules-btn"
                                 style={{ flexShrink: 0, padding: "6px 10px" }}
-                                onClick={() => onEquip && onEquip(isEq ? null : t.id)}
+                                onClick={() => onEquip && onEquip(t.id)}
+                                title={isEq ? "装備を外す" : (equippedList.length >= MAX_EQUIPPED_TITLES ? "装備枠が満杯のため、最も古い装備と入れ替え" : "装備する（最大3つ）")}
                               >
-                                {isEq ? "外す" : "装備"}
+                                {isEq ? "外す" : (equippedList.length >= MAX_EQUIPPED_TITLES ? "入替" : "装備")}
                               </button>
                             ) : null}
                           </div>
@@ -6119,6 +6175,21 @@ const CSS = `
   flex-shrink: 0;
 }
 
+.ft-pc-titles {
+  gap: 3px !important;
+}
+.ft-pc-titles .ft-title-badge-icon {
+  width: 18px;
+  height: 18px;
+}
+.ft-tb-title-row {
+  flex-wrap: wrap;
+  max-width: 120px;
+}
+.ft-player-card .ft-tb-title-row {
+  max-width: 72px;
+}
+
 .ft-pc-title.is-rainbow,
 .ft-rainbow-text {
   background: linear-gradient(90deg, #f43f5e, #eab308, #34d399, #60a5fa, #c084fc);
@@ -6380,6 +6451,12 @@ const CSS = `
   background: rgba(255,182,72,0.2);
   border-color: rgba(255,182,72,0.65);
   color: #ffd48a;
+}
+.ft-defense-toggle.is-heavy-on {
+  background: rgba(255,77,109,0.22);
+  border-color: rgba(255,77,109,0.75);
+  color: #ff8fa3;
+  box-shadow: 0 0 10px rgba(255,77,109,0.35);
 }
 .ft-defense-toggle.is-avant-on {
   background: rgba(192,132,252,0.22);
