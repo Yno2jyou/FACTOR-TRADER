@@ -528,11 +528,15 @@ function loadTitleSave() {
     // 旧「連続」データを累計へ引き継ぎ
     const richLegacy = Math.max(0, Number(o.coinRichTotal) || 0, Number(o.coinRichStreak) || 0);
     const poorLegacy = Math.max(0, Number(o.coinPoorTotal) || 0, Number(o.coinPoorStreak) || 0);
+    const unlocked = o.unlocked && typeof o.unlocked === "object" ? o.unlocked : {};
+    let comebackTotal = Math.max(0, Number(o.comebackTotal) || 0);
+    // 旧条件（1回で解放）で逆転劇を所持している場合は累計10として引き継ぐ
+    if (unlocked.comeback && comebackTotal < 10) comebackTotal = 10;
     return {
-      unlocked: o.unlocked && typeof o.unlocked === "object" ? o.unlocked : {},
+      unlocked: unlocked,
       equipped: normalizeEquipped(o.equipped),
       avantTotal: Math.max(0, Number(o.avantTotal) || 0),
-      comebackTotal: Math.max(0, Number(o.comebackTotal) || 0),
+      comebackTotal: comebackTotal,
       coinRichTotal: richLegacy,
       coinPoorTotal: poorLegacy,
     };
