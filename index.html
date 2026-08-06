@@ -4034,7 +4034,7 @@ function SetupScreen({ playerCount, setPlayerCount, humanCount, setHumanCount, h
       <div className="ft-setup-card">
         <div className="ft-setup-header-row">
           <div className="ft-setup-brand">
-            <div className="ft-eyebrow">SOPF MARKET TERMINAL</div>
+            <div className="ft-eyebrow">PRIME MARKET TERMINAL</div>
             <h1 className="ft-title">
               FACTOR<span className="ft-title-accent">/</span>TRADER
             </h1>
@@ -4057,7 +4057,7 @@ function SetupScreen({ playerCount, setPlayerCount, humanCount, setHumanCount, h
           </div>
         </div>
 
-        <div className="ft-setup-body">
+        <div className={"ft-setup-body" + (playMode === "online" ? " is-online" : "")}>
           <div className="ft-setup-rules-col">
             <div className="ft-setup-formula">
               <span className="ft-setup-formula-main">株価 = Nの素因数和</span>
@@ -5870,7 +5870,9 @@ const CSS = `
 }
 .ft-setup-brand .ft-title {
   margin: 0;
-  font-size: 30px;
+  font-size: 44px;
+  line-height: 1.05;
+  letter-spacing: 0.5px;
 }
 .ft-setup-brand .ft-eyebrow {
   margin-bottom: 6px;
@@ -5952,6 +5954,20 @@ const CSS = `
   background: rgba(0,0,0,0.18);
   padding: 10px 12px;
 }
+.ft-setup-body.is-online {
+  align-items: stretch;
+}
+.ft-setup-body.is-online .ft-setup-rules-col {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.ft-setup-body.is-online .ft-setup-rules-wrap {
+  flex: 1;
+  max-height: none;
+  min-height: 520px;
+  height: 100%;
+}
 .ft-setup-rules-wrap .ft-rules-section {
   margin-bottom: 12px;
 }
@@ -5982,7 +5998,7 @@ const CSS = `
     padding: 18px 16px;
   }
   .ft-setup-brand .ft-title {
-    font-size: 26px;
+    font-size: 32px;
   }
   .ft-ai-iq-panel {
     flex: 1 1 100%;
