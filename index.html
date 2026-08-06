@@ -4042,6 +4042,41 @@ function SetupScreen({ playerCount, setPlayerCount, humanCount, setHumanCount, h
   }
   const aiIq = getAiIqInfo();
   const [showSetupRulesFS, setShowSetupRulesFS] = React.useState(false);
+  const setupControlsRef = React.useRef(null);
+  const setupRulesWrapRef = React.useRef(null);
+  const setupRulesColRef = React.useRef(null);
+  React.useLayoutEffect(() => {
+    function syncRulesHeight() {
+      const wrap = setupRulesWrapRef.current;
+      const controls = setupControlsRef.current;
+      const col = setupRulesColRef.current;
+      if (!wrap) return;
+      const isPc = typeof window !== "undefined" && window.matchMedia("(min-width: 861px)").matches;
+      if (playMode === "online" && isPc && controls && col) {
+        // 右パネル全体の高さに左カラムを合わせ、式以外をスクロール
+        const controlsH = controls.offsetHeight;
+        const formulaEl = col.querySelector(".ft-setup-formula");
+        const formulaH = formulaEl ? formulaEl.offsetHeight + 10 : 0;
+        const mobileBtn = col.querySelector(".ft-setup-mobile-rules-btn");
+        const btnH = mobileBtn && mobileBtn.offsetParent ? mobileBtn.offsetHeight + 8 : 0;
+        const next = Math.max(180, controlsH - formulaH - btnH);
+        wrap.style.maxHeight = next + "px";
+        wrap.style.height = next + "px";
+        wrap.style.overflowY = "auto";
+      } else {
+        wrap.style.maxHeight = "";
+        wrap.style.height = "";
+        wrap.style.overflowY = "";
+      }
+    }
+    syncRulesHeight();
+    const t = setTimeout(syncRulesHeight, 50);
+    window.addEventListener("resize", syncRulesHeight);
+    return () => {
+      clearTimeout(t);
+      window.removeEventListener("resize", syncRulesHeight);
+    };
+  }, [playMode, playerCount, seriousMode, myName, joinCodeInput, netStatus, equippedTitleName]);
   return (
     <div className="ft-setup">
       <div className="ft-setup-card">
@@ -4071,7 +4106,7 @@ function SetupScreen({ playerCount, setPlayerCount, humanCount, setHumanCount, h
         </div>
 
         <div className={"ft-setup-body" + (playMode === "online" ? " is-online" : "")}>
-          <div className="ft-setup-rules-col">
+          <div className="ft-setup-rules-col" ref={setupRulesColRef}>
             <div className="ft-setup-formula">
               <span className="ft-setup-formula-main">株価 = Nの素因数和</span>
               <span className="ft-setup-formula-chips">
@@ -4082,11 +4117,11 @@ function SetupScreen({ playerCount, setPlayerCount, humanCount, setHumanCount, h
             <button type="button" className="ft-rules-btn ft-setup-mobile-rules-btn" onClick={() => setShowSetupRulesFS(true)}>
               ルール
             </button>
-            <div className="ft-setup-rules-wrap">
+            <div className="ft-setup-rules-wrap" ref={setupRulesWrapRef}>
               <RulesContent />
             </div>
           </div>
-          <div className="ft-setup-controls">
+          <div className="ft-setup-controls" ref={setupControlsRef}>
         <div className="ft-select-count">
           <div className="ft-label">MODE</div>
           <div className="ft-count-options">
@@ -5991,24 +6026,19 @@ const CSS = `
   background: rgba(0,0,0,0.18);
   padding: 10px 12px;
 }
-/* PC・ONLINE時のみ: 右の操作パネルの高さに合わせて左ルール枠を伸ばす（枠内スクロール） */
+/* PC・ONLINE時: 高さは右パネル基準（JSで左ルール枠の max-height を同期）。左が伸びて右に余白ができないようにする */
 @media (min-width: 861px) {
   .ft-setup-body.is-online {
-    align-items: stretch;
+    align-items: start;
   }
   .ft-setup-body.is-online .ft-setup-rules-col {
     display: flex;
     flex-direction: column;
     min-height: 0;
-    align-self: stretch;
-    height: 100%;
-  }
-  .ft-setup-body.is-online .ft-setup-controls {
-    height: 100%;
+    align-self: start;
+    max-height: 100%;
   }
   .ft-setup-body.is-online .ft-setup-rules-wrap {
-    flex: 1 1 auto;
-    max-height: none;
     min-height: 0;
     overflow-y: auto;
   }
