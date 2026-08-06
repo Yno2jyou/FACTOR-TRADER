@@ -1211,7 +1211,13 @@ async function loginAccount(id, password, otpToken) {
 }
 
 
-/** 同期ワンタイムパスワード（オフライン・発行文字列に暗号化進捗を内包。使い捨て） */
+/** 同期ワンタイムパスワード（8桁英数字・有効5分・1回限り。長いコード不要） */
+const FT_OTP_VAULT_KEY = "factor_trader_otp_vault_v1";
+const FT_OTP_PEER_PREFIX = "ftotp-";
+const FT_OTP_TTL_MS = 5 * 60 * 1000; // 5分
+let _ftOtpPublishPeer = null;
+let _ftOtpPublishTimer = null;
+
 function ftRandomOtp(len) {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   const n = len || 8;
@@ -1220,6 +1226,152 @@ function ftRandomOtp(len) {
   let s = "";
   for (let i = 0; i < n; i++) s += chars[a[i] % chars.length];
   return s;
+}
+function ftNormalizeOtp(s) {
+  return String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+function loadOtpVault() {
+  try {
+    const v = JSON.parse(localStorage.getItem(FT_OTP_VAULT_KEY) || "{}");
+    const now = Date.now();
+    let changed = false;
+    Object.keys(v).forEach((k) => {
+      if (!v[k] || !v[k].exp || Number(v[k].exp) < now) {
+        delete v[k];
+        changed = true;
+      }
+    });
+    if (changed) localStorage.setItem(FT_OTP_VAULT_KEY, JSON.stringify(v));
+    return v && typeof v === "object" ? v : {};
+  } catch (e) {
+    return {};
+  }
+}
+function saveOtpVaultEntry(otp, pack, exp) {
+  const key = ftNormalizeOtp(otp);
+  if (!key) return;
+  const v = loadOtpVault();
+  v[key] = { pack: pack, exp: Number(exp) || (Date.now() + FT_OTP_TTL_MS) };
+  try {
+    localStorage.setItem(FT_OTP_VAULT_KEY, JSON.stringify(v));
+  } catch (e) {}
+}
+function peekOtpVaultEntry(otp) {
+  const key = ftNormalizeOtp(otp);
+  const v = loadOtpVault();
+  return v[key] || null;
+}
+function removeOtpVaultEntry(otp) {
+  const key = ftNormalizeOtp(otp);
+  const v = loadOtpVault();
+  if (v[key]) {
+    delete v[key];
+    try {
+      localStorage.setItem(FT_OTP_VAULT_KEY, JSON.stringify(v));
+    } catch (e) {}
+  }
+}
+function stopOtpPublishPeer() {
+  if (_ftOtpPublishTimer) {
+    clearTimeout(_ftOtpPublishTimer);
+    _ftOtpPublishTimer = null;
+  }
+  if (_ftOtpPublishPeer) {
+    try {
+      _ftOtpPublishPeer.destroy();
+    } catch (e) {}
+    _ftOtpPublishPeer = null;
+  }
+}
+function startOtpPublishPeer(otp, pack, exp) {
+  stopOtpPublishPeer();
+  if (typeof Peer === "undefined") return;
+  const peerId = FT_OTP_PEER_PREFIX + ftNormalizeOtp(otp);
+  try {
+    const peer = new Peer(peerId, { debug: 0 });
+    _ftOtpPublishPeer = peer;
+    peer.on("connection", (conn) => {
+      conn.on("open", () => {
+        try {
+          conn.send({ type: "ftotp-pack", pack: pack });
+        } catch (e) {}
+        setTimeout(() => {
+          try {
+            conn.close();
+          } catch (e) {}
+        }, 400);
+      });
+    });
+    peer.on("error", () => {});
+    const remain = Math.max(1000, Number(exp) - Date.now());
+    _ftOtpPublishTimer = setTimeout(() => {
+      stopOtpPublishPeer();
+      removeOtpVaultEntry(otp);
+    }, remain);
+  } catch (e) {}
+}
+function fetchOtpPackViaPeer(otp, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    if (typeof Peer === "undefined") {
+      reject(new Error("PeerJS未読込"));
+      return;
+    }
+    const peer = new Peer({ debug: 0 });
+    let done = false;
+    const finish = (fn) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      try {
+        peer.destroy();
+      } catch (e) {}
+      fn();
+    };
+    const timer = setTimeout(() => {
+      finish(() =>
+        reject(
+          new Error(
+            "発行元に接続できませんでした。発行した端末でページを開いたまま、5分以内に入力してください。"
+          )
+        )
+      );
+    }, timeoutMs || 12000);
+    peer.on("error", () => {
+      finish(() =>
+        reject(
+          new Error(
+            "発行元に接続できませんでした。発行した端末でページを開いたまま、5分以内に入力してください。"
+          )
+        )
+      );
+    });
+    peer.on("open", () => {
+      try {
+        const conn = peer.connect(FT_OTP_PEER_PREFIX + ftNormalizeOtp(otp), { reliable: true });
+        conn.on("data", (data) => {
+          if (data && data.type === "ftotp-pack" && data.pack) {
+            finish(() => resolve(data.pack));
+            try {
+              conn.close();
+            } catch (e) {}
+          }
+        });
+        conn.on("error", () => {});
+      } catch (e) {
+        finish(() => reject(e));
+      }
+    });
+  });
+}
+function parseOtpLongToken(raw) {
+  let s = String(raw || "").trim();
+  if (!s.startsWith("FTOTP1.")) return null;
+  s = s.slice(7);
+  try {
+    return JSON.parse(new TextDecoder().decode(ftBytesFromB64(s)));
+  } catch (e) {
+    return null;
+  }
 }
 async function issueSyncOtp(password) {
   const uid = getLoggedInAccountId();
@@ -1238,6 +1390,7 @@ async function issueSyncOtp(password) {
   const otp = ftRandomOtp(8);
   const salt = ftRandomSaltB64(16);
   const nonce = ftRandomSaltB64(12);
+  const exp = Date.now() + FT_OTP_TTL_MS;
   const body = {
     v: 1,
     id: uid,
@@ -1245,7 +1398,7 @@ async function issueSyncOtp(password) {
     nonce: nonce,
     progress: account.progress,
     ts: Date.now(),
-    exp: Date.now() + 30 * 60 * 1000, // 30分
+    exp: exp,
   };
   const enc = await ftEncryptJson(body, password + ":" + otp, salt);
   const pack = {
@@ -1256,25 +1409,54 @@ async function issueSyncOtp(password) {
     iv: enc.iv,
     data: enc.data,
   };
+  saveOtpVaultEntry(otp, pack, exp);
+  startOtpPublishPeer(otp, pack, exp);
+  // 互換用トークン（UIでは非表示。旧形式の貼付にも対応）
   const token = "FTOTP1." + ftB64FromBytes(ftUtf8(JSON.stringify(pack)));
-  return { otp: otp, token: token, expMin: 30 };
+  return { otp: otp, token: token, expMin: 5 };
 }
 async function consumeSyncOtp(uid, password, tokenOrOtp) {
   let raw = String(tokenOrOtp || "").trim();
   if (!raw) throw new Error("ワンタイムパスワードを入力してください");
-  if (!raw.startsWith("FTOTP1.")) {
-    // 短いOTPのみではデータ本体がない
-    throw new Error("発行時にコピーしたワンタイムパスワード全体を貼り付けてください");
+
+  let pack = null;
+  let shortOtp = null;
+
+  if (raw.indexOf("FTOTP1.") >= 0) {
+    // 旧形式の長いコードも受け付ける
+    const idx = raw.indexOf("FTOTP1.");
+    pack = parseOtpLongToken(raw.slice(idx));
+    if (!pack) throw new Error("ワンタイムパスワードの形式が不正です");
+  } else {
+    shortOtp = ftNormalizeOtp(raw);
+    if (!/^[A-Z0-9]{6,12}$/.test(shortOtp)) {
+      throw new Error("ワンタイムパスワードは8桁の英数字です");
+    }
+    const entry = peekOtpVaultEntry(shortOtp);
+    if (entry && entry.pack) {
+      if (entry.exp && Date.now() > Number(entry.exp)) {
+        removeOtpVaultEntry(shortOtp);
+        throw new Error("ワンタイムパスワードの有効期限が切れています（発行から5分）");
+      }
+      pack = entry.pack;
+    } else {
+      try {
+        pack = await fetchOtpPackViaPeer(shortOtp, 12000);
+      } catch (e) {
+        throw new Error(
+          e && e.message
+            ? e.message
+            : "ワンタイムパスワードが見つかりません。発行した端末でページを開いたまま、5分以内に入力してください。"
+        );
+      }
+    }
   }
-  raw = raw.slice(7);
-  let pack;
-  try {
-    pack = JSON.parse(new TextDecoder().decode(ftBytesFromB64(raw)));
-  } catch (e) {
-    throw new Error("ワンタイムパスワードの形式が不正です");
-  }
+
   if (!pack || pack.v !== 1 || !pack.otp || !pack.salt || !pack.iv || !pack.data) {
     throw new Error("ワンタイムパスワードの形式が不正です");
+  }
+  if (shortOtp && ftNormalizeOtp(pack.otp) !== shortOtp) {
+    throw new Error("ワンタイムパスワードが不正です");
   }
   if (pack.id && uid && pack.id !== uid) {
     throw new Error("IDがワンタイムパスワードと一致しません");
@@ -1289,7 +1471,8 @@ async function consumeSyncOtp(uid, password, tokenOrOtp) {
   }
   if (!body || !body.progress) throw new Error("データが読めませんでした");
   if (body.exp && Date.now() > Number(body.exp)) {
-    throw new Error("ワンタイムパスワードの有効期限が切れています（発行から30分）");
+    removeOtpVaultEntry(pack.otp);
+    throw new Error("ワンタイムパスワードの有効期限が切れています（発行から5分）");
   }
   if (body.otp && body.otp !== pack.otp) throw new Error("ワンタイムパスワードが不正です");
   // 使い捨て: 同じ nonce は再使用不可（この端末）
@@ -1299,13 +1482,15 @@ async function consumeSyncOtp(uid, password, tokenOrOtp) {
     const nk = String(body.nonce || pack.otp);
     if (used[nk]) throw new Error("このワンタイムパスワードは使用済みです");
     used[nk] = Date.now();
-    // 古い記録を掃除
     const cutoff = Date.now() - 7 * 24 * 3600 * 1000;
-    Object.keys(used).forEach((k) => { if (used[k] < cutoff) delete used[k]; });
+    Object.keys(used).forEach((k) => {
+      if (used[k] < cutoff) delete used[k];
+    });
     localStorage.setItem(usedKey, JSON.stringify(used));
   } catch (e) {
     if (e && e.message && e.message.indexOf("使用済み") >= 0) throw e;
   }
+  removeOtpVaultEntry(pack.otp);
   return { id: useId, progress: body.progress, otp: pack.otp };
 }
 
@@ -4633,12 +4818,12 @@ function SetupAccountMenu({ onProgressApplied }) {
     try {
       const res = await issueSyncOtp(issuePass);
       setIssuedOtp(res.otp);
-      setIssuedToken(res.token);
-      setMsg("発行しました（有効30分・1回限り）。コピーして他端末でログイン時に貼り付けてください。");
+      setIssuedToken(res.otp);
+      setMsg("発行しました（有効5分・1回限り）。8桁コードを他端末のログイン画面に入力してください。発行中はこのページを開いたままにしてください。");
       setIssuePass("");
       try {
-        await navigator.clipboard.writeText(res.token);
-        setMsg("発行しクリップボードにコピーしました（有効30分・1回限り）。");
+        await navigator.clipboard.writeText(res.otp);
+        setMsg("8桁コードをコピーしました（有効5分・1回限り）。他端末でログイン時に入力してください。");
       } catch (ce) {}
     } catch (ex) {
       setErr(ex.message || String(ex));
@@ -4647,12 +4832,13 @@ function SetupAccountMenu({ onProgressApplied }) {
   }
 
   async function copyIssued() {
-    if (!issuedToken) return;
+    const code = issuedOtp || issuedToken;
+    if (!code) return;
     try {
-      await navigator.clipboard.writeText(issuedToken);
-      setMsg("コピーしました");
+      await navigator.clipboard.writeText(code);
+      setMsg("8桁コードをコピーしました");
     } catch (e) {
-      setMsg("下の欄を選択してコピーしてください");
+      setMsg("表示中のコードを長押ししてコピーしてください");
     }
   }
 
@@ -4703,8 +4889,8 @@ function SetupAccountMenu({ onProgressApplied }) {
               <input className="ft-setup-input" value={userId} onChange={(e) => setUserId(e.target.value)} autoComplete="username" maxLength={24} />
               <div className="ft-label">パスワード</div>
               <input className="ft-setup-input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />
-              <div className="ft-label">同期ワンタイムパスワード（任意）</div>
-              <textarea className="ft-auth-code" value={otpInput} onChange={(e) => setOtpInput(e.target.value)} placeholder="他端末で発行したものを貼り付け" rows={2} />
+              <div className="ft-label">同期ワンタイムパスワード（任意・8桁）</div>
+              <input className="ft-setup-input" value={otpInput} onChange={(e) => setOtpInput(e.target.value.toUpperCase())} placeholder="例: V6H3FUYT" autoComplete="one-time-code" maxLength={12} style={{ letterSpacing: "0.18em", fontFamily: "var(--ft-font-display)", textTransform: "uppercase" }} />
               <button type="submit" className="ft-start-btn" disabled={busy}>{busy ? "処理中…" : "ログイン"}</button>
               {err ? <p className="ft-setup-status">{err}</p> : null}
               {msg ? <p className="ft-setup-status" style={{ color: "var(--ft-accent)" }}>{msg}</p> : null}
@@ -4732,15 +4918,14 @@ function SetupAccountMenu({ onProgressApplied }) {
             <div className="ft-account-menu-form">
               <button type="button" className="ft-account-menu-back" onClick={() => setView("menu")}>← 戻る</button>
               <div className="ft-account-menu-title">同期ワンタイムパスワード</div>
-              <p className="ft-setup-hint">有効30分・1回限り。クラウドは使いません。</p>
+              <p className="ft-setup-hint">有効5分・1回限り・8桁のみ。発行中はこのページを開いたまま、他端末でログイン時に入力してください。</p>
               <div className="ft-label">パスワード再入力</div>
               <input className="ft-setup-input" type="password" value={issuePass} onChange={(e) => setIssuePass(e.target.value)} placeholder="アカウントのパスワード" autoComplete="current-password" />
               <button type="button" className="ft-start-btn" disabled={busy} onClick={handleIssueOtp}>{busy ? "発行中…" : "発行する"}</button>
               {issuedOtp ? (
                 <>
-                  <div className="ft-auth-otp-display">{issuedOtp}</div>
-                  <textarea className="ft-auth-code" readOnly value={issuedToken} onFocus={(e) => e.target.select()} rows={3} />
-                  <button type="button" className="ft-rules-btn ft-setup-secondary-btn" onClick={copyIssued}>コピー</button>
+                  <div className="ft-auth-otp-display" style={{ userSelect: "all" }}>{issuedOtp}</div>
+                  <button type="button" className="ft-rules-btn ft-setup-secondary-btn" onClick={copyIssued}>8桁コードをコピー</button>
                 </>
               ) : null}
               {err ? <p className="ft-setup-status">{err}</p> : null}
