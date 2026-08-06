@@ -3912,72 +3912,60 @@ function RulesContent() {
           <div className="ft-card-type op">
             <div className="ft-card-type-title"><Zap size={14} className="icon-quick" /> 操作</div>
             <ul>
-              <li>COIN1枚〜</li>
-              <li>自分の株価を操作</li>
-              <li>COIN1枚=N+1</li>
-              <li>被妨害時、効果無効</li>
+              <li>1枚〜 / 自分のN+1ずつ</li>
+              <li>自分の株価だけ操作</li>
+              <li>被妨害で無効</li>
             </ul>
           </div>
           <div className="ft-card-type sab">
             <div className="ft-card-type-title"><Bomb size={14} className="icon-heavy" /> 妨害</div>
             <ul>
-              <li>COIN5枚</li>
-              <li>自分以外の株価を妨害（N+1）</li>
-              <li>自分には無効</li>
-              <li>重複あり</li>
-              <li>最初の3TERNは使用不可</li>
+              <li>5枚 / 他人のN+1</li>
+              <li>自分には無効・重複可</li>
+              <li>最初の3TERN不可</li>
             </ul>
           </div>
           <div className="ft-card-type def">
             <div className="ft-card-type-title"><Shield size={14} className="icon-defense" /> 防衛</div>
             <ul>
-              <li>COIN5枚</li>
-              <li>相手からの妨害を無効化</li>
-              <li>相手からの反射を無効化</li>
-              <li>AVANT-GARDE-妨害も無効化</li>
-              <li>最初の3TERNは使用不可</li>
+              <li>5枚 / 被妨害・反射・奥義妨害を無効</li>
+              <li>最初の3TERN不可</li>
             </ul>
           </div>
           <div className="ft-card-type reflect">
             <div className="ft-card-type-title"><Reflect size={14} className="icon-reflect" /> 反射</div>
             <ul>
-              <li>COIN5枚</li>
-              <li>相手からの妨害の効果を反射</li>
-              <li>最初の3TERNは使用不可</li>
+              <li>5枚 / 妨害を相手に返す</li>
+              <li>最初の3TERN不可</li>
             </ul>
           </div>
           <div className="ft-card-type avant">
             <div className="ft-card-type-title"><Heptagram size={14} className="icon-avant" /> 奥義：AVANT-GARDE-操作</div>
             <ul>
-              <li>COIN10枚・一度限り</li>
-              <li>自分の株価を1〜99999円で指定</li>
-              <li>操作の上位互換</li>
-              <li>相手からの妨害無効</li>
-              <li>重複時は総資産少が優先</li>
+              <li>10枚・一度限り</li>
+              <li>自分の株価を1〜99999円指定</li>
+              <li>被妨害無効</li>
             </ul>
           </div>
           <div className="ft-card-type avant">
             <div className="ft-card-type-title"><Heptagram size={14} className="icon-avant" /> 奥義：AVANT-GARDE-妨害</div>
             <ul>
-              <li>COIN10枚・一度限り</li>
-              <li>自分以外の株価を1〜99999円で指定</li>
-              <li>妨害の上位互換</li>
-              <li>相手の防衛で無効化される</li>
-              <li>最初の3TERNは使用不可</li>
-              <li>重複時は総資産少が優先</li>
+              <li>10枚・一度限り</li>
+              <li>他人の株価を1〜99999円指定</li>
+              <li>防衛で無効 / 最初の3TERN不可</li>
             </ul>
           </div>
         </div>
-        <p className="ft-rules-note" style={{ marginTop: 8 }}>奥義：AVANT-GARDE-操作／妨害はどちらもゲーム中一度限り（どちらか一方のみ使用可）。他のCOIN（操作・妨害・防衛）とは併用できません。重複時は型を問わず総資産が少ない側が優先されます。</p>
+        <p className="ft-rules-note" style={{ marginTop: 8 }}>
+          奥義は操作／妨害どちらか一方のみ。他COINと併用不可。重複時は総資産が少ない側が優先。
+        </p>
         <div className="ft-tips">
-          <div className="ft-tips-h">使い方の例</div>
+          <div className="ft-tips-h">コンボ例</div>
           <div className="ft-tip-row">買い + 操作 → 自分だけ安く買う</div>
-          <div className="ft-tip-row">買い + 妨害 → 買いつつ他の買い手を不利に</div>
-          <div className="ft-tip-row">買い + 防衛 → 大口の株価を妨害から守る</div>
-          <div className="ft-tip-row">反射 → 受けた妨害を相手に跳ね返す</div>
-          <div className="ft-tip-row">様子見 + 妨害 → 自分は無傷で相手だけ邪魔</div>
-          <div className="ft-tip-row">AVANT-GARDE-操作 → 1円で大量買い／99999円で高値売り</div>
-          <div className="ft-tip-row">AVANT-GARDE-妨害 → 相手の大口買いを99999円に固定して破産狙い</div>
+          <div className="ft-tip-row">様子見 + 妨害 → 自分は無傷で相手を邪魔</div>
+          <div className="ft-tip-row">買い + 防衛 → 大口を妨害から守る</div>
+          <div className="ft-tip-row">AVANT-GARDE-操作 → 1円大量買い / 99999円高値売り</div>
+          <div className="ft-tip-row">AVANT-GARDE-妨害 → 相手の大口買いを高値固定</div>
         </div>
       </div>
 
