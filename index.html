@@ -412,9 +412,54 @@ const TITLE_DEFS = [
   { id: "coin_poor1", cat: "B", group: "coin_poor", name: "COIN貧民", desc: "COIN0・補充なしで終了を累計1回達成", kind: "cumul", icon: "coin_minus", rank: "ash", threshold: 1},
   { id: "coin_poor3", cat: "B", group: "coin_poor", name: "COIN大貧民", desc: "COIN0・補充なしで終了を累計3回達成", kind: "cumul", icon: "coin_minus", rank: "gold", threshold: 3},
   { id: "coin_poor5", cat: "B", group: "coin_poor", name: "COIN超大貧民", desc: "COIN0・補充なしで終了を累計5回達成", kind: "cumul", icon: "coin_minus", rank: "rainbow", threshold: 5},
+
+  // D 通算プレイ
+  { id: "play1", cat: "D", group: "play", name: "新人トレーダー", desc: "通算プレイ1回（ゲーム終了まで）", kind: "cumul", icon: "play", rank: "ash", threshold: 1},
+  { id: "play5", cat: "D", group: "play", name: "常連トレーダー", desc: "通算プレイ5回（ゲーム終了まで）", kind: "cumul", icon: "play", rank: "copper", threshold: 5},
+  { id: "play15", cat: "D", group: "play", name: "熟練トレーダー", desc: "通算プレイ15回（ゲーム終了まで）", kind: "cumul", icon: "play", rank: "silver", threshold: 15},
+  { id: "play30", cat: "D", group: "play", name: "ベテラントレーダー", desc: "通算プレイ30回（ゲーム終了まで）", kind: "cumul", icon: "play", rank: "gold", threshold: 30},
+  { id: "play50", cat: "D", group: "play", name: "スーパートレーダー", desc: "通算プレイ50回（ゲーム終了まで）", kind: "cumul", icon: "play", rank: "white", threshold: 50},
+  { id: "play80", cat: "D", group: "play", name: "ハイパートレーダー", desc: "通算プレイ80回（ゲーム終了まで）", kind: "cumul", icon: "play", rank: "azure", threshold: 80},
+  { id: "play120", cat: "D", group: "play", name: "マスタートレーダー", desc: "通算プレイ120回（ゲーム終了まで）", kind: "cumul", icon: "play", rank: "purple", threshold: 120},
+  { id: "play200", cat: "D", group: "play", name: "ウルトラトレーダー", desc: "通算プレイ200回（ゲーム終了まで）", kind: "cumul", icon: "play", rank: "crimson", threshold: 200},
+  { id: "play300", cat: "D", group: "play", name: "ミラクルトレーダー", desc: "通算プレイ300回（ゲーム終了まで）", kind: "cumul", icon: "play", rank: "rainbow", threshold: 300},
+  // E 総合
+  { id: "ultimate", cat: "E", group: "ultimate", name: "アルティメット・クラウン・トレーダー", desc: "すべての称号を手に入れた", kind: "cumul", icon: "ultimate", rank: "ultimate", threshold: null},
 ];
 const TITLE_BY_ID = {};
 TITLE_DEFS.forEach((t) => { TITLE_BY_ID[t.id] = t; });
+
+
+/** 旗／メダル（通算プレイ称号） */
+function FlagMedal(props) {
+  const size = props.size || 16;
+  const className = props.className || "";
+  const style = props.style || {};
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} style={style} xmlns="http://www.w3.org/2000/svg">
+      <path d="M6 3v18" />
+      <path d="M6 4h9l-1.5 3.5L15 11H6" fill="currentColor" fillOpacity="0.25" />
+      <circle cx="17.5" cy="17.5" r="3.2" />
+      <path d="M16.3 17.5h2.4M17.5 16.3v2.4" />
+    </svg>
+  );
+}
+/** 折れ線グラフ（総合称号） */
+function LineChart(props) {
+  const size = props.size || 16;
+  const className = props.className || "";
+  const style = props.style || {};
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className={className} style={style} xmlns="http://www.w3.org/2000/svg">
+      <path d="M3 20h18" />
+      <path d="M4 16l5-6 4 3 6-8" />
+      <circle cx="4" cy="16" r="1.4" fill="currentColor" stroke="none" />
+      <circle cx="9" cy="10" r="1.4" fill="currentColor" stroke="none" />
+      <circle cx="13" cy="13" r="1.4" fill="currentColor" stroke="none" />
+      <circle cx="19" cy="5" r="1.4" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
 
 function TitleBadgeIcon({ icon, size = 14 }) {
   if (icon === "crown") return <Crown size={size} />;
@@ -427,6 +472,8 @@ function TitleBadgeIcon({ icon, size = 14 }) {
   if (icon === "avant") return <Heptagram size={size} />;
   if (icon === "coin_plus") return <Coin size={size} />;
   if (icon === "coin_minus") return <Coin size={size} />;
+  if (icon === "play") return <FlagMedal size={size} />;
+  if (icon === "ultimate") return <LineChart size={size} />;
   return <Crown size={size} />;
 }
 function titleRankColor(rank) {
@@ -456,7 +503,7 @@ function TitleBadge({ titleId, size = 16, showName = false }) {
     };
   }, [open]);
   if (!t) return null;
-  const isRainbow = t.rank === "rainbow";
+  const isRainbow = t.rank === "rainbow" || t.rank === "ultimate" || t.icon === "ultimate";
   const color = titleRankColor(t.rank) || "#e2e8f0";
   return (
     <span
@@ -479,7 +526,7 @@ function TitleBadge({ titleId, size = 16, showName = false }) {
       aria-label={t.name + " — " + t.desc}
     >
       <span
-        className={"ft-title-badge-icon" + (isRainbow ? " is-rainbow" : "")}
+        className={"ft-title-badge-icon" + (isRainbow ? " is-rainbow" : "") + (t.icon === "ultimate" ? " is-ultimate" : "")}
         style={isRainbow ? undefined : { color, borderColor: color, boxShadow: "0 0 8px " + color + "55" }}
       >
         <TitleBadgeIcon icon={t.icon} size={size * 0.72} />
@@ -522,7 +569,7 @@ function loadTitleSave() {
   try {
     const raw = localStorage.getItem(FT_TITLE_KEY);
     if (!raw) {
-      return { unlocked: {}, equipped: [], avantTotal: 0, comebackTotal: 0, coinRichTotal: 0, coinPoorTotal: 0 };
+      return { unlocked: {}, equipped: [], avantTotal: 0, comebackTotal: 0, coinRichTotal: 0, coinPoorTotal: 0, gamesPlayed: 0 };
     }
     const o = JSON.parse(raw);
     // 旧「連続」データを累計へ引き継ぎ
@@ -539,9 +586,10 @@ function loadTitleSave() {
       comebackTotal: comebackTotal,
       coinRichTotal: richLegacy,
       coinPoorTotal: poorLegacy,
+      gamesPlayed: Math.max(0, Number(o.gamesPlayed) || 0),
     };
   } catch (e) {
-    return { unlocked: {}, equipped: [], avantTotal: 0, comebackTotal: 0, coinRichTotal: 0, coinPoorTotal: 0 };
+    return { unlocked: {}, equipped: [], avantTotal: 0, comebackTotal: 0, coinRichTotal: 0, coinPoorTotal: 0, gamesPlayed: 0 };
   }
 }
 
@@ -571,17 +619,18 @@ function emptyGameTitleStats() {
     coinRescueUsed: false,
   };
 }
-/** LOCAL・1位のときのみ称号判定。新規解除ID配列を返す */
+/** LOCALゲーム終了時の称号判定。通算プレイは順位不問。他は1位のみ。新規解除ID配列を返す */
 function evaluateTitlesAfterGame(isLocal, isFirst, finalTV, finalCoins, stats, save) {
   const newly = [];
-  if (!isLocal || !isFirst || !stats) return { newly, save };
+  if (!isLocal || !stats) return { newly, save };
   const next = {
     unlocked: { ...(save.unlocked || {}) },
     equipped: normalizeEquipped(save.equipped),
-    avantTotal: Math.max(0, Number(save.avantTotal) || 0) + (stats.avantThisGame || 0),
+    avantTotal: Math.max(0, Number(save.avantTotal) || 0) + (isFirst ? (stats.avantThisGame || 0) : 0),
     comebackTotal: Math.max(0, Number(save.comebackTotal) || 0),
     coinRichTotal: Math.max(0, Number(save.coinRichTotal) || 0),
     coinPoorTotal: Math.max(0, Number(save.coinPoorTotal) || 0),
+    gamesPlayed: Math.max(0, Number(save.gamesPlayed) || 0) + 1,
   };
   function unlock(id) {
     if (!next.unlocked[id]) {
@@ -589,6 +638,30 @@ function evaluateTitlesAfterGame(isLocal, isFirst, finalTV, finalCoins, stats, s
       newly.push(id);
     }
   }
+  // D 通算プレイ（1位不要・途中リタイアは goToGameOver まで来ないため未カウント）
+  const gp = next.gamesPlayed;
+  if (gp >= 1) unlock("play1");
+  if (gp >= 5) unlock("play5");
+  if (gp >= 15) unlock("play15");
+  if (gp >= 30) unlock("play30");
+  if (gp >= 50) unlock("play50");
+  if (gp >= 80) unlock("play80");
+  if (gp >= 120) unlock("play120");
+  if (gp >= 200) unlock("play200");
+  if (gp >= 300) unlock("play300");
+
+  if (!isFirst) {
+    // E 総合（他称号が揃っていれば順位不問でも判定）
+    const allOthers = TITLE_DEFS.filter((t) => t.id !== "ultimate");
+    if (allOthers.every((t) => next.unlocked[t.id])) unlock("ultimate");
+    next.equipped = normalizeEquipped(next.equipped);
+    if ((!next.equipped || !next.equipped.length) && newly.length) {
+      next.equipped = normalizeEquipped([newly[newly.length - 1]]);
+    }
+    saveTitleSave(next);
+    return { newly, save: next };
+  }
+
   const tv = Number(finalTV) || 0;
   if (tv >= 1e7) unlock("rich_1e8");      // 1000万 資産家
   if (tv >= 1e10) unlock("rich_1e12");    // 100億 セレブ
@@ -654,6 +727,12 @@ function evaluateTitlesAfterGame(isLocal, isFirst, finalTV, finalCoins, stats, s
   if (next.coinPoorTotal >= 1) unlock("coin_poor1");
   if (next.coinPoorTotal >= 3) unlock("coin_poor3");
   if (next.coinPoorTotal >= 5) unlock("coin_poor5");
+
+  // E 総合：ultimate以外をすべて所持
+  {
+    const allOthers = TITLE_DEFS.filter((t) => t.id !== "ultimate");
+    if (allOthers.every((t) => next.unlocked[t.id])) unlock("ultimate");
+  }
 
   next.equipped = normalizeEquipped(next.equipped);
   if ((!next.equipped || !next.equipped.length) && newly.length) {
@@ -5785,11 +5864,14 @@ function TitlesModal({ titleSave, onClose, onEquip, canEquip }) {
   const comebackTotal = Math.max(0, Number(titleSave && titleSave.comebackTotal) || 0);
   const coinRichTotal = Math.max(0, Number(titleSave && titleSave.coinRichTotal) || 0);
   const coinPoorTotal = Math.max(0, Number(titleSave && titleSave.coinPoorTotal) || 0);
+  const gamesPlayed = Math.max(0, Number(titleSave && titleSave.gamesPlayed) || 0);
 
   const GROUP_ORDER = {
     A: ["asset", "comeback"],
     B: ["bailout", "coin_rich", "coin_poor"],
     C: ["quick", "heavy", "defense", "reflect", "avant"],
+    D: ["play"],
+    E: ["ultimate"],
   };
   const GROUP_LABELS = {
     asset: "資産",
@@ -5802,12 +5884,16 @@ function TitlesModal({ titleSave, onClose, onEquip, canEquip }) {
     defense: "防衛",
     reflect: "反射",
     avant: "AVANT-GARDE",
+    play: "通算プレイ",
+    ultimate: "総合",
   };
 
   const cats = [
     { key: "A", label: "A 取引・資産" },
     { key: "B", label: "B COIN" },
     { key: "C", label: "C 市場ハック" },
+    { key: "D", label: "D 通算プレイ" },
+    { key: "E", label: "E 総合" },
   ];
 
   function countUnlocked(list) {
@@ -5827,6 +5913,13 @@ function TitlesModal({ titleSave, onClose, onEquip, canEquip }) {
   function titleProgress(t) {
     const got = !!unlocked[t.id];
     if (got) return { pct: 100, label: "達成", current: null, threshold: t.threshold };
+    if (t.group === "ultimate") {
+      const others = TITLE_DEFS.filter((x) => x.id !== "ultimate");
+      const current = others.filter((x) => unlocked[x.id]).length;
+      const th = others.length;
+      const pct = progressPct(false, current, th);
+      return { pct, label: current + " / " + th, current, threshold: th };
+    }
     if (t.kind !== "cumul" || t.threshold == null) {
       return { pct: 0, label: "未達成", current: null, threshold: t.threshold };
     }
@@ -5835,6 +5928,7 @@ function TitlesModal({ titleSave, onClose, onEquip, canEquip }) {
     else if (t.group === "comeback") current = comebackTotal;
     else if (t.group === "coin_rich") current = coinRichTotal;
     else if (t.group === "coin_poor") current = coinPoorTotal;
+    else if (t.group === "play") current = gamesPlayed;
     const pct = progressPct(false, current, t.threshold);
     return {
       pct,
@@ -5853,7 +5947,7 @@ function TitlesModal({ titleSave, onClose, onEquip, canEquip }) {
       <div className="ft-modal-box ft-modal-box-wide" onClick={(e) => e.stopPropagation()}>
         <div className="ft-modal-title">称号一覧</div>
         <p className="ft-modal-desc" style={{ marginBottom: 10 }}>
-          称号の獲得はLOCALのみ・最終1位が条件です。進捗はブラウザに保存されます。称号は最大3つまで装備でき、トレーダー名・トップバーにバッジ表示されます（現在 {equippedList.length}/{MAX_EQUIPPED_TITLES}）。
+          称号の獲得はLOCALのみです（通算プレイ・総合以外は最終1位が条件）。途中リタイアは通算に含みません。進捗はブラウザに保存されます。称号は最大3つまで装備でき、トレーダー名・トップバーにバッジ表示されます（現在 {equippedList.length}/{MAX_EQUIPPED_TITLES}）。
         </p>
         <div className="ft-title-progress-block" style={{ marginBottom: 14 }}>
           <div className="ft-title-progress-head">
@@ -5942,7 +6036,8 @@ function TitlesModal({ titleSave, onClose, onEquip, canEquip }) {
             AVANT-GARDE累計: {avantTotal}回 ／
             逆転累計: {comebackTotal}回 ／
             COIN温存累計: {coinRichTotal} ／
-            COIN0累計: {coinPoorTotal}
+            COIN0累計: {coinPoorTotal} ／
+            通算プレイ: {gamesPlayed}回
           </div>
         </div>
         <div className="ft-modal-btns">
@@ -6985,6 +7080,24 @@ const CSS = `
   line-height: 1;
   color: inherit;
   text-shadow: 0 0 4px rgba(0,0,0,0.8);
+}
+
+
+.ft-title-badge-icon.is-ultimate,
+.ft-title-badge-icon.is-rainbow.is-ultimate {
+  color: #fff;
+  border-color: transparent;
+  background:
+    linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.5)) padding-box,
+    linear-gradient(120deg, #f43f5e, #eab308, #34d399, #60a5fa, #c084fc, #f43f5e) border-box;
+  border: 1.5px solid transparent;
+  box-shadow: 0 0 12px rgba(192, 132, 252, 0.55), 0 0 20px rgba(57,255,156,0.2);
+  animation: ft-ultimate-shift 4s linear infinite;
+  background-size: 100% 100%, 200% 200%;
+}
+@keyframes ft-ultimate-shift {
+  0% { filter: hue-rotate(0deg); }
+  100% { filter: hue-rotate(360deg); }
 }
 
 .ft-title-badge-icon.is-rainbow {
