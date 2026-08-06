@@ -4668,6 +4668,8 @@ function SetupAccountMenu({ onProgressApplied }) {
         {loggedId ? "ACCOUNT" : "LOGIN"}
       </button>
       {open ? (
+        <>
+        <div className="ft-account-menu-backdrop" aria-hidden="true" onClick={() => setOpen(false)} />
         <div className="ft-account-menu-panel" role="menu">
           {view === "menu" ? (
             <>
@@ -4746,6 +4748,7 @@ function SetupAccountMenu({ onProgressApplied }) {
             </div>
           ) : null}
         </div>
+        </>
       ) : null}
     </div>
   );
@@ -6757,7 +6760,8 @@ const CSS = `
     0 24px 64px rgba(0,0,0,0.55),
     inset 0 1px 0 rgba(255,255,255,0.03);
   position: relative;
-  overflow: hidden;
+  /* LOGINドロップダウンが切れないよう visible（角丸は子要素側で対応） */
+  overflow: visible;
 }
 
 .ft-setup-header-right {
@@ -6808,6 +6812,38 @@ const CSS = `
   box-shadow: 0 16px 40px rgba(0,0,0,0.55), 0 0 0 1px rgba(57,255,156,0.06);
   padding: 12px;
   z-index: 60;
+  max-height: min(70vh, 520px);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+.ft-account-menu-backdrop {
+  display: none;
+}
+/* モバイル: 画面下部シートで操作画面が切れないようにする */
+@media (max-width: 640px) {
+  .ft-account-menu-panel {
+    position: fixed;
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    max-width: none;
+    border-radius: 16px 16px 0 0;
+    max-height: min(88vh, 640px);
+    padding: 16px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+    z-index: 10050;
+    box-shadow: 0 -12px 40px rgba(0,0,0,0.55), 0 0 0 1px rgba(57,255,156,0.08);
+  }
+  .ft-account-menu-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 10040;
+    background: rgba(2, 5, 8, 0.62);
+    -webkit-tap-highlight-color: transparent;
+  }
 }
 .ft-account-menu-title {
   font-family: var(--ft-font-display);
