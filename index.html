@@ -991,7 +991,7 @@ function coinRescueLabel(choice) {
 // 現物取引なので、買いは現金の範囲内、売りは保有株数の範囲内で株数を決定する
 
 
-/* ========== アカウント（ID/パスワード）・進捗マージ・端末間同期コード ========== */
+/* ========== アカウント（ID/パスワード）・端末内保存・進捗マージ ========== */
 const FT_AUTH_SESSION_KEY = "factor_trader_auth_session_v1";
 const FT_AUTH_ACCOUNTS_KEY = "factor_trader_auth_accounts_v1";
 
@@ -1138,34 +1138,12 @@ function applyProgressToLocal(progress) {
   }
 }
 
-async function buildSyncCode(accountId, password, progress) {
-  const salt = ftRandomSaltB64(16);
-  const body = {
-    v: 1,
-    id: accountId,
-    progress: progress,
-    ts: Date.now(),
-  };
-  const enc = await ftEncryptJson(body, password, salt);
-  const pack = { v: 1, id: accountId, salt: salt, iv: enc.iv, data: enc.data };
-  return "FT1." + ftB64FromBytes(ftUtf8(JSON.stringify(pack)));
-}
-async function parseSyncCode(code, password) {
-  let raw = String(code || "").trim();
-  if (raw.startsWith("FT1.")) raw = raw.slice(4);
-  const pack = JSON.parse(new TextDecoder().decode(ftBytesFromB64(raw)));
-  if (!pack || pack.v !== 1 || !pack.salt || !pack.iv || !pack.data) throw new Error("invalid code");
-  const body = await ftDecryptJson({ iv: pack.iv, data: pack.data }, password, pack.salt);
-  if (!body || !body.progress) throw new Error("decrypt failed");
-  return { id: pack.id || body.id, progress: body.progress, ts: body.ts || 0 };
-}
-
 async function registerAccount(id, password) {
   const uid = String(id || "").trim();
   if (!uid || uid.length < 2) throw new Error("IDは2文字以上");
   if (!password || String(password).length < 4) throw new Error("パスワードは4文字以上");
   const map = loadAuthAccounts();
-  if (map[uid]) throw new Error("このIDは既に登録されています");
+  if (map[uid]) throw new Error("このIDは既に登録されています。ログインしてください");
   const salt = ftRandomSaltB64(16);
   const passHash = await ftSha256Hex(salt + ":" + password);
   const local = collectLocalProgress();
@@ -1180,59 +1158,157 @@ async function registerAccount(id, password) {
   saveAuthAccounts(map);
   saveAuthSession({ id: uid });
   applyProgressToLocal(account.progress);
-  const syncCode = await buildSyncCode(uid, password, account.progress);
-  return { account, syncCode, merged: true };
+  return { account, merged: true };
 }
 
-async function loginAccount(id, password, syncCodeOpt) {
+async function loginAccount(id, password, otpToken) {
   const uid = String(id || "").trim();
   if (!uid) throw new Error("IDを入力してください");
   if (!password) throw new Error("パスワードを入力してください");
   const map = loadAuthAccounts();
-  let account = map[uid];
-  let fromCode = null;
-  if (syncCodeOpt && String(syncCodeOpt).trim()) {
-    fromCode = await parseSyncCode(syncCodeOpt, password);
-    if (fromCode.id && fromCode.id !== uid) throw new Error("同期コードのIDが一致しません");
+  let account = map[uid] || null;
+  let fromOtp = null;
+  if (otpToken && String(otpToken).trim()) {
+    fromOtp = await consumeSyncOtp(uid, password, otpToken);
   }
-  if (!account) {
-    if (!fromCode) throw new Error("この端末にアカウントがありません。同期コードを入力するか、新規登録してください");
-    // 他端末からの復元
+  if (!account && !fromOtp) {
+    throw new Error("この端末にアカウントがありません。新規登録するか、同期ワンタイムパスワードを入力してください");
+  }
+  if (account) {
+    const expect = await ftSha256Hex(account.salt + ":" + password);
+    if (expect !== account.passHash) throw new Error("IDまたはパスワードが違います");
+  } else if (fromOtp) {
+    // 他端末からの初回: ローカルアカウントを作成
     const salt = ftRandomSaltB64(16);
     const passHash = await ftSha256Hex(salt + ":" + password);
     account = {
       id: uid,
       salt: salt,
       passHash: passHash,
-      progress: fromCode.progress,
+      progress: fromOtp.progress,
       updatedAt: Date.now(),
     };
-  } else {
-    const expect = await ftSha256Hex(account.salt + ":" + password);
-    if (expect !== account.passHash) throw new Error("IDまたはパスワードが違います");
   }
-  // ゲスト（このブラウザの現状）をマージ
   const guest = collectLocalProgress();
   let progress = account.progress || { titleSave: loadTitleSave(), aiLearn: defaultAiLearn() };
+  if (fromOtp && fromOtp.progress) {
+    progress = {
+      titleSave: mergeTitleSaves(progress.titleSave, fromOtp.progress.titleSave),
+      aiLearn: mergeAiLearn(progress.aiLearn, fromOtp.progress.aiLearn),
+    };
+  }
   progress = {
     titleSave: mergeTitleSaves(progress.titleSave, guest.titleSave),
     aiLearn: mergeAiLearn(progress.aiLearn, guest.aiLearn),
   };
-  if (fromCode && fromCode.progress) {
-    progress = {
-      titleSave: mergeTitleSaves(progress.titleSave, fromCode.progress.titleSave),
-      aiLearn: mergeAiLearn(progress.aiLearn, fromCode.progress.aiLearn),
-    };
-  }
   account.progress = progress;
   account.updatedAt = Date.now();
   map[uid] = account;
   saveAuthAccounts(map);
   saveAuthSession({ id: uid });
   applyProgressToLocal(progress);
-  const syncCode = await buildSyncCode(uid, password, progress);
-  return { account, syncCode, merged: true };
+  return { account, merged: true };
 }
+
+
+/** 同期ワンタイムパスワード（オフライン・発行文字列に暗号化進捗を内包。使い捨て） */
+function ftRandomOtp(len) {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const n = len || 8;
+  const a = new Uint8Array(n);
+  crypto.getRandomValues(a);
+  let s = "";
+  for (let i = 0; i < n; i++) s += chars[a[i] % chars.length];
+  return s;
+}
+async function issueSyncOtp(password) {
+  const uid = getLoggedInAccountId();
+  if (!uid) throw new Error("ログインしてください");
+  if (!password) throw new Error("パスワードを再入力してください");
+  const map = loadAuthAccounts();
+  const account = map[uid];
+  if (!account) throw new Error("アカウントが見つかりません");
+  const expect = await ftSha256Hex(account.salt + ":" + password);
+  if (expect !== account.passHash) throw new Error("パスワードが違います");
+  // 最新進捗を反映
+  account.progress = collectLocalProgress();
+  account.updatedAt = Date.now();
+  map[uid] = account;
+  saveAuthAccounts(map);
+  const otp = ftRandomOtp(8);
+  const salt = ftRandomSaltB64(16);
+  const nonce = ftRandomSaltB64(12);
+  const body = {
+    v: 1,
+    id: uid,
+    otp: otp,
+    nonce: nonce,
+    progress: account.progress,
+    ts: Date.now(),
+    exp: Date.now() + 30 * 60 * 1000, // 30分
+  };
+  const enc = await ftEncryptJson(body, password + ":" + otp, salt);
+  const pack = {
+    v: 1,
+    id: uid,
+    otp: otp,
+    salt: salt,
+    iv: enc.iv,
+    data: enc.data,
+  };
+  const token = "FTOTP1." + ftB64FromBytes(ftUtf8(JSON.stringify(pack)));
+  return { otp: otp, token: token, expMin: 30 };
+}
+async function consumeSyncOtp(uid, password, tokenOrOtp) {
+  let raw = String(tokenOrOtp || "").trim();
+  if (!raw) throw new Error("ワンタイムパスワードを入力してください");
+  if (!raw.startsWith("FTOTP1.")) {
+    // 短いOTPのみではデータ本体がない
+    throw new Error("発行時にコピーしたワンタイムパスワード全体を貼り付けてください");
+  }
+  raw = raw.slice(7);
+  let pack;
+  try {
+    pack = JSON.parse(new TextDecoder().decode(ftBytesFromB64(raw)));
+  } catch (e) {
+    throw new Error("ワンタイムパスワードの形式が不正です");
+  }
+  if (!pack || pack.v !== 1 || !pack.otp || !pack.salt || !pack.iv || !pack.data) {
+    throw new Error("ワンタイムパスワードの形式が不正です");
+  }
+  if (pack.id && uid && pack.id !== uid) {
+    throw new Error("IDがワンタイムパスワードと一致しません");
+  }
+  const useId = String(uid || pack.id || "").trim();
+  if (!useId) throw new Error("IDを入力してください");
+  let body;
+  try {
+    body = await ftDecryptJson({ iv: pack.iv, data: pack.data }, password + ":" + pack.otp, pack.salt);
+  } catch (e) {
+    throw new Error("ワンタイムパスワードまたはパスワードが違います");
+  }
+  if (!body || !body.progress) throw new Error("データが読めませんでした");
+  if (body.exp && Date.now() > Number(body.exp)) {
+    throw new Error("ワンタイムパスワードの有効期限が切れています（発行から30分）");
+  }
+  if (body.otp && body.otp !== pack.otp) throw new Error("ワンタイムパスワードが不正です");
+  // 使い捨て: 同じ nonce は再使用不可（この端末）
+  try {
+    const usedKey = "factor_trader_otp_used_v1";
+    const used = JSON.parse(localStorage.getItem(usedKey) || "{}");
+    const nk = String(body.nonce || pack.otp);
+    if (used[nk]) throw new Error("このワンタイムパスワードは使用済みです");
+    used[nk] = Date.now();
+    // 古い記録を掃除
+    const cutoff = Date.now() - 7 * 24 * 3600 * 1000;
+    Object.keys(used).forEach((k) => { if (used[k] < cutoff) delete used[k]; });
+    localStorage.setItem(usedKey, JSON.stringify(used));
+  } catch (e) {
+    if (e && e.message && e.message.indexOf("使用済み") >= 0) throw e;
+  }
+  return { id: useId, progress: body.progress, otp: pack.otp };
+}
+
 
 function logoutAccount() {
   // 進捗は端末に残す（アカウント紐付けのみ解除）
@@ -1244,26 +1320,17 @@ function getLoggedInAccountId() {
   return s && s.id ? s.id : null;
 }
 
-/** ログイン中なら称号・AI学習をアカウントへ書き戻し、同期コードを返す（passwordが分かる場合のみコード生成） */
-async function persistLoggedInProgress(passwordForSync) {
+/** ログイン中なら称号・AI学習をアカウントへ書き戻し */
+function persistLoggedInProgress() {
   const uid = getLoggedInAccountId();
-  if (!uid) return null;
+  if (!uid) return;
   const map = loadAuthAccounts();
   const account = map[uid];
-  if (!account) return null;
-  const progress = collectLocalProgress();
-  account.progress = progress;
+  if (!account) return;
+  account.progress = collectLocalProgress();
   account.updatedAt = Date.now();
   map[uid] = account;
   saveAuthAccounts(map);
-  if (passwordForSync) {
-    try {
-      return await buildSyncCode(uid, passwordForSync, progress);
-    } catch (e) {
-      return null;
-    }
-  }
-  return null;
 }
 
 (function hydrateLoggedInAccount() {
@@ -4472,29 +4539,22 @@ function RulesContent() {
 
 
 function AuthPanel({ onAuthChange, onProgressApplied }) {
-  const [mode, setMode] = React.useState("login"); // login | register
+  const [mode, setMode] = React.useState("login");
   const [userId, setUserId] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [password2, setPassword2] = React.useState("");
-  const [syncCode, setSyncCode] = React.useState("");
-  const [sessionSync, setSessionSync] = React.useState("");
+  const [otpInput, setOtpInput] = React.useState("");
+  const [issuePass, setIssuePass] = React.useState("");
+  const [issuedOtp, setIssuedOtp] = React.useState("");
+  const [issuedToken, setIssuedToken] = React.useState("");
   const [msg, setMsg] = React.useState("");
   const [err, setErr] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [loggedId, setLoggedId] = React.useState(() => getLoggedInAccountId());
-  const passRef = React.useRef("");
 
   React.useEffect(() => {
     if (onAuthChange) onAuthChange(loggedId);
   }, [loggedId]);
-
-  async function refreshSyncFromSession() {
-    if (!loggedId || !passRef.current) return;
-    try {
-      const code = await persistLoggedInProgress(passRef.current);
-      if (code) setSessionSync(code);
-    } catch (e) {}
-  }
 
   async function handleRegister(e) {
     e && e.preventDefault();
@@ -4505,13 +4565,11 @@ function AuthPanel({ onAuthChange, onProgressApplied }) {
     }
     setBusy(true);
     try {
-      const res = await registerAccount(userId, password);
-      passRef.current = password;
-      setLoggedId(res.account.id);
-      setSessionSync(res.syncCode || "");
-      setMsg("登録しました。この端末の進捗をアカウントに引き継いでいます。");
+      await registerAccount(userId, password);
+      setLoggedId(String(userId).trim());
+      setMsg("登録しました。この端末の進捗をアカウントに引き継ぎました。");
       if (onProgressApplied) onProgressApplied();
-      setPassword(""); setPassword2(""); setSyncCode("");
+      setPassword(""); setPassword2("");
     } catch (ex) {
       setErr(ex.message || String(ex));
     }
@@ -4523,13 +4581,11 @@ function AuthPanel({ onAuthChange, onProgressApplied }) {
     setErr(""); setMsg("");
     setBusy(true);
     try {
-      const res = await loginAccount(userId, password, syncCode);
-      passRef.current = password;
-      setLoggedId(res.account.id);
-      setSessionSync(res.syncCode || "");
-      setMsg("ログインしました。ゲスト進捗があればマージ済みです。");
+      await loginAccount(userId, password, otpInput);
+      setLoggedId(String(userId).trim());
+      setMsg(otpInput ? "ログインしました。ワンタイムパスワードの進捗をマージしました。" : "ログインしました。");
       if (onProgressApplied) onProgressApplied();
-      setPassword(""); setSyncCode("");
+      setPassword(""); setOtpInput("");
     } catch (ex) {
       setErr(ex.message || String(ex));
     }
@@ -4537,26 +4593,43 @@ function AuthPanel({ onAuthChange, onProgressApplied }) {
   }
 
   function handleLogout() {
+    try { persistLoggedInProgress(); } catch (e) {}
     logoutAccount();
-    passRef.current = "";
     setLoggedId(null);
-    setSessionSync("");
+    setIssuedOtp("");
+    setIssuedToken("");
     setMsg("ログアウトしました（この端末の進捗はそのまま残ります）");
     setErr("");
     if (onAuthChange) onAuthChange(null);
   }
 
-  async function copySync() {
-    const code = sessionSync;
-    if (!code) {
-      setErr("同期コードがありません。再ログインしてください");
-      return;
-    }
+  async function handleIssueOtp(e) {
+    e && e.preventDefault();
+    setErr(""); setMsg("");
+    setBusy(true);
     try {
-      await navigator.clipboard.writeText(code);
-      setMsg("同期コードをコピーしました。他ブラウザのログイン時に貼り付けてください");
+      const res = await issueSyncOtp(issuePass);
+      setIssuedOtp(res.otp);
+      setIssuedToken(res.token);
+      setMsg("ワンタイムパスワードを発行しました（有効30分・一度のみ）。下の文字列をコピーして他端末でログイン時に貼り付けてください。");
+      setIssuePass("");
+      try {
+        await navigator.clipboard.writeText(res.token);
+        setMsg((m) => "ワンタイムパスワードを発行し、クリップボードにコピーしました（有効30分・一度のみ）。");
+      } catch (ce) {}
+    } catch (ex) {
+      setErr(ex.message || String(ex));
+    }
+    setBusy(false);
+  }
+
+  async function copyIssued() {
+    if (!issuedToken) return;
+    try {
+      await navigator.clipboard.writeText(issuedToken);
+      setMsg("クリップボードにコピーしました");
     } catch (e) {
-      setMsg("コピーできない場合は下のコードを手動選択してください");
+      setMsg("コピーできない場合は下の欄を長押しで選択してください");
     }
   }
 
@@ -4567,16 +4640,25 @@ function AuthPanel({ onAuthChange, onProgressApplied }) {
           <span className="ft-auth-label">ACCOUNT</span>
           <span className="ft-auth-user">{loggedId}</span>
         </div>
-        <p className="ft-setup-hint" style={{ marginTop: 6 }}>ログイン中 · 称号・CPU学習はこのアカウントに保存されます</p>
-        <div className="ft-auth-actions">
-          <button type="button" className="ft-rules-btn ft-setup-secondary-btn" onClick={copySync}>同期コードをコピー</button>
-          <button type="button" className="ft-rules-btn ft-setup-secondary-btn" onClick={handleLogout}>ログアウト</button>
+        <p className="ft-setup-hint" style={{ marginTop: 6 }}>ログイン中 · 称号・CPU学習はこの端末のアカウントに保存されます</p>
+        <button type="button" className="ft-rules-btn ft-setup-secondary-btn" onClick={handleLogout}>ログアウト</button>
+
+        <div className="ft-auth-otp-box">
+          <div className="ft-label">他端末へ同期（ワンタイムパスワード）</div>
+          <p className="ft-setup-hint">パスワードを再入力して発行。有効30分・1回限り。クラウドは使いません。</p>
+          <input className="ft-setup-input" type="password" value={issuePass} onChange={(e) => setIssuePass(e.target.value)} placeholder="アカウントのパスワード" autoComplete="current-password" />
+          <button type="button" className="ft-rules-btn ft-setup-secondary-btn" disabled={busy} onClick={handleIssueOtp}>
+            {busy ? "発行中…" : "ワンタイムパスワードを発行"}
+          </button>
+          {issuedOtp ? (
+            <>
+              <div className="ft-auth-otp-display">{issuedOtp}</div>
+              <textarea className="ft-auth-code" readOnly value={issuedToken} onFocus={(e) => e.target.select()} rows={3} />
+              <button type="button" className="ft-rules-btn ft-setup-secondary-btn" onClick={copyIssued}>コピー</button>
+            </>
+          ) : null}
         </div>
-        {sessionSync ? (
-          <textarea className="ft-auth-code" readOnly value={sessionSync} onFocus={(e) => e.target.select()} rows={3} />
-        ) : (
-          <p className="ft-setup-hint">同期コードはログイン直後に発行されます（他ブラウザへ引き継ぐ用）</p>
-        )}
+
         {msg ? <p className="ft-setup-status" style={{ color: "var(--ft-accent)" }}>{msg}</p> : null}
         {err ? <p className="ft-setup-status">{err}</p> : null}
       </div>
@@ -4591,8 +4673,8 @@ function AuthPanel({ onAuthChange, onProgressApplied }) {
       </div>
       <p className="ft-setup-hint">
         {mode === "login"
-          ? "別ブラウザでは同期コードも入力してください。この端末の進捗はログイン時にマージされます。"
-          : "登録時、このブラウザの既存進捗（称号など）をアカウントへ引き継ぎます。"}
+          ? "この端末のアカウント、または他端末で発行した同期ワンタイムパスワードでログインできます。"
+          : "登録時、このブラウザの既存進捗をアカウントへ引き継ぎます（端末内保存）。"}
       </p>
       <form onSubmit={mode === "login" ? handleLogin : handleRegister}>
         <div className="ft-label">ID</div>
@@ -4606,8 +4688,8 @@ function AuthPanel({ onAuthChange, onProgressApplied }) {
           </>
         ) : (
           <>
-            <div className="ft-label">同期コード（他端末から）</div>
-            <textarea className="ft-auth-code" value={syncCode} onChange={(e) => setSyncCode(e.target.value)} placeholder="初めての端末・別ブラウザのとき必須" rows={2} />
+            <div className="ft-label">同期ワンタイムパスワード（他端末から）</div>
+            <textarea className="ft-auth-code" value={otpInput} onChange={(e) => setOtpInput(e.target.value)} placeholder="他端末で発行したワンタイムパスワードを貼り付け" rows={2} />
           </>
         )}
         <button type="submit" className="ft-start-btn" disabled={busy} style={{ marginTop: 4 }}>
@@ -4689,14 +4771,14 @@ function SetupScreen({ playerCount, setPlayerCount, humanCount, setHumanCount, h
             </div>
           </div>
           <div className="ft-setup-controls" ref={setupControlsRef}>
-        <button type="button" className="ft-rules-btn ft-setup-mobile-rules-btn" onClick={() => setShowSetupRulesFS(true)}>
-          ルール
-        </button>
         <AuthPanel
           onProgressApplied={() => {
             if (typeof window !== "undefined" && window.__ftReloadProgress) window.__ftReloadProgress();
           }}
         />
+        <button type="button" className="ft-rules-btn ft-setup-mobile-rules-btn" onClick={() => setShowSetupRulesFS(true)}>
+          ルール
+        </button>
         <div className="ft-setup-section">
         <div className="ft-select-count">
           <div className="ft-label">MODE</div>
@@ -6568,6 +6650,24 @@ const CSS = `
 }
 .ft-auth-actions .ft-setup-secondary-btn {
   margin: 0;
+}
+.ft-auth-otp-box {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--ft-border);
+}
+.ft-auth-otp-display {
+  font-family: var(--ft-font-display);
+  font-size: 22px;
+  letter-spacing: 0.35em;
+  text-align: center;
+  color: var(--ft-accent);
+  font-weight: 700;
+  padding: 10px 8px;
+  margin: 8px 0;
+  border: 1px solid rgba(57,255,156,0.35);
+  border-radius: 8px;
+  background: rgba(57,255,156,0.06);
 }
 .ft-auth-code {
   width: 100%;
