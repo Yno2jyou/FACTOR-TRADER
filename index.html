@@ -360,15 +360,15 @@ const TITLE_RANK_COLORS = {
 };
 const TITLE_DEFS = [
   // A 取引・資産
-  { id: "rich_1e8", cat: "A", group: "asset", name: "億万長者", desc: "1ゲーム終了時 総資産5000万円以上", kind: "game", icon: "crown", rank: "ash"},
-  { id: "rich_1e12", cat: "A", group: "asset", name: "兆万長者", desc: "1ゲーム終了時 総資産1000億円以上", kind: "game", icon: "crown", rank: "copper"},
-  { id: "rich_1e13", cat: "A", group: "asset", name: "大富豪", desc: "1ゲーム終了時 総資産10兆円以上", kind: "game", icon: "crown", rank: "silver"},
-  { id: "rich_1e14", cat: "A", group: "asset", name: "超大富豪", desc: "1ゲーム終了時 総資産100兆円以上", kind: "game", icon: "crown", rank: "gold"},
-  { id: "rich_1e15", cat: "A", group: "asset", name: "支配者", desc: "1ゲーム終了時 総資産1000兆円以上", kind: "game", icon: "crown", rank: "white"},
-  { id: "rich_1e16", cat: "A", group: "asset", name: "征服者", desc: "1ゲーム終了時 総資産1京円以上", kind: "game", icon: "crown", rank: "azure"},
-  { id: "rich_1e17", cat: "A", group: "asset", name: "帝王", desc: "1ゲーム終了時 総資産10京円以上", kind: "game", icon: "crown", rank: "purple"},
-  { id: "rich_1e18", cat: "A", group: "asset", name: "覇王", desc: "1ゲーム終了時 総資産100京円以上", kind: "game", icon: "crown", rank: "crimson"},
-  { id: "rich_1e19", cat: "A", group: "asset", name: "絶対神", desc: "1ゲーム終了時 総資産1000京円以上", kind: "game", icon: "crown", rank: "rainbow"},
+  { id: "rich_1e8", cat: "A", group: "asset", name: "資産家", desc: "1ゲーム終了時 総資産1000万円以上", kind: "game", icon: "crown", rank: "ash"},
+  { id: "rich_1e12", cat: "A", group: "asset", name: "セレブ", desc: "1ゲーム終了時 総資産100億円以上", kind: "game", icon: "crown", rank: "copper"},
+  { id: "rich_1e13", cat: "A", group: "asset", name: "大富豪", desc: "1ゲーム終了時 総資産1兆円以上", kind: "game", icon: "crown", rank: "silver"},
+  { id: "rich_1e14", cat: "A", group: "asset", name: "超大富豪", desc: "1ゲーム終了時 総資産10兆円以上", kind: "game", icon: "crown", rank: "gold"},
+  { id: "rich_1e15", cat: "A", group: "asset", name: "支配者", desc: "1ゲーム終了時 総資産50兆円以上", kind: "game", icon: "crown", rank: "white"},
+  { id: "rich_1e16", cat: "A", group: "asset", name: "征服者", desc: "1ゲーム終了時 総資産100兆円以上", kind: "game", icon: "crown", rank: "azure"},
+  { id: "rich_1e17", cat: "A", group: "asset", name: "帝王", desc: "1ゲーム終了時 総資産1000兆円以上", kind: "game", icon: "crown", rank: "purple"},
+  { id: "rich_1e18", cat: "A", group: "asset", name: "覇王", desc: "1ゲーム終了時 総資産5000兆円以上", kind: "game", icon: "crown", rank: "crimson"},
+  { id: "rich_1e19", cat: "A", group: "asset", name: "絶対神", desc: "1ゲーム終了時 総資産1京円以上", kind: "game", icon: "crown", rank: "rainbow"},
   { id: "comeback", cat: "A", group: "comeback", name: "逆転劇", desc: "最下位→最終1位を累計10回達成", kind: "cumul", icon: "reverse", rank: "rainbow", threshold: 10},
   // C 操作
   { id: "q10", cat: "C", group: "quick", name: "操作オタク", desc: "ゲーム中に操作を合計6枚以上使用", kind: "game", icon: "quick", rank: "ash", threshold: 6},
@@ -590,15 +590,15 @@ function evaluateTitlesAfterGame(isLocal, isFirst, finalTV, finalCoins, stats, s
     }
   }
   const tv = Number(finalTV) || 0;
-  if (tv >= 5e7) unlock("rich_1e8");
-  if (tv >= 1e11) unlock("rich_1e12");
-  if (tv >= 1e13) unlock("rich_1e13");
-  if (tv >= 1e14) unlock("rich_1e14");
-  if (tv >= 1e15) unlock("rich_1e15");
-  if (tv >= 1e16) unlock("rich_1e16");
-  if (tv >= 1e17) unlock("rich_1e17");
-  if (tv >= 1e18) unlock("rich_1e18");
-  if (tv >= 1e19) unlock("rich_1e19");
+  if (tv >= 1e7) unlock("rich_1e8");      // 1000万 資産家
+  if (tv >= 1e10) unlock("rich_1e12");    // 100億 セレブ
+  if (tv >= 1e12) unlock("rich_1e13");    // 1兆 大富豪
+  if (tv >= 1e13) unlock("rich_1e14");    // 10兆 超大富豪
+  if (tv >= 5e13) unlock("rich_1e15");    // 50兆 支配者
+  if (tv >= 1e14) unlock("rich_1e16");    // 100兆 征服者
+  if (tv >= 1e15) unlock("rich_1e17");    // 1000兆 帝王
+  if (tv >= 5e15) unlock("rich_1e18");    // 5000兆 覇王
+  if (tv >= 1e16) unlock("rich_1e19");    // 1京 絶対神
   if (stats.wasLast) {
     next.comebackTotal = (next.comebackTotal || 0) + 1;
   }
