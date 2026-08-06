@@ -430,17 +430,15 @@ const TITLE_BY_ID = {};
 TITLE_DEFS.forEach((t) => { TITLE_BY_ID[t.id] = t; });
 
 
-/** 旗／メダル（通算プレイ称号） */
+/** 旗（通算プレイ称号） */
 function FlagMedal(props) {
   const size = props.size || 16;
   const className = props.className || "";
   const style = props.style || {};
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} style={style} xmlns="http://www.w3.org/2000/svg">
-      <path d="M6 3v18" />
-      <path d="M6 4h9l-1.5 3.5L15 11H6" fill="currentColor" fillOpacity="0.25" />
-      <circle cx="17.5" cy="17.5" r="3.2" />
-      <path d="M16.3 17.5h2.4M17.5 16.3v2.4" />
+      <path d="M5 21V3" />
+      <path d="M5 4h11l-2.2 3.8L16 11.5H5" fill="currentColor" fillOpacity="0.22" />
     </svg>
   );
 }
@@ -4229,11 +4227,13 @@ function SetupScreen({ playerCount, setPlayerCount, humanCount, setHumanCount, h
             <h1 className="ft-title">
               FACTOR<span className="ft-title-accent">/</span>TRADER
             </h1>
+            <p className="ft-setup-tagline">素因数が決める、個人株価の市場</p>
           </div>
           <div className="ft-ai-iq-panel" title="LOCAL対戦を重ねるほどCPUが学習し、知能指数が上がります">
             <div className="ft-ai-iq-label">CPU 知能指数</div>
             <div className="ft-ai-iq-value">
-              IQ <b>{aiIq.iq}</b>
+              <span className="ft-ai-iq-iq">IQ</span>
+              <b>{aiIq.iq}</b>
               <span className="ft-ai-iq-rank">{aiIq.rank}</span>
             </div>
             <div className="ft-title-progress-bar ft-ai-iq-bar">
@@ -4254,13 +4254,15 @@ function SetupScreen({ playerCount, setPlayerCount, humanCount, setHumanCount, h
               ルール
             </button>
             <div className="ft-setup-rules-wrap" ref={setupRulesWrapRef}>
+              <div className="ft-setup-rules-head">RULES</div>
               <RulesContent />
             </div>
           </div>
           <div className="ft-setup-controls" ref={setupControlsRef}>
+        <div className="ft-setup-section">
         <div className="ft-select-count">
           <div className="ft-label">MODE</div>
-          <div className="ft-count-options">
+          <div className="ft-count-options ft-count-options-mode">
             <button className={"ft-count-btn" + (playMode === "local" ? " active" : "")} onClick={() => setPlayMode && setPlayMode("local")}>
               <div className="ft-count-num">LOCAL</div>
               <div className="ft-count-turns">vs CPU</div>
@@ -4270,6 +4272,7 @@ function SetupScreen({ playerCount, setPlayerCount, humanCount, setHumanCount, h
               <div className="ft-count-turns">対人戦</div>
             </button>
           </div>
+        </div>
         </div>
 
         {playMode === "online" ? (
@@ -4283,11 +4286,11 @@ function SetupScreen({ playerCount, setPlayerCount, humanCount, setHumanCount, h
               spellCheck={false}
               value={myName || ""}
               onChange={(e) => setMyName && setMyName(e.target.value)}
-              style={{ width: "100%", background: "var(--ft-panel-alt)", border: "1px solid var(--ft-border)", color: "var(--ft-text)", padding: "10px 12px", borderRadius: 3, fontSize: 16, marginBottom: 10 }}
+              className="ft-setup-input"
             />
             {onOpenTitles ? (
-              <button className="ft-rules-btn" style={{ width: "100%", marginBottom: 14 }} onClick={onOpenTitles}>
-                称号一覧{equippedTitleName ? "（装備: " + equippedTitleName + "）" : ""}
+              <button className="ft-rules-btn ft-setup-secondary-btn" onClick={onOpenTitles}>
+                称号一覧{equippedTitleName ? " · " + equippedTitleName : ""}
               </button>
             ) : null}
             <div className="ft-label">部屋を作る（ホスト）</div>
@@ -4313,11 +4316,9 @@ function SetupScreen({ playerCount, setPlayerCount, humanCount, setHumanCount, h
                 <div className="ft-count-turns">COIN {baseCoins + SERIOUS_COIN_BONUS}</div>
               </button>
             </div>
-            <p style={{ fontSize: 11, opacity: 0.75, marginBottom: 12, lineHeight: 1.6 }}>
-              SERIOUSはCOINがNORMALプレイより10枚多いです。
-            </p>
+            <p className="ft-setup-hint">SERIOUS は COIN が +10 枚</p>
             <button className="ft-start-btn" onClick={onCreateRoom}>部屋を作成 ▶</button>
-            <div style={{ margin: "18px 0 8px", textAlign: "center", opacity: 0.5, fontSize: 12 }}>または</div>
+            <div className="ft-setup-or">または</div>
             <div className="ft-label">部屋に参加（ゲスト）</div>
             <input
               type="text"
@@ -4341,14 +4342,14 @@ function SetupScreen({ playerCount, setPlayerCount, humanCount, setHumanCount, h
                   .slice(0, 6);
                 setJoinCodeInput(cleaned);
               }}
-              style={{ width: "100%", background: "var(--ft-panel-alt)", border: "1px solid var(--ft-border)", color: "var(--ft-text)", padding: "10px 12px", borderRadius: 3, fontSize: 16, letterSpacing: 3, marginBottom: 10, fontFamily: "var(--ft-font-display)" }}
+              className="ft-setup-input ft-setup-input-code"
             />
-            <button className="ft-start-btn" style={{ background: "var(--ft-blue)", boxShadow: "0 0 20px rgba(51,209,255,0.25)" }} onClick={onJoinRoom}>
+            <button className="ft-start-btn ft-start-btn-blue" onClick={onJoinRoom}>
               部屋に参加 ▶
             </button>
-            {netStatus ? <p style={{ fontSize: 12, color: "var(--ft-amber)", marginTop: 10 }}>{netStatus}</p> : null}
-            <p style={{ fontSize: 11, opacity: 0.65, marginTop: 12, lineHeight: 1.6 }}>
-              ONLINE は PeerJS（WebRTC）のP2P接続です。同一ネットワークまたはNAT越え可能な環境が必要です。接続できない場合は LOCAL（vs CPU）をご利用ください。
+            {netStatus ? <p className="ft-setup-status">{netStatus}</p> : null}
+            <p className="ft-setup-hint">
+              PeerJS（WebRTC）P2P接続。同一ネットワークまたは NAT 越え可能な環境が必要です。
             </p>
           </div>
         ) : null}
@@ -4389,9 +4390,7 @@ function SetupScreen({ playerCount, setPlayerCount, humanCount, setHumanCount, h
               <div className="ft-count-turns">COIN {baseCoins + SERIOUS_COIN_BONUS}</div>
             </button>
           </div>
-          <p style={{ fontSize: 11, opacity: 0.75, marginTop: 8, lineHeight: 1.6 }}>
-            SERIOUSはCOINがNORMALプレイより10枚多いです。
-          </p>
+          <p className="ft-setup-hint">SERIOUS は COIN が +10 枚</p>
         </div>
 
         <button className="ft-start-btn" onClick={onStart}>
@@ -4400,8 +4399,8 @@ function SetupScreen({ playerCount, setPlayerCount, humanCount, setHumanCount, h
         </>
         ) : null}
         {playMode !== "online" && onOpenTitles ? (
-          <button className="ft-rules-btn" style={{ width: "100%", marginTop: 10 }} onClick={onOpenTitles}>
-            称号一覧{equippedTitleName ? "（装備: " + equippedTitleName + "）" : ""}
+          <button className="ft-rules-btn ft-setup-secondary-btn" onClick={onOpenTitles}>
+            称号一覧{equippedTitleName ? " · " + equippedTitleName : ""}
           </button>
         ) : null}
         </div>
@@ -6081,17 +6080,23 @@ const CSS = `
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding: 16px 20px 24px;
+  padding: 20px 20px 32px;
   min-height: 100%;
 }
 .ft-setup-card {
   width: 100%;
-  max-width: 920px;
-  background: linear-gradient(180deg, var(--ft-panel) 0%, #070b10 100%);
-  border: 1px solid var(--ft-border);
-  border-radius: 4px;
-  padding: 22px 24px 20px;
-  box-shadow: 0 0 0 1px rgba(57,255,156,0.05), 0 20px 60px rgba(0,0,0,0.5);
+  max-width: 960px;
+  background:
+    radial-gradient(ellipse 80% 40% at 10% -10%, rgba(57,255,156,0.07), transparent 55%),
+    radial-gradient(ellipse 60% 30% at 100% 0%, rgba(51,209,255,0.05), transparent 50%),
+    linear-gradient(180deg, #0c121a 0%, #070b10 100%);
+  border: 1px solid rgba(28, 42, 53, 0.95);
+  border-radius: 10px;
+  padding: 26px 28px 24px;
+  box-shadow:
+    0 0 0 1px rgba(57,255,156,0.04),
+    0 24px 64px rgba(0,0,0,0.55),
+    inset 0 1px 0 rgba(255,255,255,0.03);
   position: relative;
   overflow: hidden;
 }
@@ -6099,69 +6104,176 @@ const CSS = `
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 16px 24px;
+  gap: 18px 28px;
   flex-wrap: wrap;
-  margin-bottom: 12px;
+  margin-bottom: 20px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid rgba(28, 42, 53, 0.9);
 }
 .ft-setup-brand .ft-title {
   margin: 0;
-  font-size: 44px;
-  line-height: 1.05;
-  letter-spacing: 0.5px;
+  font-size: 40px;
+  line-height: 1.08;
+  letter-spacing: 0.6px;
+  font-weight: 700;
 }
 .ft-setup-brand .ft-eyebrow {
-  margin-bottom: 6px;
+  margin-bottom: 8px;
+  opacity: 0.9;
+}
+.ft-setup-tagline {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--ft-text-dim);
+  letter-spacing: 0.04em;
+  line-height: 1.45;
 }
 .ft-ai-iq-panel {
   min-width: 200px;
-  flex: 0 1 260px;
-  background: rgba(57,255,156,0.06);
-  border: 1px solid rgba(57,255,156,0.28);
-  border-radius: 4px;
-  padding: 10px 12px;
+  flex: 0 1 248px;
+  background: rgba(8, 14, 20, 0.65);
+  border: 1px solid rgba(57,255,156,0.22);
+  border-radius: 8px;
+  padding: 12px 14px;
+  backdrop-filter: blur(6px);
 }
 .ft-ai-iq-label {
   font-family: var(--ft-font-display);
   font-size: 10px;
-  letter-spacing: 1.5px;
+  letter-spacing: 1.8px;
   color: var(--ft-accent-dim);
-  margin-bottom: 4px;
+  margin-bottom: 6px;
+  text-transform: uppercase;
 }
 .ft-ai-iq-value {
   font-family: var(--ft-font-display);
-  font-size: 15px;
+  font-size: 14px;
   color: var(--ft-text);
   display: flex;
   align-items: baseline;
   gap: 8px;
 }
+.ft-ai-iq-iq {
+  font-size: 11px;
+  color: var(--ft-text-dim);
+  letter-spacing: 1px;
+}
 .ft-ai-iq-value b {
-  font-size: 26px;
+  font-size: 28px;
   color: var(--ft-accent);
   letter-spacing: 0.5px;
+  line-height: 1;
 }
 .ft-ai-iq-rank {
   font-size: 12px;
   color: var(--ft-amber);
   font-weight: 700;
+  margin-left: 2px;
 }
 .ft-ai-iq-bar {
-  margin: 8px 0 6px;
-  height: 6px;
+  margin: 10px 0 8px;
+  height: 5px;
+  border-radius: 999px;
 }
 .ft-ai-iq-meta {
   font-size: 11px;
   color: var(--ft-text-dim);
-  line-height: 1.4;
+  line-height: 1.45;
 }
 .ft-setup-body {
   display: grid;
-  grid-template-columns: minmax(280px, 1.15fr) minmax(260px, 0.95fr);
-  gap: 16px 22px;
+  grid-template-columns: minmax(280px, 1.12fr) minmax(270px, 0.98fr);
+  gap: 18px 24px;
   align-items: start;
 }
 .ft-setup-rules-col {
   min-width: 0;
+}
+.ft-setup-section {
+  margin-bottom: 4px;
+}
+.ft-setup-rules-head {
+  font-family: var(--ft-font-display);
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--ft-accent-dim);
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--ft-border);
+}
+.ft-setup-input {
+  width: 100%;
+  background: rgba(8, 14, 20, 0.7);
+  border: 1px solid var(--ft-border);
+  color: var(--ft-text);
+  padding: 11px 13px;
+  border-radius: 6px;
+  font-size: 15px;
+  margin-bottom: 10px;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.ft-setup-input:focus {
+  border-color: rgba(57,255,156,0.45);
+  box-shadow: 0 0 0 2px rgba(57,255,156,0.12);
+}
+.ft-setup-input-code {
+  letter-spacing: 0.28em;
+  font-family: var(--ft-font-display);
+  text-align: center;
+  font-size: 16px;
+}
+.ft-setup-secondary-btn {
+  width: 100%;
+  margin: 0 0 12px;
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+.ft-setup-or {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 16px 0 12px;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  color: var(--ft-text-dim);
+  text-transform: uppercase;
+}
+.ft-setup-or::before,
+.ft-setup-or::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--ft-border);
+}
+.ft-setup-hint {
+  font-size: 11px;
+  color: var(--ft-text-dim);
+  line-height: 1.55;
+  margin: 8px 0 12px;
+}
+.ft-setup-status {
+  font-size: 12px;
+  color: var(--ft-amber);
+  margin-top: 10px;
+  line-height: 1.5;
+}
+.ft-start-btn-blue {
+  background: var(--ft-blue) !important;
+  color: #041018 !important;
+  box-shadow: 0 0 20px rgba(51,209,255,0.22) !important;
+}
+.ft-start-btn-blue:hover {
+  box-shadow: 0 0 28px rgba(51,209,255,0.38) !important;
+}
+.ft-count-options-mode {
+  display: grid !important;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.ft-count-options-mode .ft-count-btn {
+  flex: none;
+  width: 100%;
 }
 .ft-setup-formula {
   display: flex;
@@ -6185,9 +6297,11 @@ const CSS = `
   max-height: min(70vh, 640px);
   overflow-y: auto;
   border: 1px solid var(--ft-border);
-  border-radius: 3px;
-  background: rgba(0,0,0,0.18);
-  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(0,0,0,0.22);
+  padding: 12px 14px 14px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(57,255,156,0.25) transparent;
 }
 /* PC・ONLINE時: 高さは右パネル基準（JSで左ルール枠の max-height を同期）。左が伸びて右に余白ができないようにする */
 @media (min-width: 861px) {
@@ -6212,8 +6326,9 @@ const CSS = `
 .ft-setup-controls {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
   min-width: 0;
+  padding: 4px 2px 0;
 }
 .ft-setup-controls .ft-select-count {
   margin-bottom: 0;
@@ -6272,7 +6387,14 @@ const CSS = `
     padding: 18px 16px;
   }
   .ft-setup-brand .ft-title {
-    font-size: 32px;
+    font-size: 30px;
+  }
+  .ft-setup-tagline {
+    font-size: 12px;
+  }
+  .ft-setup-card {
+    padding: 18px 16px 20px;
+    border-radius: 8px;
   }
   .ft-ai-iq-panel {
     flex: 1 1 100%;
@@ -6327,15 +6449,16 @@ const CSS = `
 
 .ft-setup-card::before {
   content: "";
-  position: absolute; top: 0; left: 0; right: 0; height: 2px;
-  background: linear-gradient(90deg, transparent, var(--ft-accent), transparent);
+  position: absolute; top: 0; left: 0; right: 0; height: 1px;
+  background: linear-gradient(90deg, transparent 5%, rgba(57,255,156,0.55) 50%, transparent 95%);
 }
 .ft-eyebrow {
   font-family: var(--ft-font-display);
-  font-size: 11px;
-  letter-spacing: 3px;
+  font-size: 10px;
+  letter-spacing: 2.5px;
   color: var(--ft-accent-dim);
   margin-bottom: 10px;
+  text-transform: uppercase;
 }
 .ft-title {
   font-family: var(--ft-font-display);
@@ -6373,11 +6496,12 @@ const CSS = `
 .ft-rule-example b { color: var(--ft-accent); }
 .ft-select-count { margin-bottom: 12px; }
 .ft-label {
-  font-size: 11px;
-  letter-spacing: 1.5px;
+  font-size: 10px;
+  letter-spacing: 1.6px;
   color: var(--ft-text-dim);
   text-transform: uppercase;
   margin-bottom: 8px;
+  font-weight: 600;
 }
 .ft-count-options { display: flex; gap: 8px; flex-wrap: wrap; }
 .ft-count-options-players {
@@ -6408,13 +6532,13 @@ const CSS = `
 .ft-count-btn {
   flex: 1;
   min-width: 0;
-  background: var(--ft-panel-alt);
+  background: rgba(12, 18, 26, 0.85);
   border: 1px solid var(--ft-border);
   color: var(--ft-text-dim);
   padding: 12px 8px;
-  border-radius: 3px;
+  border-radius: 7px;
   cursor: pointer;
-  transition: all .15s;
+  transition: border-color .15s, color .15s, background .15s, box-shadow .15s;
   font-family: var(--ft-font-display);
   overflow: hidden;
 }
@@ -6441,10 +6565,10 @@ const CSS = `
 }
 .ft-count-btn:hover { border-color: var(--ft-accent-dim); color: var(--ft-text); }
 .ft-count-btn.active {
-  border-color: var(--ft-accent);
+  border-color: rgba(57,255,156,0.65);
   color: var(--ft-accent);
-  background: rgba(57,255,156,0.06);
-  box-shadow: 0 0 12px rgba(57,255,156,0.15) inset;
+  background: rgba(57,255,156,0.08);
+  box-shadow: 0 0 0 1px rgba(57,255,156,0.12), inset 0 0 16px rgba(57,255,156,0.06);
 }
 .ft-count-num { font-size: 18px; font-weight: 700; }
 .ft-count-people {
@@ -6478,11 +6602,11 @@ const CSS = `
   font-weight: 700;
   font-size: 14px;
   padding: 14px;
-  border-radius: 3px;
+  border-radius: 7px;
   cursor: pointer;
-  letter-spacing: 0.5px;
-  transition: transform .1s, box-shadow .15s;
-  box-shadow: 0 0 20px rgba(57,255,156,0.25);
+  letter-spacing: 0.6px;
+  transition: transform .1s, box-shadow .15s, filter .15s;
+  box-shadow: 0 0 22px rgba(57,255,156,0.22);
 }
 .ft-start-btn:hover, .ft-primary-btn:hover { transform: translateY(-1px); box-shadow: 0 0 28px rgba(57,255,156,0.4); }
 .ft-primary-btn.danger { background: var(--ft-red); color: #2a0008; box-shadow: 0 0 20px rgba(255,77,109,0.25); }
