@@ -604,6 +604,16 @@ function saveTitleSave(data) {
   try {
     localStorage.setItem(FT_TITLE_KEY, JSON.stringify(data));
   } catch (e) {}
+  try {
+    const uid = getLoggedInAccountId();
+    if (!uid) return;
+    const map = loadAuthAccounts();
+    if (!map[uid]) return;
+    map[uid].progress = map[uid].progress || {};
+    map[uid].progress.titleSave = data;
+    map[uid].updatedAt = Date.now();
+    saveAuthAccounts(map);
+  } catch (e) {}
 }
 function emptyGameTitleStats() {
   return {
@@ -980,6 +990,293 @@ function coinRescueLabel(choice) {
 // - 素数/2の累乗の特徴も加味しつつ、動くときは振り切る
 // 現物取引なので、買いは現金の範囲内、売りは保有株数の範囲内で株数を決定する
 
+
+/* ========== アカウント（ID/パスワード）・進捗マージ・端末間同期コード ========== */
+const FT_AUTH_SESSION_KEY = "factor_trader_auth_session_v1";
+const FT_AUTH_ACCOUNTS_KEY = "factor_trader_auth_accounts_v1";
+
+function ftUtf8(str) {
+  return new TextEncoder().encode(String(str || ""));
+}
+function ftB64FromBytes(bytes) {
+  let s = "";
+  const arr = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  for (let i = 0; i < arr.length; i++) s += String.fromCharCode(arr[i]);
+  return btoa(s);
+}
+function ftBytesFromB64(b64) {
+  const s = atob(String(b64 || ""));
+  const out = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i);
+  return out;
+}
+async function ftSha256Hex(str) {
+  const buf = await crypto.subtle.digest("SHA-256", ftUtf8(str));
+  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+async function ftDeriveAesKey(password, saltB64) {
+  const base = await crypto.subtle.importKey("raw", ftUtf8(password), "PBKDF2", false, ["deriveKey"]);
+  return crypto.subtle.deriveKey(
+    { name: "PBKDF2", salt: ftBytesFromB64(saltB64), iterations: 120000, hash: "SHA-256" },
+    base,
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["encrypt", "decrypt"]
+  );
+}
+function ftRandomSaltB64(n) {
+  const a = new Uint8Array(n || 16);
+  crypto.getRandomValues(a);
+  return ftB64FromBytes(a);
+}
+async function ftEncryptJson(obj, password, saltB64) {
+  const key = await ftDeriveAesKey(password, saltB64);
+  const iv = new Uint8Array(12);
+  crypto.getRandomValues(iv);
+  const plain = ftUtf8(JSON.stringify(obj));
+  const cipher = await crypto.subtle.encrypt({ name: "AES-GCM", iv: iv }, key, plain);
+  return { iv: ftB64FromBytes(iv), data: ftB64FromBytes(new Uint8Array(cipher)) };
+}
+async function ftDecryptJson(payload, password, saltB64) {
+  const key = await ftDeriveAesKey(password, saltB64);
+  const iv = ftBytesFromB64(payload.iv);
+  const data = ftBytesFromB64(payload.data);
+  const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv: iv }, key, data);
+  return JSON.parse(new TextDecoder().decode(plain));
+}
+
+function loadAuthAccounts() {
+  try {
+    const raw = localStorage.getItem(FT_AUTH_ACCOUNTS_KEY);
+    if (!raw) return {};
+    const o = JSON.parse(raw);
+    return o && typeof o === "object" ? o : {};
+  } catch (e) {
+    return {};
+  }
+}
+function saveAuthAccounts(map) {
+  try {
+    localStorage.setItem(FT_AUTH_ACCOUNTS_KEY, JSON.stringify(map || {}));
+  } catch (e) {}
+}
+function loadAuthSession() {
+  try {
+    const raw = localStorage.getItem(FT_AUTH_SESSION_KEY);
+    if (!raw) return null;
+    const o = JSON.parse(raw);
+    if (!o || !o.id) return null;
+    return o;
+  } catch (e) {
+    return null;
+  }
+}
+function saveAuthSession(sess) {
+  try {
+    if (!sess) localStorage.removeItem(FT_AUTH_SESSION_KEY);
+    else localStorage.setItem(FT_AUTH_SESSION_KEY, JSON.stringify(sess));
+  } catch (e) {}
+}
+
+function mergeTitleSaves(a, b) {
+  const A = a || {};
+  const B = b || {};
+  const unlocked = { ...(A.unlocked || {}) };
+  Object.keys(B.unlocked || {}).forEach((id) => {
+    if (B.unlocked[id]) unlocked[id] = true;
+  });
+  const equippedA = normalizeEquipped(A.equipped);
+  const equippedB = normalizeEquipped(B.equipped);
+  let equipped = equippedA.length ? equippedA : equippedB;
+  equipped = normalizeEquipped(equipped.filter((id) => unlocked[id]));
+  return {
+    unlocked,
+    equipped,
+    avantTotal: Math.max(0, Number(A.avantTotal) || 0, Number(B.avantTotal) || 0),
+    comebackTotal: Math.max(0, Number(A.comebackTotal) || 0, Number(B.comebackTotal) || 0),
+    coinRichTotal: Math.max(0, Number(A.coinRichTotal) || 0, Number(B.coinRichTotal) || 0),
+    coinPoorTotal: Math.max(0, Number(A.coinPoorTotal) || 0, Number(B.coinPoorTotal) || 0),
+    gamesPlayed: Math.max(0, Number(A.gamesPlayed) || 0, Number(B.gamesPlayed) || 0),
+  };
+}
+function mergeAiLearn(a, b) {
+  const A = a && typeof a === "object" ? a : defaultAiLearn();
+  const B = b && typeof b === "object" ? b : defaultAiLearn();
+  // 対局数が多い方をベースに、カウンタは合算寄り（max）で安全側に
+  const base = (Number(A.games) || 0) >= (Number(B.games) || 0) ? A : B;
+  const other = base === A ? B : A;
+  const out = JSON.parse(JSON.stringify(base));
+  out.games = Math.max(Number(A.games) || 0, Number(B.games) || 0);
+  out.aiBeatsHuman = Math.max(Number(A.aiBeatsHuman) || 0, Number(B.aiBeatsHuman) || 0);
+  out.humanBeatsAi = Math.max(Number(A.humanBeatsAi) || 0, Number(B.humanBeatsAi) || 0);
+  const ws = out.w || (out.w = {});
+  const wo = other.w || {};
+  Object.keys({ ...ws, ...wo }).forEach((k) => {
+    const x = Number(ws[k]);
+    const y = Number(wo[k]);
+    if (!isNaN(x) && !isNaN(y)) ws[k] = (x + y) / 2;
+    else if (!isNaN(y)) ws[k] = y;
+  });
+  return out;
+}
+
+function collectLocalProgress() {
+  return {
+    titleSave: loadTitleSave(),
+    aiLearn: loadAiLearn(),
+  };
+}
+function applyProgressToLocal(progress) {
+  if (!progress) return;
+  if (progress.titleSave) {
+    saveTitleSave(progress.titleSave);
+  }
+  if (progress.aiLearn) {
+    try {
+      localStorage.setItem(FT_AI_LEARN_KEY, JSON.stringify(progress.aiLearn));
+    } catch (e) {}
+  }
+}
+
+async function buildSyncCode(accountId, password, progress) {
+  const salt = ftRandomSaltB64(16);
+  const body = {
+    v: 1,
+    id: accountId,
+    progress: progress,
+    ts: Date.now(),
+  };
+  const enc = await ftEncryptJson(body, password, salt);
+  const pack = { v: 1, id: accountId, salt: salt, iv: enc.iv, data: enc.data };
+  return "FT1." + ftB64FromBytes(ftUtf8(JSON.stringify(pack)));
+}
+async function parseSyncCode(code, password) {
+  let raw = String(code || "").trim();
+  if (raw.startsWith("FT1.")) raw = raw.slice(4);
+  const pack = JSON.parse(new TextDecoder().decode(ftBytesFromB64(raw)));
+  if (!pack || pack.v !== 1 || !pack.salt || !pack.iv || !pack.data) throw new Error("invalid code");
+  const body = await ftDecryptJson({ iv: pack.iv, data: pack.data }, password, pack.salt);
+  if (!body || !body.progress) throw new Error("decrypt failed");
+  return { id: pack.id || body.id, progress: body.progress, ts: body.ts || 0 };
+}
+
+async function registerAccount(id, password) {
+  const uid = String(id || "").trim();
+  if (!uid || uid.length < 2) throw new Error("IDは2文字以上");
+  if (!password || String(password).length < 4) throw new Error("パスワードは4文字以上");
+  const map = loadAuthAccounts();
+  if (map[uid]) throw new Error("このIDは既に登録されています");
+  const salt = ftRandomSaltB64(16);
+  const passHash = await ftSha256Hex(salt + ":" + password);
+  const local = collectLocalProgress();
+  const account = {
+    id: uid,
+    salt: salt,
+    passHash: passHash,
+    progress: local,
+    updatedAt: Date.now(),
+  };
+  map[uid] = account;
+  saveAuthAccounts(map);
+  saveAuthSession({ id: uid });
+  applyProgressToLocal(account.progress);
+  const syncCode = await buildSyncCode(uid, password, account.progress);
+  return { account, syncCode, merged: true };
+}
+
+async function loginAccount(id, password, syncCodeOpt) {
+  const uid = String(id || "").trim();
+  if (!uid) throw new Error("IDを入力してください");
+  if (!password) throw new Error("パスワードを入力してください");
+  const map = loadAuthAccounts();
+  let account = map[uid];
+  let fromCode = null;
+  if (syncCodeOpt && String(syncCodeOpt).trim()) {
+    fromCode = await parseSyncCode(syncCodeOpt, password);
+    if (fromCode.id && fromCode.id !== uid) throw new Error("同期コードのIDが一致しません");
+  }
+  if (!account) {
+    if (!fromCode) throw new Error("この端末にアカウントがありません。同期コードを入力するか、新規登録してください");
+    // 他端末からの復元
+    const salt = ftRandomSaltB64(16);
+    const passHash = await ftSha256Hex(salt + ":" + password);
+    account = {
+      id: uid,
+      salt: salt,
+      passHash: passHash,
+      progress: fromCode.progress,
+      updatedAt: Date.now(),
+    };
+  } else {
+    const expect = await ftSha256Hex(account.salt + ":" + password);
+    if (expect !== account.passHash) throw new Error("IDまたはパスワードが違います");
+  }
+  // ゲスト（このブラウザの現状）をマージ
+  const guest = collectLocalProgress();
+  let progress = account.progress || { titleSave: loadTitleSave(), aiLearn: defaultAiLearn() };
+  progress = {
+    titleSave: mergeTitleSaves(progress.titleSave, guest.titleSave),
+    aiLearn: mergeAiLearn(progress.aiLearn, guest.aiLearn),
+  };
+  if (fromCode && fromCode.progress) {
+    progress = {
+      titleSave: mergeTitleSaves(progress.titleSave, fromCode.progress.titleSave),
+      aiLearn: mergeAiLearn(progress.aiLearn, fromCode.progress.aiLearn),
+    };
+  }
+  account.progress = progress;
+  account.updatedAt = Date.now();
+  map[uid] = account;
+  saveAuthAccounts(map);
+  saveAuthSession({ id: uid });
+  applyProgressToLocal(progress);
+  const syncCode = await buildSyncCode(uid, password, progress);
+  return { account, syncCode, merged: true };
+}
+
+function logoutAccount() {
+  // 進捗は端末に残す（アカウント紐付けのみ解除）
+  saveAuthSession(null);
+}
+
+function getLoggedInAccountId() {
+  const s = loadAuthSession();
+  return s && s.id ? s.id : null;
+}
+
+/** ログイン中なら称号・AI学習をアカウントへ書き戻し、同期コードを返す（passwordが分かる場合のみコード生成） */
+async function persistLoggedInProgress(passwordForSync) {
+  const uid = getLoggedInAccountId();
+  if (!uid) return null;
+  const map = loadAuthAccounts();
+  const account = map[uid];
+  if (!account) return null;
+  const progress = collectLocalProgress();
+  account.progress = progress;
+  account.updatedAt = Date.now();
+  map[uid] = account;
+  saveAuthAccounts(map);
+  if (passwordForSync) {
+    try {
+      return await buildSyncCode(uid, passwordForSync, progress);
+    } catch (e) {
+      return null;
+    }
+  }
+  return null;
+}
+
+(function hydrateLoggedInAccount() {
+  try {
+    const uid = getLoggedInAccountId();
+    if (!uid) return;
+    const map = loadAuthAccounts();
+    const acc = map[uid];
+    if (acc && acc.progress) applyProgressToLocal(acc.progress);
+  } catch (e) {}
+})();
+
+
 /* ========== CPU学習（localStorage永続・対局を重ねるほど強化） ========== */
 const FT_AI_LEARN_KEY = "factor_trader_ai_learn_v1";
 
@@ -1052,6 +1349,16 @@ function loadAiLearn() {
 function saveAiLearn(data) {
   try {
     localStorage.setItem(FT_AI_LEARN_KEY, JSON.stringify(data));
+  } catch (e) {}
+  try {
+    const uid = getLoggedInAccountId();
+    if (!uid) return;
+    const map = loadAuthAccounts();
+    if (!map[uid]) return;
+    map[uid].progress = map[uid].progress || {};
+    map[uid].progress.aiLearn = data;
+    map[uid].updatedAt = Date.now();
+    saveAuthAccounts(map);
   } catch (e) {}
 }
 
@@ -2234,6 +2541,13 @@ function FactorTrader() {
   const [showRulesModal, setShowRulesModal] = useState(false);
   const [showTitlesModal, setShowTitlesModal] = useState(false);
   const [titleSave, setTitleSave] = useState(() => loadTitleSave());
+  const [authUserId, setAuthUserId] = useState(() => getLoggedInAccountId());
+  React.useEffect(() => {
+    window.__ftReloadProgress = () => {
+      setTitleSave(loadTitleSave());
+    };
+    return () => { try { delete window.__ftReloadProgress; } catch (e) {} };
+  }, []);
   const [newTitleIds, setNewTitleIds] = useState([]);
   const titleStatsRef = useRef(emptyGameTitleStats());
   const [passBanner, setPassBanner] = useState(null); // { name } 端末渡しメッセージ
@@ -4156,6 +4470,156 @@ function RulesContent() {
   );
 }
 
+
+function AuthPanel({ onAuthChange, onProgressApplied }) {
+  const [mode, setMode] = React.useState("login"); // login | register
+  const [userId, setUserId] = React.useState("");
+  const [password, setPassword] = React.useState("");
+  const [password2, setPassword2] = React.useState("");
+  const [syncCode, setSyncCode] = React.useState("");
+  const [sessionSync, setSessionSync] = React.useState("");
+  const [msg, setMsg] = React.useState("");
+  const [err, setErr] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const [loggedId, setLoggedId] = React.useState(() => getLoggedInAccountId());
+  const passRef = React.useRef("");
+
+  React.useEffect(() => {
+    if (onAuthChange) onAuthChange(loggedId);
+  }, [loggedId]);
+
+  async function refreshSyncFromSession() {
+    if (!loggedId || !passRef.current) return;
+    try {
+      const code = await persistLoggedInProgress(passRef.current);
+      if (code) setSessionSync(code);
+    } catch (e) {}
+  }
+
+  async function handleRegister(e) {
+    e && e.preventDefault();
+    setErr(""); setMsg("");
+    if (password !== password2) {
+      setErr("パスワードが一致しません");
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await registerAccount(userId, password);
+      passRef.current = password;
+      setLoggedId(res.account.id);
+      setSessionSync(res.syncCode || "");
+      setMsg("登録しました。この端末の進捗をアカウントに引き継いでいます。");
+      if (onProgressApplied) onProgressApplied();
+      setPassword(""); setPassword2(""); setSyncCode("");
+    } catch (ex) {
+      setErr(ex.message || String(ex));
+    }
+    setBusy(false);
+  }
+
+  async function handleLogin(e) {
+    e && e.preventDefault();
+    setErr(""); setMsg("");
+    setBusy(true);
+    try {
+      const res = await loginAccount(userId, password, syncCode);
+      passRef.current = password;
+      setLoggedId(res.account.id);
+      setSessionSync(res.syncCode || "");
+      setMsg("ログインしました。ゲスト進捗があればマージ済みです。");
+      if (onProgressApplied) onProgressApplied();
+      setPassword(""); setSyncCode("");
+    } catch (ex) {
+      setErr(ex.message || String(ex));
+    }
+    setBusy(false);
+  }
+
+  function handleLogout() {
+    logoutAccount();
+    passRef.current = "";
+    setLoggedId(null);
+    setSessionSync("");
+    setMsg("ログアウトしました（この端末の進捗はそのまま残ります）");
+    setErr("");
+    if (onAuthChange) onAuthChange(null);
+  }
+
+  async function copySync() {
+    const code = sessionSync;
+    if (!code) {
+      setErr("同期コードがありません。再ログインしてください");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(code);
+      setMsg("同期コードをコピーしました。他ブラウザのログイン時に貼り付けてください");
+    } catch (e) {
+      setMsg("コピーできない場合は下のコードを手動選択してください");
+    }
+  }
+
+  if (loggedId) {
+    return (
+      <div className="ft-auth-panel">
+        <div className="ft-auth-head">
+          <span className="ft-auth-label">ACCOUNT</span>
+          <span className="ft-auth-user">{loggedId}</span>
+        </div>
+        <p className="ft-setup-hint" style={{ marginTop: 6 }}>ログイン中 · 称号・CPU学習はこのアカウントに保存されます</p>
+        <div className="ft-auth-actions">
+          <button type="button" className="ft-rules-btn ft-setup-secondary-btn" onClick={copySync}>同期コードをコピー</button>
+          <button type="button" className="ft-rules-btn ft-setup-secondary-btn" onClick={handleLogout}>ログアウト</button>
+        </div>
+        {sessionSync ? (
+          <textarea className="ft-auth-code" readOnly value={sessionSync} onFocus={(e) => e.target.select()} rows={3} />
+        ) : (
+          <p className="ft-setup-hint">同期コードはログイン直後に発行されます（他ブラウザへ引き継ぐ用）</p>
+        )}
+        {msg ? <p className="ft-setup-status" style={{ color: "var(--ft-accent)" }}>{msg}</p> : null}
+        {err ? <p className="ft-setup-status">{err}</p> : null}
+      </div>
+    );
+  }
+
+  return (
+    <div className="ft-auth-panel">
+      <div className="ft-auth-tabs">
+        <button type="button" className={"ft-auth-tab" + (mode === "login" ? " active" : "")} onClick={() => { setMode("login"); setErr(""); setMsg(""); }}>ログイン</button>
+        <button type="button" className={"ft-auth-tab" + (mode === "register" ? " active" : "")} onClick={() => { setMode("register"); setErr(""); setMsg(""); }}>新規登録</button>
+      </div>
+      <p className="ft-setup-hint">
+        {mode === "login"
+          ? "別ブラウザでは同期コードも入力してください。この端末の進捗はログイン時にマージされます。"
+          : "登録時、このブラウザの既存進捗（称号など）をアカウントへ引き継ぎます。"}
+      </p>
+      <form onSubmit={mode === "login" ? handleLogin : handleRegister}>
+        <div className="ft-label">ID</div>
+        <input className="ft-setup-input" value={userId} onChange={(e) => setUserId(e.target.value)} autoComplete="username" maxLength={24} />
+        <div className="ft-label">パスワード</div>
+        <input className="ft-setup-input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete={mode === "login" ? "current-password" : "new-password"} />
+        {mode === "register" ? (
+          <>
+            <div className="ft-label">パスワード（確認）</div>
+            <input className="ft-setup-input" type="password" value={password2} onChange={(e) => setPassword2(e.target.value)} autoComplete="new-password" />
+          </>
+        ) : (
+          <>
+            <div className="ft-label">同期コード（他端末から）</div>
+            <textarea className="ft-auth-code" value={syncCode} onChange={(e) => setSyncCode(e.target.value)} placeholder="初めての端末・別ブラウザのとき必須" rows={2} />
+          </>
+        )}
+        <button type="submit" className="ft-start-btn" disabled={busy} style={{ marginTop: 4 }}>
+          {busy ? "処理中…" : (mode === "login" ? "ログイン" : "登録する")}
+        </button>
+      </form>
+      {msg ? <p className="ft-setup-status" style={{ color: "var(--ft-accent)" }}>{msg}</p> : null}
+      {err ? <p className="ft-setup-status">{err}</p> : null}
+    </div>
+  );
+}
+
 function SetupScreen({ playerCount, setPlayerCount, humanCount, setHumanCount, humanNames, setHumanNames, seriousMode, setSeriousMode, onStart, playMode, setPlayMode, myName, setMyName, joinCodeInput, setJoinCodeInput, netStatus, onCreateRoom, onJoinRoom, onOpenTitles, equippedTitleName }) {
   const baseCoins = CARDS_TABLE[playerCount] || CARDS_TABLE[3];
   const coins = baseCoins + (seriousMode ? SERIOUS_COIN_BONUS : 0);
@@ -4228,6 +4692,11 @@ function SetupScreen({ playerCount, setPlayerCount, humanCount, setHumanCount, h
         <button type="button" className="ft-rules-btn ft-setup-mobile-rules-btn" onClick={() => setShowSetupRulesFS(true)}>
           ルール
         </button>
+        <AuthPanel
+          onProgressApplied={() => {
+            if (typeof window !== "undefined" && window.__ftReloadProgress) window.__ftReloadProgress();
+          }}
+        />
         <div className="ft-setup-section">
         <div className="ft-select-count">
           <div className="ft-label">MODE</div>
@@ -6045,6 +6514,76 @@ const CSS = `
 .ft-root * { box-sizing: border-box; }
 
 /* ---------- Setup ---------- */
+
+.ft-auth-panel {
+  border: 1px solid var(--ft-border);
+  border-radius: 8px;
+  padding: 12px 12px 10px;
+  background: rgba(8, 14, 20, 0.55);
+  margin-bottom: 2px;
+}
+.ft-auth-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.ft-auth-label {
+  font-family: var(--ft-font-display);
+  font-size: 10px;
+  letter-spacing: 1.6px;
+  color: var(--ft-accent-dim);
+}
+.ft-auth-user {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ft-accent);
+}
+.ft-auth-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.ft-auth-tab {
+  background: rgba(12, 18, 26, 0.85);
+  border: 1px solid var(--ft-border);
+  color: var(--ft-text-dim);
+  padding: 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+}
+.ft-auth-tab.active {
+  border-color: rgba(57,255,156,0.55);
+  color: var(--ft-accent);
+  background: rgba(57,255,156,0.08);
+}
+.ft-auth-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.ft-auth-actions .ft-setup-secondary-btn {
+  margin: 0;
+}
+.ft-auth-code {
+  width: 100%;
+  box-sizing: border-box;
+  background: rgba(0,0,0,0.35);
+  border: 1px solid var(--ft-border);
+  color: var(--ft-text-dim);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 10px;
+  line-height: 1.4;
+  font-family: ui-monospace, monospace;
+  resize: vertical;
+  margin-bottom: 6px;
+}
+
 .ft-setup {
   display: flex;
   align-items: flex-start;
