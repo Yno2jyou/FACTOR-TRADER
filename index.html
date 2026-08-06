@@ -3856,36 +3856,19 @@ function RulesContent() {
     <div className="ft-rules">
       <div className="ft-rules-section">
         <div className="ft-rules-h">ゴール</div>
-        <p className="ft-rules-lead">最終TERN終了時、総資産（現金＋株の評価額）が最も多い人が勝ち。</p>
-        <p className="ft-rules-lead">自分以外のプレイヤーが全て破産した場合、その時点で勝ち。</p>
-      </div>
-
-      <div className="ft-rules-section">
-        <div className="ft-rules-h">MODE</div>
-        <p className="ft-rules-note" style={{ marginBottom: 0 }}>
-          <strong>LOCAL</strong>：あなた1人 vs CPU。<br />
-          <strong>ONLINE</strong>：部屋を作成して部屋コードを共有し、別端末から参加（PeerJS / WebRTC）。ホストが進行を管理し、空き席はCPUが埋めます。
-        </p>
-      </div>
-
-      <div className="ft-rules-section">
-        <div className="ft-rules-h">終盤ルール（ラスト5TERN）</div>
-        <p className="ft-rules-note" style={{ marginBottom: 0 }}>
-          ・様子見禁止（必ず買いまたは売り）<br />
-          ・売りは保有の50%以上、買いは買付余力の50%以上から自由に選択<br />
-          ・突入時、生存者全員にCOIN10枚を配布<br />
-          ・COIN補充制度はラスト5TERNでは使用不可
-        </p>
+        <p className="ft-rules-lead">最終TERN終了時の<strong>総資産（現金＋株）が最多</strong>の人が勝ち。他プレイヤー全員が破産しても勝ち。</p>
       </div>
 
       <div className="ft-rules-section">
         <div className="ft-rules-h">株価</div>
         <div className="ft-rule-block ft-rule-compact">
-          <div className="ft-rule-formula">株価 = Nの素因数和（素因数の合計）</div>
+          <div className="ft-rule-formula">株価 = N の素因数の合計</div>
           <div className="ft-rule-chips">
+            <span className="ft-chip">例 12=2×2×3 → 7円</span>
             <span className="ft-chip up">素数 → 高い</span>
             <span className="ft-chip down">2の累乗 → 安い</span>
           </div>
+          <p className="ft-rules-note" style={{ margin: "8px 0 0" }}>各プレイヤーの株価は個別計算（共通の最終株価はない）</p>
         </div>
       </div>
 
@@ -3894,31 +3877,19 @@ function RulesContent() {
         <div className="ft-flow">
           <div className="ft-flow-step">
             <div className="ft-flow-num">1</div>
-            <div className="ft-flow-body">
-              <b>開示</b>
-              <span>N と仮株価が公開される</span>
-            </div>
+            <div className="ft-flow-body"><b>開示</b><span>N と仮株価を公開</span></div>
           </div>
           <div className="ft-flow-step">
             <div className="ft-flow-num">2</div>
-            <div className="ft-flow-body">
-              <b>注文</b>
-              <span>買い / 売り / 様子見（秘密）</span>
-            </div>
+            <div className="ft-flow-body"><b>注文</b><span>買い / 売り / 様子見（秘密）</span></div>
           </div>
           <div className="ft-flow-step">
             <div className="ft-flow-num">3</div>
-            <div className="ft-flow-body">
-              <b>市場HACK</b>
-              <span>操作・妨害・防衛などを使うか決める</span>
-            </div>
+            <div className="ft-flow-body"><b>市場HACK</b><span>COINで操作・妨害など</span></div>
           </div>
           <div className="ft-flow-step">
             <div className="ft-flow-num">4</div>
-            <div className="ft-flow-body">
-              <b>清算</b>
-              <span>人ごとに株価が決まり精算</span>
-            </div>
+            <div className="ft-flow-body"><b>清算</b><span>個人株価で精算</span></div>
           </div>
         </div>
       </div>
@@ -3927,12 +3898,12 @@ function RulesContent() {
         <div className="ft-rules-h" style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <Coin size={14} className="icon-coin" /> COIN
         </div>
-        <p className="ft-rules-p" style={{ marginBottom: 8 }}>
-          COINはゲーム開始時に人数・モードに応じて配布される通貨で、市場ハックに使用します。使い切ったら補充以外では増えません。補充はCOINが5枚以下のとき総資産50%で+5枚、0枚のとき総資産75%で+10枚可能です。なお市場HACK時・ラスト5TERNは補充できません。
-        </p>
-        <p className="ft-rules-note" style={{ marginBottom: 0 }}>
-          買い注文の代金を、現金＋全株売却でも支払えない場合は<strong>破産</strong>します。ただしCOINが10枚以上あれば、10枚消費してその買いを<strong>帳消し</strong>にできます。
-        </p>
+        <ul className="ft-rules-bullets">
+          <li>開始時に人数・モード分を配布。市場HACK専用</li>
+          <li>補充：5枚以下→総資産50%で+5／0枚→総資産75%で+10（HACK中・ラスト5は不可）</li>
+          <li><strong>破産</strong>：買い代金を現金＋全株売却でも払えないとき</li>
+          <li><strong>帳消し</strong>：COIN10枚でその買いをキャンセル（破産回避）</li>
+        </ul>
       </div>
 
       <div className="ft-rules-section">
@@ -4009,6 +3980,24 @@ function RulesContent() {
           <div className="ft-tip-row">AVANT-GARDE-妨害 → 相手の大口買いを99999円に固定して破産狙い</div>
         </div>
       </div>
+
+      <div className="ft-rules-section">
+        <div className="ft-rules-h">終盤（ラスト5TERN）</div>
+        <ul className="ft-rules-bullets">
+          <li>様子見禁止（必ず買い or 売り）</li>
+          <li>売りは保有の50%以上／買いは余力の50%以上</li>
+          <li>突入時、生存者全員にCOIN+10</li>
+          <li>COIN補充は使用不可</li>
+        </ul>
+      </div>
+
+      <div className="ft-rules-section">
+        <div className="ft-rules-h">MODE</div>
+        <ul className="ft-rules-bullets" style={{ marginBottom: 0 }}>
+          <li><strong>LOCAL</strong>：1人 vs CPU</li>
+          <li><strong>ONLINE</strong>：部屋コードで対人（空き席はCPU）。ホストが進行管理</li>
+        </ul>
+      </div>
     </div>
   );
 }
@@ -4055,11 +4044,9 @@ function SetupScreen({ playerCount, setPlayerCount, humanCount, setHumanCount, h
       if (playMode === "online" && isPc && controls && col) {
         // 右パネル全体の高さに左カラムを合わせ、式以外をスクロール
         const controlsH = controls.offsetHeight;
-        const formulaEl = col.querySelector(".ft-setup-formula");
-        const formulaH = formulaEl ? formulaEl.offsetHeight + 10 : 0;
         const mobileBtn = col.querySelector(".ft-setup-mobile-rules-btn");
         const btnH = mobileBtn && mobileBtn.offsetParent ? mobileBtn.offsetHeight + 8 : 0;
-        const next = Math.max(180, controlsH - formulaH - btnH);
+        const next = Math.max(180, controlsH - btnH);
         wrap.style.maxHeight = next + "px";
         wrap.style.height = next + "px";
         wrap.style.overflowY = "auto";
@@ -4107,13 +4094,6 @@ function SetupScreen({ playerCount, setPlayerCount, humanCount, setHumanCount, h
 
         <div className={"ft-setup-body" + (playMode === "online" ? " is-online" : "")}>
           <div className="ft-setup-rules-col" ref={setupRulesColRef}>
-            <div className="ft-setup-formula">
-              <span className="ft-setup-formula-main">株価 = Nの素因数和</span>
-              <span className="ft-setup-formula-chips">
-                <span className="ft-chip up">素数→高い</span>
-                <span className="ft-chip down">2の累乗→安い</span>
-              </span>
-            </div>
             <button type="button" className="ft-rules-btn ft-setup-mobile-rules-btn" onClick={() => setShowSetupRulesFS(true)}>
               ルール
             </button>
@@ -6493,6 +6473,28 @@ const CSS = `
   line-height: 1.8;
   margin: 0;
 }
+.ft-rules-bullets {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+  color: var(--ft-text-dim);
+  line-height: 1.75;
+}
+.ft-rules-bullets li { margin-bottom: 4px; }
+.ft-rules-bullets li:last-child { margin-bottom: 0; }
+.ft-rules-bullets strong { color: var(--ft-text); }
+.ft-rules .ft-card-types { gap: 8px; margin-bottom: 8px; }
+.ft-rules .ft-card-type { padding: 10px; }
+.ft-rules .ft-card-type ul {
+  margin: 0;
+  padding-left: 14px;
+  font-size: 11px;
+  color: var(--ft-text-dim);
+  line-height: 1.55;
+}
+.ft-rules .ft-flow-step { padding: 8px 10px; }
+.ft-rules .ft-tips { margin-top: 8px; }
+
 .ft-rules-p b { color: var(--ft-text); }
 .ft-rules-lead {
   font-size: 13px;
