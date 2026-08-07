@@ -9583,16 +9583,60 @@ const CSS = `
     max-width: 640px;
     padding: 18px 16px 20px;
     border-radius: 8px;
+    overflow: hidden;
   }
   .ft-setup-header-row {
     flex-wrap: wrap;
   }
+  .ft-setup-brand {
+    width: 100%;
+    flex: 1 1 100%;
+  }
   .ft-setup-brand .ft-title {
     font-size: 30px;
   }
+  .ft-setup-header-right {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 10px 12px;
+    padding-bottom: 4px;
+    overflow: visible;
+  }
+  /* モバイル: 絶対配置をやめ、ACCOUNT直下の通常フローで枠内に収める */
+  .ft-account-menu {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    width: auto;
+    max-width: 100%;
+    flex: 0 0 auto;
+  }
+  .ft-account-equipped-titles {
+    position: static;
+    top: auto;
+    right: auto;
+    left: auto;
+    margin-top: 10px;
+    justify-content: flex-start;
+    gap: 6px;
+    max-width: 100%;
+  }
+  .ft-account-equipped-titles .ft-title-badge-icon {
+    width: 30px;
+    height: 30px;
+  }
+  .ft-account-equipped-titles .ft-title-badge-icon svg {
+    width: 18px;
+    height: 18px;
+  }
   .ft-ai-iq-panel {
     flex: 1 1 auto;
-    min-width: 140px;
+    min-width: 0;
+    max-width: 100%;
   }
   .ft-setup-rules-fs-body {
     padding: 14px 16px 28px;
