@@ -621,7 +621,22 @@ function equippedTitleNamesLabel(save) {
 
 function saveTitleSave(data) {
   try {
-    localStorage.setItem(FT_TITLE_KEY, JSON.stringify(data));
+    // equippedAt を落とさない（ゲーム終了処理などが欠落したオブジェクトを渡しても保持）
+    let prevAt = 0;
+    try {
+      const rawPrev = localStorage.getItem(FT_TITLE_KEY);
+      if (rawPrev) prevAt = Math.max(0, Number(JSON.parse(rawPrev).equippedAt) || 0);
+    } catch (e0) {}
+    const out = data && typeof data === "object" ? { ...data } : {};
+    out.equipped = normalizeEquipped(out.equipped);
+    out.unlocked = out.unlocked && typeof out.unlocked === "object" ? out.unlocked : {};
+    if (out.equippedAt == null || out.equippedAt === "" || isNaN(Number(out.equippedAt))) {
+      out.equippedAt = prevAt;
+    } else {
+      out.equippedAt = Math.max(0, Number(out.equippedAt) || 0);
+    }
+    localStorage.setItem(FT_TITLE_KEY, JSON.stringify(out));
+    data = out;
   } catch (e) {}
   try {
     const uid = getLoggedInAccountId();
@@ -633,6 +648,7 @@ function saveTitleSave(data) {
     map[uid].updatedAt = Date.now();
     saveAuthAccounts(map);
   } catch (e) {}
+  try { scheduleLiveSyncPush && scheduleLiveSyncPush(); } catch (e) {}
 }
 function emptyGameTitleStats() {
   return {
@@ -655,7 +671,10 @@ function unlockTitleById(id) {
     if (save.unlocked[id]) return false;
     save.unlocked[id] = true;
     const eq = normalizeEquipped(save.equipped);
-    if (!eq.length) save.equipped = normalizeEquipped([id]);
+    if (!eq.length) {
+      save.equipped = normalizeEquipped([id]);
+      save.equippedAt = Date.now();
+    }
     // ultimate re-check
     const allOthers = TITLE_DEFS.filter((t) => t.id !== "ultimate");
     if (allOthers.every((t) => save.unlocked[t.id])) {
@@ -674,6 +693,7 @@ function evaluateTitlesAfterGame(isLocal, isFirst, finalTV, finalCoins, stats, s
   const next = {
     unlocked: { ...(save.unlocked || {}) },
     equipped: normalizeEquipped(save.equipped),
+    equippedAt: Math.max(0, Number(save.equippedAt) || 0),
     avantTotal: Math.max(0, Number(save.avantTotal) || 0) + (isFirst ? (stats.avantThisGame || 0) : 0),
     comebackTotal: Math.max(0, Number(save.comebackTotal) || 0),
     coinRichTotal: Math.max(0, Number(save.coinRichTotal) || 0),
@@ -705,6 +725,7 @@ function evaluateTitlesAfterGame(isLocal, isFirst, finalTV, finalCoins, stats, s
     next.equipped = normalizeEquipped(next.equipped);
     if ((!next.equipped || !next.equipped.length) && newly.length) {
       next.equipped = normalizeEquipped([newly[newly.length - 1]]);
+      next.equippedAt = Date.now();
     }
     saveTitleSave(next);
     return { newly, save: next };
@@ -785,7 +806,9 @@ function evaluateTitlesAfterGame(isLocal, isFirst, finalTV, finalCoins, stats, s
   next.equipped = normalizeEquipped(next.equipped);
   if ((!next.equipped || !next.equipped.length) && newly.length) {
     next.equipped = normalizeEquipped([newly[newly.length - 1]]);
+    next.equippedAt = Date.now();
   }
+  // 既存装備の equippedAt は維持（上で next にコピー済み）
   saveTitleSave(next);
   return { newly, save: next };
 }
@@ -1177,28 +1200,30 @@ function mergeTitleSaves(a, b) {
   const equippedB = normalizeEquipped(B.equipped);
   const atA = Math.max(0, Number(A.equippedAt) || 0);
   const atB = Math.max(0, Number(B.equippedAt) || 0);
-  // 装備は「後から変更した側」を優先（同期で装備だけ戻る問題を防ぐ）
+  // 装備は last-write-wins（equippedAt が新しい方を採用。同値なら A=ローカル維持で振動防止）
   let equipped;
-  if (atA !== atB) {
-    equipped = atA > atB ? equippedA : equippedB;
-  } else if (equippedA.length && equippedB.length) {
-    // 時刻不明・同値: 両方の先頭からユニーク結合（最大3）
-    const seen = {};
-    equipped = [];
-    equippedA.concat(equippedB).forEach((id) => {
-      if (id && !seen[id] && equipped.length < MAX_EQUIPPED_TITLES) {
-        seen[id] = true;
-        equipped.push(id);
-      }
-    });
+  let equippedAt;
+  if (atB > atA) {
+    equipped = equippedB;
+    equippedAt = atB;
+  } else if (atA > atB) {
+    equipped = equippedA;
+    equippedAt = atA;
   } else {
-    equipped = equippedA.length ? equippedA : equippedB;
+    // 同時刻: 片方が空なら非空を採用。両方あるならローカル(A)維持
+    if (equippedA.length) {
+      equipped = equippedA;
+      equippedAt = atA;
+    } else {
+      equipped = equippedB;
+      equippedAt = atB;
+    }
   }
   equipped = normalizeEquipped(equipped.filter((id) => unlocked[id]));
   return {
     unlocked,
     equipped,
-    equippedAt: Math.max(atA, atB),
+    equippedAt: equippedAt,
     avantTotal: Math.max(0, Number(A.avantTotal) || 0, Number(B.avantTotal) || 0),
     comebackTotal: Math.max(0, Number(A.comebackTotal) || 0, Number(B.comebackTotal) || 0),
     coinRichTotal: Math.max(0, Number(A.coinRichTotal) || 0, Number(B.coinRichTotal) || 0),
@@ -1713,7 +1738,26 @@ async function applyMergedProgressFromRemote(remoteProgress) {
   if (!remoteProgress) return false;
   const local = collectLocalProgress();
   const merged = mergeProgressBlobs(local, remoteProgress);
-  if (JSON.stringify(local) === JSON.stringify(merged)) return false;
+  // 装備は mergeTitleSaves の LWW に加え、明示的に再適用（取りこぼし防止）
+  try {
+    const lt = (local && local.titleSave) || {};
+    const rt = (remoteProgress && remoteProgress.titleSave) || {};
+    const atL = Math.max(0, Number(lt.equippedAt) || 0);
+    const atR = Math.max(0, Number(rt.equippedAt) || 0);
+    if (!merged.titleSave) merged.titleSave = {};
+    if (atR > atL) {
+      merged.titleSave.equipped = normalizeEquipped(rt.equipped);
+      merged.titleSave.equippedAt = atR;
+    } else {
+      merged.titleSave.equipped = normalizeEquipped(lt.equipped);
+      merged.titleSave.equippedAt = atL;
+    }
+  } catch (e) {}
+  const same =
+    JSON.stringify((local.titleSave || {}).equipped || []) === JSON.stringify((merged.titleSave || {}).equipped || []) &&
+    Number((local.titleSave || {}).equippedAt || 0) === Number((merged.titleSave || {}).equippedAt || 0) &&
+    JSON.stringify(local) === JSON.stringify(merged);
+  if (same) return false;
   applyProgressToLocal(merged);
   const uid = getLoggedInAccountId();
   if (uid) {
@@ -4967,6 +5011,8 @@ function FactorTrader() {
               const next = { ...titleSave, equipped: list, equippedAt: Date.now() };
               setTitleSave(next);
               saveTitleSave(next);
+              try { persistLoggedInProgress(); } catch (e) {}
+              try { scheduleLiveSyncPush(); } catch (e) {}
             }}
           />
         ) : null}
@@ -5129,6 +5175,8 @@ function FactorTrader() {
               const next = { ...titleSave, equipped: list, equippedAt: Date.now() };
               setTitleSave(next);
               saveTitleSave(next);
+              try { persistLoggedInProgress(); } catch (e) {}
+              try { scheduleLiveSyncPush(); } catch (e) {}
             }}
           />
         ) : null}
