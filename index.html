@@ -1250,34 +1250,41 @@ async function loginAccount(id, password, otpToken) {
   if (!password) throw new Error("パスワードを入力してください");
   const map = loadAuthAccounts();
   let account = map[uid] || null;
-  let fromOtp = null;
+  let fromRemote = null;
   if (otpToken && String(otpToken).trim()) {
-    fromOtp = await consumeSyncOtp(uid, password, otpToken);
+    fromRemote = await consumeSyncOtp(uid, password, otpToken);
   }
-  if (!account && !fromOtp) {
-    throw new Error("この端末にアカウントがありません。新規登録するか、同期ワンタイムパスワードを入力してください");
+  // この端末にアカウントが無くても、他端末がログイン中ならライブ同期で取得
+  if (!account && !fromRemote) {
+    try {
+      fromRemote = await tryBootstrapFromLiveSync(uid, password);
+    } catch (e) {
+      fromRemote = null;
+    }
+  }
+  if (!account && !fromRemote) {
+    throw new Error("この端末にアカウントがありません。先にメイン端末でログインしたままにするか、新規登録、または手動同期コードを入力してください");
   }
   if (account) {
     const expect = await ftSha256Hex(account.salt + ":" + password);
     if (expect !== account.passHash) throw new Error("IDまたはパスワードが違います");
-  } else if (fromOtp) {
-    // 他端末からの初回: ローカルアカウントを作成
+  } else if (fromRemote) {
     const salt = ftRandomSaltB64(16);
     const passHash = await ftSha256Hex(salt + ":" + password);
     account = {
       id: uid,
       salt: salt,
       passHash: passHash,
-      progress: fromOtp.progress,
+      progress: fromRemote.progress,
       updatedAt: Date.now(),
     };
   }
   const guest = collectLocalProgress();
   let progress = account.progress || { titleSave: loadTitleSave(), aiLearn: defaultAiLearn() };
-  if (fromOtp && fromOtp.progress) {
+  if (fromRemote && fromRemote.progress) {
     progress = {
-      titleSave: mergeTitleSaves(progress.titleSave, fromOtp.progress.titleSave),
-      aiLearn: mergeAiLearn(progress.aiLearn, fromOtp.progress.aiLearn),
+      titleSave: mergeTitleSaves(progress.titleSave, fromRemote.progress.titleSave),
+      aiLearn: mergeAiLearn(progress.aiLearn, fromRemote.progress.aiLearn),
     };
   }
   progress = {
@@ -1604,8 +1611,8 @@ function persistLoggedInProgress() {
 
 /* ========== 他端末ライブ同期（PeerJS・ログイン中は常時） ========== */
 const FT_SYNC_SESSION_KEY = "factor_trader_sync_session_v1";
-const FT_SYNC_PEER_PREFIX = "ftsync-";
-const FT_SYNC_PULL_MS = 12000;
+const FT_SYNC_PEER_PREFIX = "ftsync2-";
+const FT_SYNC_PULL_MS = 5000;
 let _ftSyncPeer = null;
 let _ftSyncHosting = false;
 let _ftSyncPack = null;
@@ -1613,6 +1620,9 @@ let _ftSyncPullTimer = null;
 let _ftSyncPushTimer = null;
 let _ftSyncBusy = false;
 let _ftSyncStartedFor = null;
+let _ftSyncHostRetryTimer = null;
+let _ftSyncConns = [];
+let _ftSyncVisBound = false;
 
 function saveSyncSession(id, password) {
   try {
@@ -1640,8 +1650,8 @@ function clearSyncSession() {
 }
 
 async function ftSyncPeerIdFor(uid) {
-  const h = await ftSha256Hex("ft-live-sync-v1:" + String(uid || ""));
-  return FT_SYNC_PEER_PREFIX + h.slice(0, 20);
+  const h = await ftSha256Hex("ft-live-sync-v2:" + String(uid || ""));
+  return FT_SYNC_PEER_PREFIX + h.slice(0, 16);
 }
 
 function mergeProgressBlobs(a, b) {
@@ -1656,21 +1666,9 @@ function mergeProgressBlobs(a, b) {
 async function buildLiveSyncPack(password, uid) {
   const progress = collectLocalProgress();
   const salt = ftRandomSaltB64(16);
-  const body = {
-    v: 2,
-    id: uid,
-    progress: progress,
-    ts: Date.now(),
-  };
+  const body = { v: 2, id: uid, progress: progress, ts: Date.now() };
   const enc = await ftEncryptJson(body, String(password) + ":livesync", salt);
-  return {
-    v: 2,
-    id: uid,
-    salt: salt,
-    iv: enc.iv,
-    data: enc.data,
-    ts: body.ts,
-  };
+  return { v: 2, id: uid, salt: salt, iv: enc.iv, data: enc.data, ts: body.ts };
 }
 
 async function decryptLiveSyncPack(pack, password) {
@@ -1690,10 +1688,7 @@ async function applyMergedProgressFromRemote(remoteProgress) {
   if (!remoteProgress) return false;
   const local = collectLocalProgress();
   const merged = mergeProgressBlobs(local, remoteProgress);
-  // 変化があるか簡易チェック
-  const before = JSON.stringify(local);
-  const after = JSON.stringify(merged);
-  if (before === after) return false;
+  if (JSON.stringify(local) === JSON.stringify(merged)) return false;
   applyProgressToLocal(merged);
   const uid = getLoggedInAccountId();
   if (uid) {
@@ -1709,21 +1704,15 @@ async function applyMergedProgressFromRemote(remoteProgress) {
 }
 
 function stopLiveSync() {
-  if (_ftSyncPullTimer) {
-    clearInterval(_ftSyncPullTimer);
-    _ftSyncPullTimer = null;
-  }
-  if (_ftSyncPushTimer) {
-    clearTimeout(_ftSyncPushTimer);
-    _ftSyncPushTimer = null;
-  }
+  if (_ftSyncPullTimer) { clearInterval(_ftSyncPullTimer); _ftSyncPullTimer = null; }
+  if (_ftSyncPushTimer) { clearTimeout(_ftSyncPushTimer); _ftSyncPushTimer = null; }
+  if (_ftSyncHostRetryTimer) { clearTimeout(_ftSyncHostRetryTimer); _ftSyncHostRetryTimer = null; }
   _ftSyncPack = null;
   _ftSyncHosting = false;
   _ftSyncStartedFor = null;
+  _ftSyncConns = [];
   if (_ftSyncPeer) {
-    try {
-      _ftSyncPeer.destroy();
-    } catch (e) {}
+    try { _ftSyncPeer.destroy(); } catch (e) {}
     _ftSyncPeer = null;
   }
 }
@@ -1734,7 +1723,7 @@ function scheduleLiveSyncPush() {
   _ftSyncPushTimer = setTimeout(function () {
     _ftSyncPushTimer = null;
     refreshLiveSyncPackAndBroadcast().catch(function () {});
-  }, 400);
+  }, 300);
 }
 
 async function refreshLiveSyncPackAndBroadcast() {
@@ -1742,166 +1731,208 @@ async function refreshLiveSyncPackAndBroadcast() {
   if (!sess) return;
   try {
     _ftSyncPack = await buildLiveSyncPack(sess.password, sess.id);
-  } catch (e) {
-    return;
-  }
-  // ホスト中なら接続中クライアントへプッシュは次の接続で足りる（ポーリング前提）
+  } catch (e) { return; }
+  (_ftSyncConns || []).forEach(function (conn) {
+    try { if (conn && conn.open) conn.send({ type: "ftsync-pack", pack: _ftSyncPack }); } catch (e) {}
+  });
 }
 
 function destroySyncPeerQuiet() {
+  _ftSyncConns = [];
   if (_ftSyncPeer) {
-    try {
-      _ftSyncPeer.destroy();
-    } catch (e) {}
+    try { _ftSyncPeer.destroy(); } catch (e) {}
     _ftSyncPeer = null;
   }
   _ftSyncHosting = false;
 }
 
-async function ensureLiveSyncHost() {
-  const sess = loadSyncSession();
-  if (!sess) return;
-  if (typeof Peer === "undefined") return;
-  if (_ftSyncPeer && _ftSyncHosting) {
-    await refreshLiveSyncPackAndBroadcast();
-    return;
-  }
-  if (_ftSyncPeer) return;
-  const peerId = await ftSyncPeerIdFor(sess.id);
-  await refreshLiveSyncPackAndBroadcast();
-  try {
-    const peer = new Peer(peerId, { debug: 0 });
-    _ftSyncPeer = peer;
-    peer.on("open", function () {
-      _ftSyncHosting = true;
-    });
-    peer.on("connection", function (conn) {
-      conn.on("open", function () {
-        // 双方向マージ
-        conn.on("data", function (data) {
-          handleSyncConnData(conn, data, sess).catch(function () {});
-        });
-        // 先に自分のパックを送る（旧クライアント互換）
-        try {
-          if (_ftSyncPack) conn.send({ type: "ftsync-pack", pack: _ftSyncPack });
-        } catch (e) {}
-      });
-    });
-    peer.on("error", function (err) {
-      const t = err && err.type;
-      if (t === "unavailable-id" || t === "peer-unavailable") {
-        destroySyncPeerQuiet();
-        _ftSyncHosting = false;
-      } else if (t === "network" || t === "disconnected" || t === "server-error") {
-        destroySyncPeerQuiet();
-      }
-    });
-    peer.on("close", function () {
-      _ftSyncPeer = null;
-      _ftSyncHosting = false;
-    });
-  } catch (e) {
-    destroySyncPeerQuiet();
-  }
+function wireSyncConnection(conn, sess) {
+  if (!conn || !sess) return;
+  conn.on("data", function (data) {
+    handleSyncConnData(conn, data, sess).catch(function () {});
+  });
+  conn.on("close", function () {
+    _ftSyncConns = (_ftSyncConns || []).filter(function (c) { return c !== conn; });
+  });
+  try { if (_ftSyncPack) conn.send({ type: "ftsync-pack", pack: _ftSyncPack }); } catch (e) {}
 }
 
 async function handleSyncConnData(conn, data, sess) {
   if (!data || !sess) return;
-  if (data.type === "ftsync-hello" && data.pack) {
-    try {
+  try {
+    if (data.type === "ftsync-hello" && data.pack) {
       const remoteBody = await decryptLiveSyncPack(data.pack, sess.password);
-      if (remoteBody.id && remoteBody.id !== sess.id) return;
+      if (remoteBody.id && String(remoteBody.id) !== String(sess.id)) return;
       await applyMergedProgressFromRemote(remoteBody.progress);
       _ftSyncPack = await buildLiveSyncPack(sess.password, sess.id);
-      conn.send({ type: "ftsync-result", pack: _ftSyncPack });
-    } catch (e) {}
-    return;
-  }
-  if (data.type === "ftsync-pack" && data.pack) {
-    try {
+      try { conn.send({ type: "ftsync-result", pack: _ftSyncPack }); } catch (e) {}
+      return;
+    }
+    if ((data.type === "ftsync-pack" || data.type === "ftsync-result") && data.pack) {
       const remoteBody = await decryptLiveSyncPack(data.pack, sess.password);
-      if (remoteBody.id && remoteBody.id !== sess.id) return;
+      if (remoteBody.id && String(remoteBody.id) !== String(sess.id)) return;
       await applyMergedProgressFromRemote(remoteBody.progress);
       _ftSyncPack = await buildLiveSyncPack(sess.password, sess.id);
-    } catch (e) {}
+    }
+  } catch (e) {}
+}
+
+async function ensureLiveSyncHost() {
+  const sess = loadSyncSession();
+  if (!sess) return false;
+  if (typeof Peer === "undefined") return false;
+  if (_ftSyncPeer && _ftSyncHosting) {
+    await refreshLiveSyncPackAndBroadcast();
+    return true;
   }
+  if (_ftSyncPeer && !_ftSyncHosting) destroySyncPeerQuiet();
+  if (_ftSyncPeer) return !!_ftSyncHosting;
+
+  const peerId = await ftSyncPeerIdFor(sess.id);
+  await refreshLiveSyncPackAndBroadcast();
+
+  return await new Promise(function (resolve) {
+    let settled = false;
+    const done = function (v) { if (settled) return; settled = true; resolve(v); };
+    try {
+      const peer = new Peer(peerId, { debug: 0 });
+      _ftSyncPeer = peer;
+      const failTimer = setTimeout(function () {
+        if (!_ftSyncHosting) { destroySyncPeerQuiet(); done(false); }
+      }, 6000);
+      peer.on("open", function () {
+        _ftSyncHosting = true;
+        clearTimeout(failTimer);
+        done(true);
+      });
+      peer.on("connection", function (conn) {
+        _ftSyncConns.push(conn);
+        conn.on("open", function () { wireSyncConnection(conn, sess); });
+      });
+      peer.on("error", function (err) {
+        const t = err && err.type;
+        if (t === "unavailable-id") {
+          clearTimeout(failTimer);
+          destroySyncPeerQuiet();
+          done(false);
+        } else if (t === "network" || t === "disconnected" || t === "server-error" || t === "socket-error") {
+          clearTimeout(failTimer);
+          destroySyncPeerQuiet();
+          done(false);
+        }
+      });
+      peer.on("close", function () {
+        _ftSyncPeer = null;
+        _ftSyncHosting = false;
+        _ftSyncConns = [];
+      });
+    } catch (e) {
+      destroySyncPeerQuiet();
+      done(false);
+    }
+  });
+}
+
+async function fetchLiveSyncFromHost(uid, password, localPack, timeoutMs) {
+  if (typeof Peer === "undefined") throw new Error("PeerJS未読込");
+  const peerId = await ftSyncPeerIdFor(uid);
+  return await new Promise(function (resolve, reject) {
+    let done = false;
+    let client = null;
+    const finish = function (fn) {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      try { if (client) client.destroy(); } catch (e) {}
+      fn();
+    };
+    const timer = setTimeout(function () {
+      finish(function () { reject(new Error("他端末に接続できませんでした")); });
+    }, timeoutMs || 10000);
+    try {
+      client = new Peer({ debug: 0 });
+    } catch (e) {
+      finish(function () { reject(e); });
+      return;
+    }
+    client.on("error", function () {
+      finish(function () { reject(new Error("同期接続エラー")); });
+    });
+    client.on("open", function () {
+      try {
+        const conn = client.connect(peerId, { reliable: true });
+        conn.on("error", function () {
+          finish(function () { reject(new Error("ホスト未起動")); });
+        });
+        conn.on("open", function () {
+          try { conn.send({ type: "ftsync-hello", pack: localPack || null }); } catch (e) {}
+        });
+        conn.on("data", function (data) {
+          (async function () {
+            try {
+              if (!data || !data.pack) return;
+              if (data.type !== "ftsync-result" && data.type !== "ftsync-pack") return;
+              const body = await decryptLiveSyncPack(data.pack, password);
+              if (body.id && String(body.id) !== String(uid)) {
+                finish(function () { reject(new Error("ID不一致")); });
+                return;
+              }
+              finish(function () { resolve(body); });
+            } catch (e) {
+              finish(function () { reject(e); });
+            }
+          })();
+        });
+      } catch (e) {
+        finish(function () { reject(e); });
+      }
+    });
+  });
+}
+
+async function tryBootstrapFromLiveSync(uid, password) {
+  const salt = ftRandomSaltB64(16);
+  const emptyProgress = {
+    titleSave: { unlocked: {}, equipped: [], avantTotal: 0, comebackTotal: 0, coinRichTotal: 0, coinPoorTotal: 0, gamesPlayed: 0 },
+    aiLearn: typeof defaultAiLearn === "function" ? defaultAiLearn() : {},
+  };
+  let helloPack = null;
+  try {
+    const body = { v: 2, id: uid, progress: emptyProgress, ts: Date.now() };
+    const enc = await ftEncryptJson(body, String(password) + ":livesync", salt);
+    helloPack = { v: 2, id: uid, salt: salt, iv: enc.iv, data: enc.data, ts: body.ts };
+  } catch (e) {
+    helloPack = null;
+  }
+  const body = await fetchLiveSyncFromHost(uid, password, helloPack, 12000);
+  if (!body || !body.progress) throw new Error("同期データなし");
+  return { progress: body.progress, id: uid };
 }
 
 async function pullLiveSyncOnce() {
   const sess = loadSyncSession();
   if (!sess || _ftSyncBusy) return;
-  if (typeof Peer === "undefined") return;
   _ftSyncBusy = true;
   try {
     await refreshLiveSyncPackAndBroadcast();
-    // ホストできていれば他端末からの接続待ち。さらにクライアントとしても取りに行く
     if (!_ftSyncHosting) {
-      await ensureLiveSyncHost();
-    }
-    // 自分がホスト中でも、他がホストしている場合があるので短い取得を試す
-    await new Promise(function (resolve) {
-      let done = false;
-      const finish = function () {
-        if (done) return;
-        done = true;
+      const hosted = await ensureLiveSyncHost();
+      if (!hosted) {
         try {
-          client.destroy();
-        } catch (e) {}
-        resolve();
-      };
-      let client;
-      try {
-        client = new Peer({ debug: 0 });
-      } catch (e) {
-        resolve();
-        return;
-      }
-      const timer = setTimeout(finish, 8000);
-      client.on("error", function () {
-        clearTimeout(timer);
-        finish();
-      });
-      client.on("open", async function () {
-        try {
-          const peerId = await ftSyncPeerIdFor(sess.id);
-          // 自分自身のIDへの接続は失敗しうる → それでも try
-          const conn = client.connect(peerId, { reliable: true });
-          conn.on("error", function () {
-            clearTimeout(timer);
-            finish();
-          });
-          conn.on("open", function () {
-            try {
-              conn.send({ type: "ftsync-hello", pack: _ftSyncPack });
-            } catch (e) {}
-          });
-          conn.on("data", function (data) {
-            (async function () {
-              try {
-                if (!data) return;
-                if ((data.type === "ftsync-result" || data.type === "ftsync-pack") && data.pack) {
-                  const remoteBody = await decryptLiveSyncPack(data.pack, sess.password);
-                  if (remoteBody.id && remoteBody.id !== sess.id) return;
-                  await applyMergedProgressFromRemote(remoteBody.progress);
-                  _ftSyncPack = await buildLiveSyncPack(sess.password, sess.id);
-                }
-              } catch (e) {}
-              clearTimeout(timer);
-              try {
-                conn.close();
-              } catch (e2) {}
-              finish();
-            })();
-          });
+          const body = await fetchLiveSyncFromHost(sess.id, sess.password, _ftSyncPack, 8000);
+          if (body && body.progress) {
+            await applyMergedProgressFromRemote(body.progress);
+            _ftSyncPack = await buildLiveSyncPack(sess.password, sess.id);
+          }
         } catch (e) {
-          clearTimeout(timer);
-          finish();
+          if (!_ftSyncHostRetryTimer) {
+            _ftSyncHostRetryTimer = setTimeout(function () {
+              _ftSyncHostRetryTimer = null;
+              ensureLiveSyncHost().catch(function () {});
+            }, 2000);
+          }
         }
-      });
-    });
-    // ホスト再確保
-    if (!_ftSyncHosting) {
-      await ensureLiveSyncHost();
+      }
     }
   } finally {
     _ftSyncBusy = false;
@@ -1913,6 +1944,7 @@ async function startLiveSync(id, password) {
   saveSyncSession(id, password);
   if (_ftSyncStartedFor === id && _ftSyncPullTimer) {
     await refreshLiveSyncPackAndBroadcast();
+    await pullLiveSyncOnce();
     return;
   }
   stopLiveSync();
@@ -1924,11 +1956,14 @@ async function startLiveSync(id, password) {
   _ftSyncPullTimer = setInterval(function () {
     pullLiveSyncOnce().catch(function () {});
   }, FT_SYNC_PULL_MS);
-  try {
-    document.addEventListener("visibilitychange", function () {
-      if (!document.hidden) pullLiveSyncOnce().catch(function () {});
-    });
-  } catch (e) {}
+  if (!_ftSyncVisBound) {
+    _ftSyncVisBound = true;
+    try {
+      document.addEventListener("visibilitychange", function () {
+        if (!document.hidden) pullLiveSyncOnce().catch(function () {});
+      });
+    } catch (e) {}
+  }
 }
 
 (function hydrateLoggedInAccount() {
@@ -1939,13 +1974,12 @@ async function startLiveSync(id, password) {
     const acc = map[uid];
     if (acc && acc.progress) applyProgressToLocal(acc.progress);
   } catch (e) {}
-  // 同一タブでパスワードセッションが残っていればライブ同期再開
   try {
     const sess = loadSyncSession();
     if (sess) {
       setTimeout(function () {
         startLiveSync(sess.id, sess.password).catch(function () {});
-      }, 600);
+      }, 400);
     }
   } catch (e) {}
 })();
@@ -6839,7 +6873,7 @@ function SetupAccountMenu({ onProgressApplied, equippedTitleIds }) {
       await loginAccount(userId, password, otpNorm);
       setLoggedId(String(userId).trim());
       try { await startLiveSync(String(userId).trim(), pass); } catch (se) {}
-      setMsg("ログインしました。他端末と進捗を常時同期します（双方で同じIDにログイン中）。");
+      setMsg("ログインしました。同じIDで開いている他端末と自動同期します（両方オンラインでログイン中）。");
       if (onProgressApplied) onProgressApplied();
       setPassword(""); setOtpInput("");
       setView("menu");
