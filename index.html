@@ -649,41 +649,18 @@ function emptyGameTitleStats() {
 function unlockTitleById(id) {
   try {
     const save = loadTitleSave();
-    if (!save.unlocked || typeof save.unlocked !== "object") save.unlocked = {};
-    const already = !!save.unlocked[id];
+    if (!save.unlocked) save.unlocked = {};
+    if (save.unlocked[id]) return false;
     save.unlocked[id] = true;
-    let eq = normalizeEquipped(save.equipped);
-    if (!eq.length) {
-      eq = normalizeEquipped([id]);
-      save.equipped = eq;
-    } else if (id === "ichininmae" && eq.indexOf(id) < 0 && eq.length < MAX_EQUIPPED_TITLES) {
-      eq = normalizeEquipped(eq.concat([id]));
-      save.equipped = eq;
-    }
+    const eq = normalizeEquipped(save.equipped);
+    if (!eq.length) save.equipped = normalizeEquipped([id]);
+    // ultimate re-check
     const allOthers = TITLE_DEFS.filter((t) => t.id !== "ultimate");
     if (allOthers.every((t) => save.unlocked[t.id])) {
       save.unlocked.ultimate = true;
     }
     saveTitleSave(save);
-    try {
-      if (typeof window !== "undefined" && window.__ftReloadProgress) window.__ftReloadProgress();
-    } catch (e2) {}
-    return !already;
-  } catch (e) {
-    return false;
-  }
-}
-
-/** チュートリアル完了時：一人前を付与しUI反映 */
-function claimTutorialTitle() {
-  try {
-    unlockTitleById("ichininmae");
-    const save = loadTitleSave();
-    const ok = !!(save && save.unlocked && save.unlocked.ichininmae);
-    try {
-      if (typeof window !== "undefined" && window.__ftReloadProgress) window.__ftReloadProgress();
-    } catch (e2) {}
-    return ok;
+    return true;
   } catch (e) {
     return false;
   }
@@ -2133,9 +2110,16 @@ function settleTurn(players, orders, hacks, nStart, priceBefore) {
     });
   });
 
+  // 奥義妨害の有無を先に把握（被妨害無効判定用）
+  const willAvantSab = {};
   players.forEach((p) => {
-    if (defenseMap[p.id]) {
-      // 防衛: 被妨害をすべて防ぐ
+    const hk = hacks[p.id] || {};
+    willAvantSab[p.id] = !!(hk.avantSab);
+  });
+
+  players.forEach((p) => {
+    if (defenseMap[p.id] || willAvantSab[p.id]) {
+      // 防衛 / 奥義AVANT-GARDE-妨害: 被妨害をすべて防ぐ
       incomingHeavyMap[p.id] = 0;
       return;
     }
@@ -2153,19 +2137,19 @@ function settleTurn(players, orders, hacks, nStart, priceBefore) {
     incomingHeavyMap[p.id] = Math.max(0, inc);
   });
 
-  // 反射分を加算（反射された側が防衛していればその分も防ぐ）
+  // 反射分を加算（反射された側が防衛 or 奥義妨害なら防ぐ）
   players.forEach((p) => {
     const bounced = reflectedToMap[p.id] || 0;
     if (bounced <= 0) return;
-    if (defenseMap[p.id]) {
-      // 反射された妨害も防衛で防げる
+    if (defenseMap[p.id] || willAvantSab[p.id]) {
+      // 反射された妨害も防衛・奥義妨害で防げる
       return;
     }
     // 反射先がさらに反射している場合は連鎖しない（受け取って終了）
     incomingHeavyMap[p.id] = Math.max(0, (incomingHeavyMap[p.id] || 0) + bounced);
   });
 
-  // 奥義：AVANT-GARDE-妨害: 自分以外の株価を指定。防衛で無効化される。
+  // 奥義：AVANT-GARDE-妨害: 自分以外の株価を指定（相手の防衛で無効）。発動者自身は被妨害無効（上で処理済み）。
   let sabForcePrice = null;
   let sabForceFromId = null;
   players.forEach((p) => {
@@ -4822,6 +4806,7 @@ function RulesContent() {
             <ul>
               <li>10枚・一度限り</li>
               <li>他人の株価を1〜99999円指定</li>
+              <li>被妨害無効</li>
               <li>防衛で無効 / 最初の3TERN不可</li>
             </ul>
           </div>
@@ -4835,7 +4820,7 @@ function RulesContent() {
           <div className="ft-tip-row">様子見 + 妨害 → 自分は無傷で相手を邪魔</div>
           <div className="ft-tip-row">買い + 防衛 → 大口を妨害から守る</div>
           <div className="ft-tip-row">AVANT-GARDE-操作 → 1円大量買い / 99999円高値売り</div>
-          <div className="ft-tip-row">AVANT-GARDE-妨害 → 相手の大口買いを高値固定</div>
+          <div className="ft-tip-row">AVANT-GARDE-妨害 → 相手の大口買いを高値固定＋自分は被妨害無効</div>
         </div>
       </div>
 
@@ -4872,7 +4857,7 @@ function TutorialModal({ onClose }) {
       title: "TERN 1：買い × 操作",
       marketTip: "N=35（5×7）→ 仮株価12円。操作でNを増やすと36（10円）になり、安く買えます。",
       orderTip: "「買い」を選び、株数は 50 株で確定してください（チュートリアルでは株数固定）。",
-      hackTip: "「操作」を1枚使ってください。自分のNだけ+1され、自分の約定価格が変わります。",
+      hackTip: "「操作」をちょうど1枚使ってください。自分のNだけ+1され、自分の約定価格が変わります。",
       require: { action: "buy", shares: 50, minQuick: 1 },
       oppOrder: { action: "stay", shares: 0 },
       oppHack: { quick: 0, heavy: 0, defense: 0, reflect: 0, avant: 0 },
@@ -4892,8 +4877,8 @@ function TutorialModal({ onClose }) {
       id: 3,
       n: 90,
       title: "TERN 3：買い × 防衛",
-      marketTip: "N=90（2×3²×5）→ 仮株価13円。相手がYOUへ妨害してきます。",
-      orderTip: "「買い」50株で確定してください（チュートリアルでは株数固定）。CPU-練習は妨害をしてきます。守らないと高い価格で買わされる可能性があります。",
+      marketTip: "N=90（2×3²×5）→ 仮株価13円。相手があなたへ妨害してきます。",
+      orderTip: "「買い」50株で確定してください（チュートリアルでは株数固定）。守らないと高い価格で買わされる可能性があります。",
       hackTip: "「防衛」をON（5枚）にして、被妨害を無効化してください。",
       require: { action: "buy", shares: 50, defense: true },
       oppOrder: { action: "stay", shares: 0 },
@@ -4902,11 +4887,11 @@ function TutorialModal({ onClose }) {
     {
       id: 4,
       n: 85,
-      title: "TERN 4：買い × 反射",
-      marketTip: "N=85（5×17）→ 仮株価22円。CPU-練習が再び妨害をしてきます。反射すれば自分は22円のまま買え、相手だけが45円で買うことになります。",
-      orderTip: "「買い」50株で確定してください（チュートリアルでは株数固定）。CPU-練習が再び妨害をしてきます。反射で妨害を相手に返します。",
-      hackTip: "「反射」をON（5枚）にしてください。妨害が相手に跳ね返り、相手の買値だけが高くなります。",
-      require: { action: "buy", shares: 50, reflect: true },
+      title: "TERN 4：様子見 × 反射",
+      marketTip: "N=85（5×17）→ 仮株価22円。再び相手の妨害が飛んできます。反射すると相手は86（株価45円）になり、差がはっきりします。",
+      orderTip: "「様子見」で構いません。反射で妨害を相手に返します。",
+      hackTip: "「反射」をON（5枚）にしてください。妨害が相手に跳ね返ります。",
+      require: { action: "stay", reflect: true },
       oppOrder: { action: "buy", shares: 100 },
       oppHack: { quick: 0, heavy: 1, defense: 0, reflect: 0, avant: 0 },
     },
@@ -4914,10 +4899,10 @@ function TutorialModal({ onClose }) {
       id: 5,
       n: 100,
       title: "TERN 5：奥義 AVANT-GARDE",
-      marketTip: "N=100（2²×5²）→ 仮株価14円。奥義・操作で自分の約定価格を自由に指定できます。売りなら高いほど有利です。",
-      orderTip: "「売り」150株で確定してください（チュートリアルでは株数固定）。奥義操作で株価を99999円に指定します。",
-      hackTip: "奥義「AVANT-GARDE・操作」をONし、株価に 99999 を指定してください（COIN10・一度限り）。",
-      require: { action: "sell", shares: 150, avantOp: true, avantPrice: 99999 },
+      marketTip: "N=100（2²×5²）→ 仮株価14円。奥義で自分の株価を自由に指定できます。",
+      orderTip: "「買い」100株で確定してください（チュートリアルでは株数固定）。奥義操作で極端に安い価格を指定します。",
+      hackTip: "奥義「AVANT-GARDE・操作」をONし、株価に 1 を指定してください（COIN10・一度限り）。",
+      require: { action: "buy", shares: 100, avantOp: true, avantPrice: 1 },
       oppOrder: { action: "stay", shares: 0 },
       oppHack: { quick: 0, heavy: 0, defense: 0, reflect: 0, avant: 0 },
     },
@@ -4986,17 +4971,14 @@ function TutorialModal({ onClose }) {
     setHint(msg);
     setTimeout(() => setHint(""), 1800);
   }
-  function resetHackDraft(opts) {
+  function resetHackDraft() {
     setQuick(0);
     setHeavyOn(false);
     setDefenseOn(false);
     setReflectOn(false);
     setAvantOn(false);
     setAvantMode("op");
-    const ap = opts && opts.avantPrice != null
-      ? Math.max(1, Math.min(99999, Math.floor(Number(opts.avantPrice) || 1)))
-      : 1;
-    setAvantPrice(ap);
+    setAvantPrice(1);
   }
   function startTern(i) {
     setTernIdx(i);
@@ -5011,51 +4993,10 @@ function TutorialModal({ onClose }) {
     } else {
       setOrderShares(0);
     }
-    resetHackDraft({ avantPrice: req.avantPrice != null ? req.avantPrice : 1 });
-    if (req.avantOp || req.avantSab) {
-      setAvantOn(true);
-      setAvantMode(req.avantSab ? "sab" : "op");
-      setAvantPrice(Math.max(1, Math.min(99999, Math.floor(Number(req.avantPrice) || 1))));
-    }
+    resetHackDraft();
     setResult(null);
     setConfirmedOrder(null);
-    setRevealView("you");
-    setViewedOppReveal(false);
-    if (i === 0) {
-      setLogLines(["チュートリアル開始 / YOU vs " + OPP + " / 5TERN"]);
-    }
     setPhase("market");
-  }
-
-  function goBackStep() {
-    if (phase === "order") {
-      setConfirmedOrder(null);
-      setPhase("market");
-      return;
-    }
-    if (phase === "hack") {
-      const reqH = (tern && tern.require) || {};
-      resetHackDraft({ avantPrice: reqH.avantPrice != null ? reqH.avantPrice : 1 });
-      if (reqH.avantOp || reqH.avantSab) {
-        setAvantOn(true);
-        setAvantMode(reqH.avantSab ? "sab" : "op");
-        setAvantPrice(Math.max(1, Math.min(99999, Math.floor(Number(reqH.avantPrice) || 1))));
-      }
-      setPhase("order");
-      return;
-    }
-    if (phase === "reveal") {
-      flash("清算後は前の操作に戻れません。次へ進んでください");
-      return;
-    }
-    if (phase === "market") {
-      if (ternIdx > 0) {
-        flash("前のTERNには戻れません（資産が確定済みです）");
-        return;
-      }
-      setPhase("intro");
-      return;
-    }
   }
 
   function coinCostPreview() {
@@ -5101,15 +5042,7 @@ function TutorialModal({ onClose }) {
       setOrderShares(0);
       setConfirmedOrder({ action: "stay", shares: 0 });
     }
-    {
-      const reqH = (tern && tern.require) || {};
-      resetHackDraft({ avantPrice: reqH.avantPrice != null ? reqH.avantPrice : 1 });
-      if (reqH.avantOp || reqH.avantSab) {
-        setAvantOn(true);
-        setAvantMode(reqH.avantSab ? "sab" : "op");
-        setAvantPrice(Math.max(1, Math.min(99999, Math.floor(Number(reqH.avantPrice) || 1))));
-      }
-    }
+    resetHackDraft();
     setPhase("hack");
   }
 
@@ -5249,9 +5182,9 @@ function TutorialModal({ onClose }) {
         nextAvg = newHold > 0 ? ((nextAvg * nextHold) + costBuy) / newHold : 0;
         nextCash -= costBuy;
         nextHold = newHold;
-        notes.push("YOU：買い " + filled + " 株 @ " + myPrice + "円");
+        notes.push("あなた：買い " + filled + " 株 @ " + myPrice + "円");
       } else {
-        notes.push("YOU：買い不成立（資金不足）");
+        notes.push("あなた：買い不成立（資金不足）");
       }
     } else if (action === "sell") {
       filled = Math.min(orderShares, nextHold);
@@ -5260,10 +5193,10 @@ function TutorialModal({ onClose }) {
         nextCash += filled * myPrice;
         nextHold -= filled;
         if (nextHold <= 0) nextAvg = 0;
-        notes.push("YOU：売り " + filled + " 株 @ " + myPrice + "円");
+        notes.push("あなた：売り " + filled + " 株 @ " + myPrice + "円");
       }
     } else {
-      notes.push("YOU：様子見");
+      notes.push("あなた：様子見");
     }
 
     // 相手約定（資産も本番同様に更新）
@@ -5418,8 +5351,6 @@ function TutorialModal({ onClose }) {
     if (ternIdx < TERNS.length - 1) {
       startTern(ternIdx + 1);
     } else {
-      const ok = claimTutorialTitle();
-      setTutorialTitleClaimed(!!ok || !!(loadTitleSave().unlocked || {}).ichininmae);
       setPhase("lesson");
     }
   }
@@ -5497,7 +5428,7 @@ function TutorialModal({ onClose }) {
                 <li>買い × 操作</li>
                 <li>様子見 × 妨害</li>
                 <li>買い × 防衛</li>
-                <li>買い × 反射</li>
+                <li>様子見 × 反射</li>
                 <li>奥義 AVANT-GARDE</li>
               </ol>
               <p className="ft-tut-note">開始資産 10,000円・COIN 40枚。相手は「{OPP}」が自動で動きます。ガイドに沿って操作してください。</p>
@@ -5580,38 +5511,38 @@ function TutorialModal({ onClose }) {
                     traderNotes.push({
                       cls: r.quickNull ? "note-heavy" : "note-quick",
                       icon: "quick",
-                      text: "YOUが操作を " + r.myQuick + " 枚使用" + (r.quickNull ? " → 被妨害により無効化" : "（N+" + r.myQuick + "）"),
+                      text: "あなたが操作を " + r.myQuick + " 枚使用" + (r.quickNull ? " → 被妨害により無効化" : "（N+" + r.myQuick + "）"),
                     });
                   }
                   if (r.myHeavy) {
-                    traderNotes.push({ cls: "note-heavy", icon: "heavy", text: "YOUが妨害を使用 → " + OPP + " のN+1" });
+                    traderNotes.push({ cls: "note-heavy", icon: "heavy", text: "あなたが妨害を使用 → " + OPP + " のN+1" });
                   }
                   if (r.myDef) {
                     traderNotes.push({
                       cls: "note-defense",
                       icon: "defense",
-                      text: "YOUが防衛" + ((r.blocked || 0) > 0 ? "（妨害×" + r.blocked + "を無効化）" : ""),
+                      text: "あなたが防衛" + ((r.blocked || 0) > 0 ? "（妨害×" + r.blocked + "を無効化）" : ""),
                     });
                   }
                   if (r.myRef) {
                     traderNotes.push({
                       cls: "note-reflect",
                       icon: "reflect",
-                      text: "YOUが反射" + ((r.reflected || 0) > 0 ? "（妨害×" + r.reflected + "を返した）" : ""),
+                      text: "あなたが反射" + ((r.reflected || 0) > 0 ? "（妨害×" + r.reflected + "を返した）" : ""),
                     });
                   }
                   if (r.myAvant) {
                     traderNotes.push({
                       cls: "note-avant",
                       icon: "avant",
-                      text: "YOUが奥義AVANT-GARDE・" + (r.avantMode === "op" ? "操作" : "妨害") + "（指定 " + r.myAvantPrice + "円）",
+                      text: "あなたが奥義AVANT-GARDE・" + (r.avantMode === "op" ? "操作" : "妨害") + "（指定 " + r.myAvantPrice + "円）",
                     });
                   }
                   if ((oh.heavy || 0) > 0) {
                     traderNotes.push({
                       cls: "note-heavy",
                       icon: "heavy",
-                      text: OPP + "が妨害を使用" + ((r.blocked || 0) > 0 ? " → 防衛で無効" : (r.reflected || 0) > 0 ? " → 反射で返された" : " → YOUのN+1"),
+                      text: OPP + "が妨害を使用" + ((r.blocked || 0) > 0 ? " → 防衛で無効" : (r.reflected || 0) > 0 ? " → 反射で返された" : " → あなたのN+1"),
                     });
                   }
                   if ((oh.quick || 0) > 0) {
@@ -5625,11 +5556,11 @@ function TutorialModal({ onClose }) {
                     });
                   }
                   if (r.action === "buy" && (r.filled || 0) > 0) {
-                    traderNotes.push({ cls: "note-quick", text: "YOU：買い " + r.filled + "株 @ " + r.myPrice + "円" });
+                    traderNotes.push({ cls: "note-quick", text: "あなた：買い " + r.filled + "株 @ " + r.myPrice + "円" });
                   } else if (r.action === "sell" && (r.filled || 0) > 0) {
-                    traderNotes.push({ cls: "note-heavy", text: "YOU：売り " + r.filled + "株 @ " + r.myPrice + "円" });
+                    traderNotes.push({ cls: "note-heavy", text: "あなた：売り " + r.filled + "株 @ " + r.myPrice + "円" });
                   } else if (r.action === "stay") {
-                    traderNotes.push({ cls: "", text: "YOU：様子見" });
+                    traderNotes.push({ cls: "", text: "あなた：様子見" });
                   }
                   if (r.oppOrder && r.oppOrder.action === "buy") {
                     traderNotes.push({
@@ -5664,7 +5595,7 @@ function TutorialModal({ onClose }) {
                       <div className="ft-players-grid">
                         <div className={"ft-player-card human" + meGlow}>
                           <span className="ft-pc-rank">{rankMe}位</span>
-                          <div className="ft-pc-name"><User size={13} /> YOU</div>
+                          <div className="ft-pc-name"><User size={13} /> あなた</div>
                           <div className="ft-pc-cash">{yen(meTV)}</div>
                           <div className="ft-pc-holdings">現金{yen(meCash)} ／ {sharesFmt(meHold)}株{meHold > 0 ? "(@" + Number(meAvg || 0).toFixed(1) + ")" : ""}</div>
                           <div className="ft-pc-cards"><Coin size={12} className="icon-coin" /> {meCoins}</div>
@@ -5713,10 +5644,7 @@ function TutorialModal({ onClose }) {
                 <div className="ft-panel ft-action" style={{ margin: 0 }}>
                   <div className="ft-panel-head">STEP 1 — 市場開示</div>
                   <p className="ft-action-desc">{tern.marketTip}</p>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <button type="button" className="ft-modal-cancel" style={{ flex: "0 0 auto", padding: "12px 14px" }} onClick={goBackStep}>◀ 戻る</button>
-                    <button type="button" className="ft-primary-btn" style={{ flex: 1 }} onClick={() => setPhase("order")}>注文フェーズへ ▶</button>
-                  </div>
+                  <button type="button" className="ft-primary-btn" onClick={() => setPhase("order")}>注文フェーズへ ▶</button>
                 </div>
               ) : null}
 
@@ -5788,10 +5716,7 @@ function TutorialModal({ onClose }) {
                     </div>
                     );
                   })() : null}
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <button type="button" className="ft-modal-cancel" style={{ flex: "0 0 auto", padding: "12px 14px" }} onClick={goBackStep}>◀ 戻る</button>
-                    <button type="button" className="ft-primary-btn" style={{ flex: 1 }} onClick={confirmOrder}>注文を確定 ▶</button>
-                  </div>
+                  <button type="button" className="ft-primary-btn" onClick={confirmOrder}>注文を確定 ▶</button>
                 </div>
               ) : null}
 
@@ -5808,7 +5733,7 @@ function TutorialModal({ onClose }) {
                 <div className="ft-panel ft-action" style={{ margin: 0 }}>
                   <div className="ft-panel-head">STEP 3 — 市場HACK</div>
                   <div className="ft-holdings-box">
-                    YOUの注文: <b>{orderAction === "buy" ? "買い " + orderShares + "株" : orderAction === "sell" ? "売り " + orderShares + "株" : "様子見"}</b>
+                    あなたの注文: <b>{orderAction === "buy" ? "買い " + orderShares + "株" : orderAction === "sell" ? "売り " + orderShares + "株" : "様子見"}</b>
                     {" ／ "}残COIN <b>{coins}</b>（このHACK消費見込み <b>{coinCostPreview()}</b>）
                   </div>
 
@@ -5881,10 +5806,7 @@ function TutorialModal({ onClose }) {
                   ) : (
                     <div className="ft-tut-preview">ガイドに従ってHACKを設定してください</div>
                   )}
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <button type="button" className="ft-modal-cancel" style={{ flex: "0 0 auto", padding: "12px 14px" }} onClick={goBackStep}>◀ 戻る</button>
-                    <button type="button" className="ft-primary-btn danger" style={{ flex: 1 }} onClick={confirmHack}>COINを確定 ▶</button>
-                  </div>
+                  <button type="button" className="ft-primary-btn danger" onClick={confirmHack}>COINを確定 ▶</button>
                 </div>
                 );
               })() : null}
@@ -6032,7 +5954,7 @@ function TutorialModal({ onClose }) {
                       </b>
                     </div>
                     <div className="ft-reveal-row price">
-                      <span>YOUの株価</span>
+                      <span>あなたの株価</span>
                       <b>
                         {result.myPrice}円
                         <span className="ft-factor-note"> {factorSumFormula(result.myN)}</span>
@@ -6040,7 +5962,7 @@ function TutorialModal({ onClose }) {
                     </div>
                   </div>
 
-                  <div className="ft-panel-head" style={{ marginTop: 4 }}>YOUの株価結果</div>
+                  <div className="ft-panel-head" style={{ marginTop: 4 }}>あなたの株価結果</div>
                   <div className="ft-reveal-box">
                     <div className="ft-reveal-row">
                       <span>注文</span>
@@ -6105,7 +6027,7 @@ function TutorialModal({ onClose }) {
                             lines.push("操作を" + result.myQuick + "枚使用しました。操作は自分のNにだけ作用し、自分の最終株価は" + result.myPrice + "円です。");
                           }
                         } else {
-                          lines.push("操作を" + result.myQuick + "枚使用しました。操作は自分のNにだけ+するため、相手の株価には影響しません。YOUの最終株価は" + result.myPrice + "円です。");
+                          lines.push("操作を" + result.myQuick + "枚使用しました。操作は自分のNにだけ+するため、相手の株価には影響しません。あなたの最終株価は" + result.myPrice + "円です。");
                         }
                       }
                       if ((result.myHeavy || 0) > 0) {
@@ -6113,46 +6035,35 @@ function TutorialModal({ onClose }) {
                       }
                       if (result.myDef) {
                         if ((result.blocked || 0) > 0) {
-                          lines.push("防衛を使用し、相手からの妨害×" + result.blocked + "を無効化しました。防衛中は被妨害でNが増えないため、YOUの株価は操作・市場の結果どおり" + result.myPrice + "円です。");
+                          lines.push("防衛を使用し、相手からの妨害×" + result.blocked + "を無効化しました。防衛中は被妨害でNが増えないため、あなたの株価は操作・市場の結果どおり" + result.myPrice + "円です。");
                         } else {
-                          lines.push("防衛を使用しました。このTERNは相手から妨害が来なかったため、防衛の無効化対象はありませんでした。YOUの最終株価は" + result.myPrice + "円です。");
+                          lines.push("防衛を使用しました。このTERNは相手から妨害が来なかったため、防衛の無効化対象はありませんでした。あなたの最終株価は" + result.myPrice + "円です。");
                         }
                       }
                       if (result.myRef) {
                         if ((result.reflected || 0) > 0) {
-                          if (result.action === "buy" && (result.filled || 0) > 0) {
-                            lines.push("反射を使用し、相手からの妨害×" + result.reflected + "を相手へ返しました。YOUは" + result.myPrice + "円で" + result.filled + "株を購入できました（反射しなければ高く買わされます）。跳ね返った妨害でCPU-練習の買値だけが上がります。「CPU-練習」タブで相手の高い約定を確認してください。");
-                          } else {
-                            lines.push("反射を使用し、相手からの妨害×" + result.reflected + "を相手へ返しました。反射した妨害は自分には残らず、相手のNに加算されます。YOUの最終株価は" + result.myPrice + "円です。");
-                          }
+                          lines.push("反射を使用し、相手からの妨害×" + result.reflected + "を相手へ返しました。反射した妨害は自分には残らず、相手のNに加算されます。あなたの最終株価は" + result.myPrice + "円です。");
                         } else {
-                          lines.push("反射を使用しました。このTERNは反射する妨害がなかったため、効果は発生しませんでした。YOUの最終株価は" + result.myPrice + "円です。");
+                          lines.push("反射を使用しました。このTERNは反射する妨害がなかったため、効果は発生しませんでした。あなたの最終株価は" + result.myPrice + "円です。");
                         }
                       }
                       if (result.myAvant && result.avantMode === "op") {
                         if (result.action === "buy" && result.filled > 0) {
                           const diff = result.basePrice - result.myPrice;
                           lines.push("奥義・AVANT-GARDE-操作で株価を" + result.myPrice + "円に指定しました。仮株価" + result.basePrice + "円よりも" + Math.max(0, diff) + "円安い価格で" + result.filled + "株を購入できました（約" + Math.max(0, diff * result.filled).toLocaleString() + "円分の差）。奥義は自分の約定株価だけを強制します。");
-                        } else if (result.action === "sell" && result.filled > 0) {
-                          const diff = result.myPrice - result.basePrice;
-                          lines.push("奥義・AVANT-GARDE-操作で株価を" + result.myPrice + "円に指定しました。仮株価" + result.basePrice + "円よりも" + Math.max(0, diff) + "円高い価格で" + result.filled + "株を売却できました（約" + Math.max(0, diff * result.filled).toLocaleString() + "円分の差）。奥義は自分の約定株価だけを強制します。");
                         } else {
-                          lines.push("奥義・AVANT-GARDE-操作により、YOUの最終株価は指定どおり" + result.myPrice + "円になりました。奥義は自分の約定にだけ作用します。");
+                          lines.push("奥義・AVANT-GARDE-操作により、あなたの最終株価は指定どおり" + result.myPrice + "円になりました。奥義は自分の約定にだけ作用します。");
                         }
                       } else if (result.myAvant && result.avantMode === "sab") {
-                        lines.push("奥義・AVANT-GARDE-妨害を使用しました。相手の最終株価を" + (result.myAvantPrice || result.oppPrice) + "円に強制します（相手が防衛している場合は無効）。YOU自身の株価には影響しません。");
+                        lines.push("奥義・AVANT-GARDE-妨害を使用しました。相手の最終株価を" + (result.myAvantPrice || result.oppPrice) + "円に強制します（相手が防衛している場合は無効）。あなた自身の株価には影響しません。");
                       }
                       if ((result.incoming || 0) > 0) {
-                        lines.push("相手から妨害を受け、YOUのNが+" + result.incoming + "されました。最終株価は" + result.myPrice + "円です。");
+                        lines.push("相手から妨害を受け、あなたのNが+" + result.incoming + "されました。最終株価は" + result.myPrice + "円です。");
                       }
                       if (lines.length === 0) {
-                        lines.push("このTERNでは特別な市場HACKの価格差は発生しませんでした。YOUの最終株価は" + result.myPrice + "円です。");
+                        lines.push("このTERNでは特別な市場HACKの価格差は発生しませんでした。あなたの最終株価は" + result.myPrice + "円です。");
                       }
-                      if (lines.length) {
-                        lines[lines.length - 1] = lines[lines.length - 1] + " 続けて「" + OPP + "」タブを開き、相手の清算結果も確認してください。";
-                      } else {
-                        lines.push("続けて「" + OPP + "」タブを開き、相手の清算結果も確認してください。");
-                      }
+                      lines.push("続けて「" + OPP + "」タブを開き、相手の清算結果も確認してください。");
                       return lines.map((t, i) => <p key={i} className="ft-tut-effect-p">{t}</p>);
                     })()}
                   </div>
@@ -6367,14 +6278,14 @@ function TutorialModal({ onClose }) {
                 </div>
               ) : null}
 
-              <div className="ft-panel ft-logpanel" style={{ margin: 0 }}>
-                <div className="ft-panel-head">TRANSACTION LOG</div>
-                <div className="ft-log-scroll" style={{ maxHeight: 160 }}>
-                  {logLines.length > 0
-                    ? logLines.map((l, i) => <div key={i} className="ft-log-line">{l}</div>)
-                    : <div className="ft-log-line" style={{ opacity: 0.65 }}>ログはここに表示されます</div>}
+              {logLines.length > 0 ? (
+                <div className="ft-panel ft-logpanel" style={{ margin: 0 }}>
+                  <div className="ft-panel-head">TRANSACTION LOG</div>
+                  <div className="ft-log-scroll" style={{ maxHeight: 160 }}>
+                    {logLines.map((l, i) => <div key={i} className="ft-log-line">{l}</div>)}
+                  </div>
                 </div>
-              </div>
+              ) : null}
               </div>{/* ft-col-right */}
               </div>{/* ft-main */}
             </div>
@@ -6387,7 +6298,7 @@ function TutorialModal({ onClose }) {
                 <li><strong>帳消し</strong>：破産しそうな買いをCOIN10枚で強制キャンセル（COIN10枚ないときは破産・ゲームオーバー）</li>
                 <li><strong>COIN補充</strong>：枚数少のとき総資産の一部と交換（ラスト5TERNは不可）</li>
                 <li><strong>終盤ラスト5TERN</strong>：様子見禁止・売買は50%以上・突入時COIN+10</li>
-                <li><strong>使用不可</strong>：最初の3TERNは妨害・防衛・反射・AVANT-GARDE-妨害の使用不可、防衛と反射は連続で使用不可</li>
+                <li><strong>不可</strong>：最初の3TERNは妨害・防衛・反射・AVANT-GARDE-妨害の使用不可、防衛と反射は連続で使用不可</li>
                 <li><strong>奥義：AVANT-GARDEの優先</strong>：複数奥義が競合したら総資産が少ない側が優先</li>
               </ul>
               <p className="ft-tut-note">ここまでの5TERNで、注文とHACKの中心メカニクスは一通り触れました。</p>
@@ -6417,19 +6328,15 @@ function TutorialModal({ onClose }) {
             ) : null}
             {phase === "lesson" ? (
               <button type="button" className="ft-modal-confirm" style={{ flex: 1, background: "var(--ft-accent)", color: "#041008", borderColor: "var(--ft-accent)" }} onClick={() => {
-                const ok = claimTutorialTitle();
-                setTutorialTitleClaimed(!!ok || !!(loadTitleSave().unlocked || {}).ichininmae);
+                const got = unlockTitleById("ichininmae");
+                setTutorialTitleClaimed(!!got || !!(loadTitleSave().unlocked || {}).ichininmae);
                 setPhase("summary");
               }}>完了へ</button>
             ) : null}
             {phase === "summary" ? (
               <>
                 <button type="button" className="ft-modal-cancel" onClick={() => { setCash(10000); setHoldings(0); setAvgPrice(0); setCoins(40); setOppCash(10000); setOppHoldings(0); setOppAvgPrice(0); setOppCoins(40); setConfirmedOrder(null); setAvantUsed(false); setLogLines([]); setPriceHistory([]); setPhase("intro"); setTutorialTitleClaimed(false); }}>最初から</button>
-                <button type="button" className="ft-modal-confirm" style={{ background: "var(--ft-accent)", color: "#041008", borderColor: "var(--ft-accent)" }} onClick={() => {
-                  claimTutorialTitle();
-                  try { if (typeof window !== "undefined" && window.__ftReloadProgress) window.__ftReloadProgress(); } catch (e) {}
-                  onClose();
-                }}>はじめる</button>
+                <button type="button" className="ft-modal-confirm" style={{ background: "var(--ft-accent)", color: "#041008", borderColor: "var(--ft-accent)" }} onClick={onClose}>はじめる</button>
               </>
             ) : null}
           </div>
@@ -6934,10 +6841,7 @@ function SetupScreen({ playerCount, setPlayerCount, humanCount, setHumanCount, h
       ) : null}
 
         {showTutorial ? (
-          <TutorialModal onClose={() => {
-            try { if (typeof window !== "undefined" && window.__ftReloadProgress) window.__ftReloadProgress(); } catch (e) {}
-            setShowTutorial(false);
-          }} />
+          <TutorialModal onClose={() => setShowTutorial(false)} />
         ) : null}
     </div>
   );
@@ -7819,7 +7723,7 @@ function ActionPanel(props) {
               <span style={{color:"var(--ft-purple)", fontWeight:600}}>奥義：AVANT-GARDE-妨害</span>
               {!humanHackDraft.avantSab ? (
                 <span style={{fontSize:"11px", opacity:0.7, marginLeft:8}}>
-                  {turn <= 3 ? "最初の3TERNは使用不可" : "自分以外の株価指定"}
+                  {turn <= 3 ? "最初の3TERNは使用不可" : "他人株価指定・被妨害無効"}
                 </span>
               ) : null}
             </div>
@@ -7925,7 +7829,7 @@ function ActionPanel(props) {
                       <br />
                       自分以外の株価を <b style={{ color: "var(--ft-purple)" }}>{ap.toLocaleString()}円</b> に強制（1〜99999円）
                       <br />
-                      自分の株価は通常計算（操作・通常妨害の対象）
+                      自分は被妨害無効（通常妨害・反射の跳ね返りを受けない）
                       <br />
                       <span style={{ opacity: 0.75, fontSize: 12 }}>※相手の防衛で無効化されます。奥義が重複した場合は総資産が少ない側が優先されます。</span>
                     </span>
@@ -7934,7 +7838,7 @@ function ActionPanel(props) {
                 {!humanHackDraft.avant && !humanHackDraft.avantSab && humanHackDraft.quick > 0 ? (
                   <span style={{ display: "block", marginBottom: 8 }}>
                     <b style={{ color: "var(--ft-blue)" }}>操作</b>：自分の株価を操作（被妨害時は無効）<br />
-                    YOUの株価目安 <b>{yenNum(selfPrice)}円</b>
+                    あなたの株価目安 <b>{yenNum(selfPrice)}円</b>
                     {baseP !== selfPrice ? `（操作前 ${yenNum(baseP)}円）` : ""}
                     <br />
                     自分のみ作用。
@@ -8202,20 +8106,20 @@ function ActionPanel(props) {
             </div>
           )}
           <div className="ft-reveal-row final">
-            <span>YOUの N</span>
+            <span>あなたの N</span>
             <b>
               {view.nFinal.toLocaleString()}
               <span className="ft-factor-note">（{factorString(view.nFinal)}）</span>
             </b>
           </div>
           <div className="ft-reveal-row price">
-            <span>YOUの株価</span>
+            <span>あなたの株価</span>
             <b>{yenNum(view.priceFinal)}円</b>
             <span className="ft-factor-note">{factorSumFormula(view.nFinal)}</span>
           </div>
         </div>
 
-        <div className="ft-panel-head" style={{ marginTop: 4 }}>YOUの株価結果</div>
+        <div className="ft-panel-head" style={{ marginTop: 4 }}>あなたの株価結果</div>
         <div className="ft-reveal-box">
           <div className="ft-reveal-row">
             <span>注文</span>
@@ -8469,7 +8373,7 @@ function TitlesModal({ titleSave, onClose, onEquip, canEquip }) {
       <div className="ft-modal-box ft-modal-box-wide ft-titles-modal" onClick={(e) => e.stopPropagation()}>
         <div className="ft-modal-title">称号一覧</div>
         <p className="ft-modal-desc" style={{ marginBottom: 10 }}>
-          称号の獲得はLOCALのみです（通算プレイ・総合・チュートリアル「一人前」以外は最終1位が条件）。「一人前」はチュートリアル完了で解放され装備できます。途中リタイアは通算に含みません。進捗はブラウザに保存されます。称号は最大3つまで装備でき、トレーダー名・トップバーにバッジ表示されます（現在 {equippedList.length}/{MAX_EQUIPPED_TITLES}）。
+          称号の獲得はLOCALのみです（通算プレイ・総合以外は最終1位が条件）。途中リタイアは通算に含みません。進捗はブラウザに保存されます。称号は最大3つまで装備でき、トレーダー名・トップバーにバッジ表示されます（現在 {equippedList.length}/{MAX_EQUIPPED_TITLES}）。
         </p>
         <div className="ft-title-progress-block" style={{ marginBottom: 14 }}>
           <div className="ft-title-progress-head">
