@@ -136,6 +136,40 @@ function Reflect(props) {
     </svg>
   );
 }
+/** プレゼント箱アイコン（ラスト5TERNボーナス用・絵文字非使用） */
+function GiftBox(props) {
+  const size = props.size || 16;
+  const className = props.className || "";
+  const style = props.style || {};
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      style={style}
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      {/* 箱本体 */}
+      <rect x="3.5" y="11" width="17" height="10" rx="1.2" />
+      {/* 蓋 */}
+      <rect x="2.5" y="7.5" width="19" height="3.5" rx="0.8" />
+      {/* 縦リボン */}
+      <path d="M12 7.5 V21" />
+      {/* 横リボン */}
+      <path d="M3.5 14.5 H20.5" />
+      {/* リボン結び左 */}
+      <path d="M12 7.5 C10.2 7.5 8.5 6.2 8.2 4.8 C8 4 8.6 3.2 9.5 3.4 C10.6 3.6 11.5 5.2 12 7.5" />
+      {/* リボン結び右 */}
+      <path d="M12 7.5 C13.8 7.5 15.5 6.2 15.8 4.8 C16 4 15.4 3.2 14.5 3.4 C13.4 3.6 12.5 5.2 12 7.5" />
+    </svg>
+  );
+}
 /** 七芒星（奥義アイコン）塗りつぶし・中央に星形の穴 */
 function Heptagram(props) {
   const size = props.size || 16;
@@ -2110,16 +2144,9 @@ function settleTurn(players, orders, hacks, nStart, priceBefore) {
     });
   });
 
-  // 奥義妨害の有無を先に把握（被妨害無効判定用）
-  const willAvantSab = {};
   players.forEach((p) => {
-    const hk = hacks[p.id] || {};
-    willAvantSab[p.id] = !!(hk.avantSab);
-  });
-
-  players.forEach((p) => {
-    if (defenseMap[p.id] || willAvantSab[p.id]) {
-      // 防衛 / 奥義AVANT-GARDE-妨害: 被妨害をすべて防ぐ
+    if (defenseMap[p.id]) {
+      // 防衛: 被妨害をすべて防ぐ
       incomingHeavyMap[p.id] = 0;
       return;
     }
@@ -2137,19 +2164,19 @@ function settleTurn(players, orders, hacks, nStart, priceBefore) {
     incomingHeavyMap[p.id] = Math.max(0, inc);
   });
 
-  // 反射分を加算（反射された側が防衛 or 奥義妨害なら防ぐ）
+  // 反射分を加算（反射された側が防衛していればその分も防ぐ）
   players.forEach((p) => {
     const bounced = reflectedToMap[p.id] || 0;
     if (bounced <= 0) return;
-    if (defenseMap[p.id] || willAvantSab[p.id]) {
-      // 反射された妨害も防衛・奥義妨害で防げる
+    if (defenseMap[p.id]) {
+      // 反射された妨害も防衛で防げる
       return;
     }
     // 反射先がさらに反射している場合は連鎖しない（受け取って終了）
     incomingHeavyMap[p.id] = Math.max(0, (incomingHeavyMap[p.id] || 0) + bounced);
   });
 
-  // 奥義：AVANT-GARDE-妨害: 自分以外の株価を指定（相手の防衛で無効）。発動者自身は被妨害無効（上で処理済み）。
+  // 奥義：AVANT-GARDE-妨害: 自分以外の株価を指定。防衛で無効化される。
   let sabForcePrice = null;
   let sabForceFromId = null;
   players.forEach((p) => {
@@ -4263,7 +4290,7 @@ function FactorTrader() {
       );
       const bonusText = "ラスト5TERN・ボーナス：COINが10枚配られました";
       setEndgameBonusMsg(bonusText);
-      pushLog("🎁 " + bonusText);
+      pushLog("[ICON:gift] " + bonusText);
     }
     setTurn(next);
     const cnNext = randBase();
@@ -4806,7 +4833,6 @@ function RulesContent() {
             <ul>
               <li>10枚・一度限り</li>
               <li>他人の株価を1〜99999円指定</li>
-              <li>被妨害無効</li>
               <li>防衛で無効 / 最初の3TERN不可</li>
             </ul>
           </div>
@@ -4820,7 +4846,7 @@ function RulesContent() {
           <div className="ft-tip-row">様子見 + 妨害 → 自分は無傷で相手を邪魔</div>
           <div className="ft-tip-row">買い + 防衛 → 大口を妨害から守る</div>
           <div className="ft-tip-row">AVANT-GARDE-操作 → 1円大量買い / 99999円高値売り</div>
-          <div className="ft-tip-row">AVANT-GARDE-妨害 → 相手の大口買いを高値固定＋自分は被妨害無効</div>
+          <div className="ft-tip-row">AVANT-GARDE-妨害 → 相手の大口買いを高値固定</div>
         </div>
       </div>
 
@@ -7337,10 +7363,29 @@ function ActionPanel(props) {
             </span>
           )}
           {endgameBonusMsg && (
-            <span style={{ display: "block", marginTop: 8, color: "var(--ft-green)", fontWeight: 600 }}>
-              🎁 {endgameBonusMsg}
+            <span style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, color: "var(--ft-green)", fontWeight: 600 }}>
+              <GiftBox size={16} style={{ flexShrink: 0, color: "var(--ft-green)" }} />
+              {endgameBonusMsg}
             </span>
           )}
+          {isProtectOnCooldown(human, turn) ? (
+            <span
+              style={{
+                display: "block",
+                marginTop: 10,
+                padding: "10px 12px",
+                borderRadius: 4,
+                border: "1px solid rgba(255,182,72,0.55)",
+                background: "rgba(255,182,72,0.12)",
+                color: "var(--ft-amber)",
+                fontWeight: 700,
+                fontSize: 13,
+                lineHeight: 1.55,
+              }}
+            >
+              連続使用不可のため、このTERN防衛・反射は使えません
+            </span>
+          ) : null}
         </p>
         <div className="ft-private-box" style={{ marginBottom: 12 }}>
           <div className="ft-private-head">操作した場合の株価</div>
@@ -7495,6 +7540,11 @@ function ActionPanel(props) {
             COIN 残り <b>{human.cards.stock != null ? human.cards.stock : 0}</b> 枚
             （使用: {(humanHackDraft.quick || 0) + ((humanHackDraft.heavy || 0) > 0 ? 5 : 0) + (humanHackDraft.defense ? 5 : 0) + (humanHackDraft.reflect ? 5 : 0) + ((humanHackDraft.avant || humanHackDraft.avantSab) ? 10 : 0)} 枚）
           </div>
+          {isProtectOnCooldown(human, turn) ? (
+            <div className="ft-hack-row" style={{ marginBottom: 10, border: "1px solid rgba(255,182,72,0.55)", borderRadius: 4, padding: "10px 12px", background: "rgba(255,182,72,0.12)", fontSize: 13, color: "var(--ft-amber)", fontWeight: 700, lineHeight: 1.55 }}>
+              連続使用不可のため、このTERN防衛・反射は使えません
+            </div>
+          ) : null}
           {!isLastFiveTurns(turn, totalTurns) && (human.cards.stock != null ? human.cards.stock : 0) <= 5 ? (
             <div className="ft-hack-row" style={{ marginBottom: 10, flexDirection: "column", alignItems: "stretch", gap: 8, border: "1px solid rgba(57,255,156,0.35)", borderRadius: 4, padding: 10 }}>
               <div style={{ fontSize: 12, color: "var(--ft-accent)", fontWeight: 600 }}>COIN補充（ラスト5TERNは不可）</div>
@@ -7625,7 +7675,7 @@ function ActionPanel(props) {
                 {turn <= 3
                   ? "最初の3TERNは使用不可"
                   : (isProtectOnCooldown(human, turn)
-                    ? "前TERNに防衛/反射使用のため不可"
+                    ? "連続使用不可のため、このTERN防衛・反射は使えません"
                     : "相手からの妨害を無効化")}
               </span>
             </div>
@@ -7654,7 +7704,7 @@ function ActionPanel(props) {
                 {turn <= 3
                   ? "最初の3TERNは使用不可"
                   : (isProtectOnCooldown(human, turn)
-                    ? "前TERNに防衛/反射使用のため不可"
+                    ? "連続使用不可のため、このTERN防衛・反射は使えません"
                     : "妨害の効果を相手に反射")}
               </span>
             </div>
@@ -7723,7 +7773,7 @@ function ActionPanel(props) {
               <span style={{color:"var(--ft-purple)", fontWeight:600}}>奥義：AVANT-GARDE-妨害</span>
               {!humanHackDraft.avantSab ? (
                 <span style={{fontSize:"11px", opacity:0.7, marginLeft:8}}>
-                  {turn <= 3 ? "最初の3TERNは使用不可" : "他人株価指定・被妨害無効"}
+                  {turn <= 3 ? "最初の3TERNは使用不可" : "自分以外の株価指定"}
                 </span>
               ) : null}
             </div>
@@ -7829,7 +7879,7 @@ function ActionPanel(props) {
                       <br />
                       自分以外の株価を <b style={{ color: "var(--ft-purple)" }}>{ap.toLocaleString()}円</b> に強制（1〜99999円）
                       <br />
-                      自分は被妨害無効（通常妨害・反射の跳ね返りを受けない）
+                      自分の株価は通常計算（操作・通常妨害の対象）
                       <br />
                       <span style={{ opacity: 0.75, fontSize: 12 }}>※相手の防衛で無効化されます。奥義が重複した場合は総資産が少ない側が優先されます。</span>
                     </span>
@@ -8184,10 +8234,10 @@ function ActionPanel(props) {
   return null;
 }
 
-/** ログ文字列内の [ICON:quick|heavy|defense|avant] を SVG アイコンに置換 */
+/** ログ文字列内の [ICON:quick|heavy|defense|reflect|avant|gift] を SVG アイコンに置換 */
 function renderLogLine(text) {
   const s = String(text == null ? "" : text);
-  const re = /\[ICON:(quick|heavy|defense|reflect|avant)\]/g;
+  const re = /\[ICON:(quick|heavy|defense|reflect|avant|gift)\]/g;
   const nodes = [];
   let last = 0;
   let m;
@@ -8208,6 +8258,8 @@ function renderLogLine(text) {
       nodes.push(<Reflect key={"i" + key++} size={12} className="icon-reflect" style={iconStyle} />);
     } else if (kind === "avant") {
       nodes.push(<Heptagram key={"i" + key++} size={12} className="icon-avant" style={iconStyle} />);
+    } else if (kind === "gift") {
+      nodes.push(<GiftBox key={"i" + key++} size={12} style={{ ...iconStyle, color: "var(--ft-green)" }} />);
     }
     last = m.index + m[0].length;
   }
