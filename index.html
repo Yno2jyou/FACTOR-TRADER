@@ -1599,6 +1599,336 @@ function persistLoggedInProgress() {
   account.updatedAt = Date.now();
   map[uid] = account;
   saveAuthAccounts(map);
+  try { scheduleLiveSyncPush(); } catch (e) {}
+}
+
+/* ========== 他端末ライブ同期（PeerJS・ログイン中は常時） ========== */
+const FT_SYNC_SESSION_KEY = "factor_trader_sync_session_v1";
+const FT_SYNC_PEER_PREFIX = "ftsync-";
+const FT_SYNC_PULL_MS = 12000;
+let _ftSyncPeer = null;
+let _ftSyncHosting = false;
+let _ftSyncPack = null;
+let _ftSyncPullTimer = null;
+let _ftSyncPushTimer = null;
+let _ftSyncBusy = false;
+let _ftSyncStartedFor = null;
+
+function saveSyncSession(id, password) {
+  try {
+    sessionStorage.setItem(
+      FT_SYNC_SESSION_KEY,
+      JSON.stringify({ id: String(id || ""), password: String(password || ""), t: Date.now() })
+    );
+  } catch (e) {}
+}
+function loadSyncSession() {
+  try {
+    const o = JSON.parse(sessionStorage.getItem(FT_SYNC_SESSION_KEY) || "null");
+    if (!o || !o.id || !o.password) return null;
+    const uid = getLoggedInAccountId();
+    if (!uid || String(uid) !== String(o.id)) return null;
+    return o;
+  } catch (e) {
+    return null;
+  }
+}
+function clearSyncSession() {
+  try {
+    sessionStorage.removeItem(FT_SYNC_SESSION_KEY);
+  } catch (e) {}
+}
+
+async function ftSyncPeerIdFor(uid) {
+  const h = await ftSha256Hex("ft-live-sync-v1:" + String(uid || ""));
+  return FT_SYNC_PEER_PREFIX + h.slice(0, 20);
+}
+
+function mergeProgressBlobs(a, b) {
+  const A = a || {};
+  const B = b || {};
+  return {
+    titleSave: mergeTitleSaves(A.titleSave, B.titleSave),
+    aiLearn: mergeAiLearn(A.aiLearn, B.aiLearn),
+  };
+}
+
+async function buildLiveSyncPack(password, uid) {
+  const progress = collectLocalProgress();
+  const salt = ftRandomSaltB64(16);
+  const body = {
+    v: 2,
+    id: uid,
+    progress: progress,
+    ts: Date.now(),
+  };
+  const enc = await ftEncryptJson(body, String(password) + ":livesync", salt);
+  return {
+    v: 2,
+    id: uid,
+    salt: salt,
+    iv: enc.iv,
+    data: enc.data,
+    ts: body.ts,
+  };
+}
+
+async function decryptLiveSyncPack(pack, password) {
+  if (!pack || !pack.salt || !pack.iv || !pack.data) throw new Error("同期データ不正");
+  const body = await ftDecryptJson({ iv: pack.iv, data: pack.data }, String(password) + ":livesync", pack.salt);
+  if (!body || !body.progress) throw new Error("同期データが読めません");
+  return body;
+}
+
+function notifyProgressUi() {
+  try {
+    if (typeof window !== "undefined" && window.__ftReloadProgress) window.__ftReloadProgress();
+  } catch (e) {}
+}
+
+async function applyMergedProgressFromRemote(remoteProgress) {
+  if (!remoteProgress) return false;
+  const local = collectLocalProgress();
+  const merged = mergeProgressBlobs(local, remoteProgress);
+  // 変化があるか簡易チェック
+  const before = JSON.stringify(local);
+  const after = JSON.stringify(merged);
+  if (before === after) return false;
+  applyProgressToLocal(merged);
+  const uid = getLoggedInAccountId();
+  if (uid) {
+    const map = loadAuthAccounts();
+    if (map[uid]) {
+      map[uid].progress = merged;
+      map[uid].updatedAt = Date.now();
+      saveAuthAccounts(map);
+    }
+  }
+  notifyProgressUi();
+  return true;
+}
+
+function stopLiveSync() {
+  if (_ftSyncPullTimer) {
+    clearInterval(_ftSyncPullTimer);
+    _ftSyncPullTimer = null;
+  }
+  if (_ftSyncPushTimer) {
+    clearTimeout(_ftSyncPushTimer);
+    _ftSyncPushTimer = null;
+  }
+  _ftSyncPack = null;
+  _ftSyncHosting = false;
+  _ftSyncStartedFor = null;
+  if (_ftSyncPeer) {
+    try {
+      _ftSyncPeer.destroy();
+    } catch (e) {}
+    _ftSyncPeer = null;
+  }
+}
+
+function scheduleLiveSyncPush() {
+  if (!loadSyncSession()) return;
+  if (_ftSyncPushTimer) clearTimeout(_ftSyncPushTimer);
+  _ftSyncPushTimer = setTimeout(function () {
+    _ftSyncPushTimer = null;
+    refreshLiveSyncPackAndBroadcast().catch(function () {});
+  }, 400);
+}
+
+async function refreshLiveSyncPackAndBroadcast() {
+  const sess = loadSyncSession();
+  if (!sess) return;
+  try {
+    _ftSyncPack = await buildLiveSyncPack(sess.password, sess.id);
+  } catch (e) {
+    return;
+  }
+  // ホスト中なら接続中クライアントへプッシュは次の接続で足りる（ポーリング前提）
+}
+
+function destroySyncPeerQuiet() {
+  if (_ftSyncPeer) {
+    try {
+      _ftSyncPeer.destroy();
+    } catch (e) {}
+    _ftSyncPeer = null;
+  }
+  _ftSyncHosting = false;
+}
+
+async function ensureLiveSyncHost() {
+  const sess = loadSyncSession();
+  if (!sess) return;
+  if (typeof Peer === "undefined") return;
+  if (_ftSyncPeer && _ftSyncHosting) {
+    await refreshLiveSyncPackAndBroadcast();
+    return;
+  }
+  if (_ftSyncPeer) return;
+  const peerId = await ftSyncPeerIdFor(sess.id);
+  await refreshLiveSyncPackAndBroadcast();
+  try {
+    const peer = new Peer(peerId, { debug: 0 });
+    _ftSyncPeer = peer;
+    peer.on("open", function () {
+      _ftSyncHosting = true;
+    });
+    peer.on("connection", function (conn) {
+      conn.on("open", function () {
+        // 双方向マージ
+        conn.on("data", function (data) {
+          handleSyncConnData(conn, data, sess).catch(function () {});
+        });
+        // 先に自分のパックを送る（旧クライアント互換）
+        try {
+          if (_ftSyncPack) conn.send({ type: "ftsync-pack", pack: _ftSyncPack });
+        } catch (e) {}
+      });
+    });
+    peer.on("error", function (err) {
+      const t = err && err.type;
+      if (t === "unavailable-id" || t === "peer-unavailable") {
+        destroySyncPeerQuiet();
+        _ftSyncHosting = false;
+      } else if (t === "network" || t === "disconnected" || t === "server-error") {
+        destroySyncPeerQuiet();
+      }
+    });
+    peer.on("close", function () {
+      _ftSyncPeer = null;
+      _ftSyncHosting = false;
+    });
+  } catch (e) {
+    destroySyncPeerQuiet();
+  }
+}
+
+async function handleSyncConnData(conn, data, sess) {
+  if (!data || !sess) return;
+  if (data.type === "ftsync-hello" && data.pack) {
+    try {
+      const remoteBody = await decryptLiveSyncPack(data.pack, sess.password);
+      if (remoteBody.id && remoteBody.id !== sess.id) return;
+      await applyMergedProgressFromRemote(remoteBody.progress);
+      _ftSyncPack = await buildLiveSyncPack(sess.password, sess.id);
+      conn.send({ type: "ftsync-result", pack: _ftSyncPack });
+    } catch (e) {}
+    return;
+  }
+  if (data.type === "ftsync-pack" && data.pack) {
+    try {
+      const remoteBody = await decryptLiveSyncPack(data.pack, sess.password);
+      if (remoteBody.id && remoteBody.id !== sess.id) return;
+      await applyMergedProgressFromRemote(remoteBody.progress);
+      _ftSyncPack = await buildLiveSyncPack(sess.password, sess.id);
+    } catch (e) {}
+  }
+}
+
+async function pullLiveSyncOnce() {
+  const sess = loadSyncSession();
+  if (!sess || _ftSyncBusy) return;
+  if (typeof Peer === "undefined") return;
+  _ftSyncBusy = true;
+  try {
+    await refreshLiveSyncPackAndBroadcast();
+    // ホストできていれば他端末からの接続待ち。さらにクライアントとしても取りに行く
+    if (!_ftSyncHosting) {
+      await ensureLiveSyncHost();
+    }
+    // 自分がホスト中でも、他がホストしている場合があるので短い取得を試す
+    await new Promise(function (resolve) {
+      let done = false;
+      const finish = function () {
+        if (done) return;
+        done = true;
+        try {
+          client.destroy();
+        } catch (e) {}
+        resolve();
+      };
+      let client;
+      try {
+        client = new Peer({ debug: 0 });
+      } catch (e) {
+        resolve();
+        return;
+      }
+      const timer = setTimeout(finish, 8000);
+      client.on("error", function () {
+        clearTimeout(timer);
+        finish();
+      });
+      client.on("open", async function () {
+        try {
+          const peerId = await ftSyncPeerIdFor(sess.id);
+          // 自分自身のIDへの接続は失敗しうる → それでも try
+          const conn = client.connect(peerId, { reliable: true });
+          conn.on("error", function () {
+            clearTimeout(timer);
+            finish();
+          });
+          conn.on("open", function () {
+            try {
+              conn.send({ type: "ftsync-hello", pack: _ftSyncPack });
+            } catch (e) {}
+          });
+          conn.on("data", function (data) {
+            (async function () {
+              try {
+                if (!data) return;
+                if ((data.type === "ftsync-result" || data.type === "ftsync-pack") && data.pack) {
+                  const remoteBody = await decryptLiveSyncPack(data.pack, sess.password);
+                  if (remoteBody.id && remoteBody.id !== sess.id) return;
+                  await applyMergedProgressFromRemote(remoteBody.progress);
+                  _ftSyncPack = await buildLiveSyncPack(sess.password, sess.id);
+                }
+              } catch (e) {}
+              clearTimeout(timer);
+              try {
+                conn.close();
+              } catch (e2) {}
+              finish();
+            })();
+          });
+        } catch (e) {
+          clearTimeout(timer);
+          finish();
+        }
+      });
+    });
+    // ホスト再確保
+    if (!_ftSyncHosting) {
+      await ensureLiveSyncHost();
+    }
+  } finally {
+    _ftSyncBusy = false;
+  }
+}
+
+async function startLiveSync(id, password) {
+  if (!id || !password) return;
+  saveSyncSession(id, password);
+  if (_ftSyncStartedFor === id && _ftSyncPullTimer) {
+    await refreshLiveSyncPackAndBroadcast();
+    return;
+  }
+  stopLiveSync();
+  saveSyncSession(id, password);
+  _ftSyncStartedFor = id;
+  await refreshLiveSyncPackAndBroadcast();
+  await ensureLiveSyncHost();
+  await pullLiveSyncOnce();
+  _ftSyncPullTimer = setInterval(function () {
+    pullLiveSyncOnce().catch(function () {});
+  }, FT_SYNC_PULL_MS);
+  try {
+    document.addEventListener("visibilitychange", function () {
+      if (!document.hidden) pullLiveSyncOnce().catch(function () {});
+    });
+  } catch (e) {}
 }
 
 (function hydrateLoggedInAccount() {
@@ -1608,6 +1938,15 @@ function persistLoggedInProgress() {
     const map = loadAuthAccounts();
     const acc = map[uid];
     if (acc && acc.progress) applyProgressToLocal(acc.progress);
+  } catch (e) {}
+  // 同一タブでパスワードセッションが残っていればライブ同期再開
+  try {
+    const sess = loadSyncSession();
+    if (sess) {
+      setTimeout(function () {
+        startLiveSync(sess.id, sess.password).catch(function () {});
+      }, 600);
+    }
   } catch (e) {}
 })();
 
@@ -6475,9 +6814,11 @@ function SetupAccountMenu({ onProgressApplied, equippedTitleIds }) {
     }
     setBusy(true);
     try {
+      const pass = password;
       await registerAccount(userId, password);
       setLoggedId(String(userId).trim());
-      setMsg("登録しました。進捗をアカウントに引き継ぎました。");
+      try { await startLiveSync(String(userId).trim(), pass); } catch (se) {}
+      setMsg("登録しました。他端末と進捗を常時同期します（双方でログイン中）。");
       if (onProgressApplied) onProgressApplied();
       setPassword(""); setPassword2("");
       setView("menu");
@@ -6494,9 +6835,11 @@ function SetupAccountMenu({ onProgressApplied, equippedTitleIds }) {
     try {
       const otpNorm = otpInput ? ftNormalizeOtp(otpInput) : "";
       if (otpNorm) setOtpInput(otpNorm);
+      const pass = password;
       await loginAccount(userId, password, otpNorm);
       setLoggedId(String(userId).trim());
-      setMsg("ログインしました。");
+      try { await startLiveSync(String(userId).trim(), pass); } catch (se) {}
+      setMsg("ログインしました。他端末と進捗を常時同期します（双方で同じIDにログイン中）。");
       if (onProgressApplied) onProgressApplied();
       setPassword(""); setOtpInput("");
       setView("menu");
@@ -6508,6 +6851,8 @@ function SetupAccountMenu({ onProgressApplied, equippedTitleIds }) {
 
   function handleLogout() {
     try { persistLoggedInProgress(); } catch (e) {}
+    try { stopLiveSync(); } catch (e) {}
+    try { clearSyncSession(); } catch (e) {}
     logoutAccount();
     setLoggedId(null);
     setIssuedOtp("");
@@ -6525,7 +6870,7 @@ function SetupAccountMenu({ onProgressApplied, equippedTitleIds }) {
       const res = await issueSyncOtp(issuePass);
       setIssuedOtp(res.otp);
       setIssuedToken(res.otp);
-      setMsg("発行しました（有効5分・1回限り）。8桁コードを他端末のログイン画面に入力してください。発行中はこのページを開いたままにしてください。");
+      setMsg("予備の手動同期コードを発行しました（有効5分・1回限り）。通常は双方ログイン中なら自動同期されます。");
       setIssuePass("");
       try {
         await navigator.clipboard.writeText(res.otp);
@@ -6582,7 +6927,7 @@ function SetupAccountMenu({ onProgressApplied, equippedTitleIds }) {
               </div>
               {loggedId ? (
                 <div className="ft-account-menu-list">
-                  <button type="button" className="ft-account-menu-item is-otp" onClick={() => { setView("otp"); setErr(""); setMsg(""); }}>同期ワンタイムパスワード</button>
+                  <button type="button" className="ft-account-menu-item is-otp" onClick={() => { setView("otp"); setErr(""); setMsg(""); }}>手動同期コード（予備）</button>
                   <button type="button" className="ft-account-menu-item" onClick={handleLogout}>ログアウト</button>
                 </div>
               ) : (
