@@ -9005,13 +9005,12 @@ const CSS = `
   align-items: flex-start;
   gap: 10px;
   flex-shrink: 0;
-  /* 称号バッジ分の下余白のみ（余分な空白を作らない） */
-  padding-bottom: 44px;
+  /* IQパネルの下端とバッジ下端がほぼ揃うため、わずかな余白のみ */
+  padding-bottom: 8px;
 }
 .ft-account-menu {
   position: relative;
   z-index: 50;
-  /* ボタン幅のみでヘッダーレイアウトを崩さない */
   display: block;
   width: fit-content;
 }
@@ -9184,8 +9183,8 @@ const CSS = `
   justify-content: space-between;
   gap: 18px 28px;
   flex-wrap: nowrap;
-  margin-bottom: 10px;
-  padding-bottom: 10px;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
   border-bottom: 1px solid rgba(28, 42, 53, 0.9);
 }
 .ft-setup-brand {
