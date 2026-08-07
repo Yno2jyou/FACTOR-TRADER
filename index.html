@@ -440,8 +440,9 @@ function FlagMedal(props) {
   const style = props.style || {};
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} style={style} xmlns="http://www.w3.org/2000/svg">
-      <path d="M5 21V3" />
-      <path d="M5 4h11l-2.2 3.8L16 11.5H5" fill="currentColor" fillOpacity="0.22" />
+      {/* 旗を円バッジ中央に配置（ポールをやや左、布を右に） */}
+      <path d="M8 20V4" />
+      <path d="M8 5h10l-2.4 3.6L18 12.2H8" fill="currentColor" fillOpacity="0.22" />
     </svg>
   );
 }
@@ -6562,7 +6563,7 @@ function SetupAccountMenu({ onProgressApplied, equippedTitleIds }) {
       {eqIds.length > 0 ? (
         <div className="ft-account-equipped-titles" title={eqIds.map((id) => (TITLE_BY_ID[id] || {}).name).filter(Boolean).join(" / ")}>
           {eqIds.map((id) => (
-            <TitleBadge key={id} titleId={id} size={18} />
+            <TitleBadge key={id} titleId={id} size={24} />
           ))}
         </div>
       ) : null}
@@ -8666,20 +8667,25 @@ const CSS = `
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 6px;
+  gap: 12px;
 }
 .ft-account-equipped-titles {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
   align-items: center;
-  gap: 4px;
-  max-width: 120px;
-  min-height: 22px;
+  gap: 6px;
+  max-width: 140px;
+  min-height: 28px;
+  margin-top: 2px;
+  padding-top: 2px;
 }
 .ft-account-equipped-titles .ft-title-badge-icon {
-  width: 22px;
-  height: 22px;
+  width: 28px;
+  height: 28px;
+}
+.ft-account-equipped-titles .ft-title-badge-icon svg {
+  display: block;
 }
 .ft-account-menu-btn {
   min-width: 64px;
