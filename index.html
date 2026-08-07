@@ -8660,26 +8660,28 @@ const CSS = `
   align-items: flex-start;
   gap: 10px;
   flex-shrink: 0;
+  /* 称号バッジ分の下余白（絶対配置でも下の要素と重ならない） */
+  padding-bottom: 44px;
 }
 .ft-account-menu {
   position: relative;
   z-index: 50;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 12px;
+  /* ボタン幅のみでヘッダーレイアウトを崩さない */
+  display: block;
+  width: fit-content;
 }
 .ft-account-equipped-titles {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  left: auto;
   display: flex;
   flex-wrap: nowrap;
   justify-content: flex-end;
   align-items: center;
   gap: 8px;
-  max-width: none;
-  min-height: 34px;
-  margin-top: 2px;
-  padding-top: 2px;
   white-space: nowrap;
+  pointer-events: auto;
 }
 .ft-account-equipped-titles .ft-title-badge {
   flex-shrink: 0;
@@ -8836,10 +8838,14 @@ const CSS = `
   align-items: flex-start;
   justify-content: space-between;
   gap: 18px 28px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   margin-bottom: 20px;
   padding-bottom: 18px;
   border-bottom: 1px solid rgba(28, 42, 53, 0.9);
+}
+.ft-setup-brand {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 .ft-setup-brand .ft-title {
   margin: 0;
@@ -9578,11 +9584,15 @@ const CSS = `
     padding: 18px 16px 20px;
     border-radius: 8px;
   }
+  .ft-setup-header-row {
+    flex-wrap: wrap;
+  }
   .ft-setup-brand .ft-title {
     font-size: 30px;
   }
   .ft-ai-iq-panel {
-    flex: 1 1 100%;
+    flex: 1 1 auto;
+    min-width: 140px;
   }
   .ft-setup-rules-fs-body {
     padding: 14px 16px 28px;
