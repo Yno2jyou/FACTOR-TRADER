@@ -3496,8 +3496,9 @@ function FactorTrader() {
   }
 
   function confirmOrders() {
-    // COIN補充選択時は強制様子見
-    const forceStay = !!(humanHackDraft && humanHackDraft.coinRescue);
+    // COIN補充は注文画面で選択。確定時に注文へ同梱し、様子見を強制
+    const rescueChoice = (humanHackDraft && humanHackDraft.coinRescue) || "";
+    const forceStay = !!rescueChoice;
     // ---- ONLINE ----
     if (playMode === "online") {
       const me = players.find((p) => p.id === myPlayerId) || players.find((p) => !p.isAI);
@@ -3505,9 +3506,10 @@ function FactorTrader() {
       let nOrd = Math.floor(Number(currentN) || 0);
       if (nOrd < 10000) { nOrd = randBase(); setCurrentN(nOrd); stateRef.current = { ...stateRef.current, currentN: nOrd }; }
       const px = sopf(nOrd);
-      const clamped = forceStay
+      const clamped0 = forceStay
         ? { action: "stay", shares: 0 }
         : clampOrder(humanOrderDraft, me.cash, me.holdings, px, turn, totalTurns);
+      const clamped = { ...clamped0, coinRescue: rescueChoice || "" };
       if (onlineRole === "guest") {
         setISubmittedOrder(true);
         sendToHost({ type: "order", order: clamped });
@@ -3538,9 +3540,10 @@ function FactorTrader() {
     let nOrd = Math.floor(Number(currentN) || 0);
     if (nOrd < 10000) { nOrd = randBase(); setCurrentN(nOrd); stateRef.current = { ...stateRef.current, currentN: nOrd }; }
     const px = sopf(nOrd);
-    const clamped = forceStay
+    const clamped0 = forceStay
       ? { action: "stay", shares: 0 }
       : clampOrder(humanOrderDraft, cur.cash, cur.holdings, px, turn, totalTurns);
+    const clamped = { ...clamped0, coinRescue: rescueChoice || "" };
     const nextOrders = { ...orders, [cur.id]: clamped };
     setOrders(nextOrders);
     const nextIdx = inputHumanIdx + 1;
@@ -3641,7 +3644,9 @@ function FactorTrader() {
     // ハックフェーズへ：最初の生存人間
     const ah = aliveHumans(players);
     setInputHumanIdx(0);
-    setHumanHackDraft({ quick: 0, heavy: 0, defense: 0, reflect: 0, avant: 0, avantSab: 0, avantPrice: 1000, coinRescue: "" });
+    // 注文画面で選んだCOIN補充を引き継ぐ
+    const firstRescue = (ah[0] && newOrders[ah[0].id] && newOrders[ah[0].id].coinRescue) || "";
+    setHumanHackDraft({ quick: 0, heavy: 0, defense: 0, reflect: 0, avant: 0, avantSab: 0, avantPrice: 1000, coinRescue: firstRescue || "" });
     setPassBanner(ah.length > 1 && ah[0] ? { name: ah[0].name, phaseLabel: "市場HACK" } : null);
     setPhase("hack");
     scrollToTop();
@@ -3654,7 +3659,7 @@ function FactorTrader() {
       if (!me || me.isBankrupt) return;
       const endgame = isLastFiveTurns(turn, totalTurns);
       const stock = me.cards.stock || 0;
-      let choice = humanHackDraft.coinRescue || "";
+      let choice = humanHackDraft.coinRescue || (orders[me.id] && orders[me.id].coinRescue) || "";
       if (endgame) choice = "";
       if (choice === "zero10" && stock !== 0) choice = "";
       if (choice === "half5" && stock > 5) choice = "";
@@ -3713,7 +3718,7 @@ function FactorTrader() {
 
     if (cur && !cur.isBankrupt) {
       const stock = cur.cards.stock || 0;
-      let choice = humanHackDraft.coinRescue || "";
+      let choice = humanHackDraft.coinRescue || (orders[cur.id] && orders[cur.id].coinRescue) || "";
       if (endgame) choice = "";
       if (choice === "zero10" && stock !== 0) choice = "";
       if (choice === "half5" && stock > 5) choice = "";
@@ -3754,7 +3759,8 @@ function FactorTrader() {
       if (nextIdx < ah.length) {
         const nextP = ah[nextIdx];
         setInputHumanIdx(nextIdx);
-        setHumanHackDraft({ quick: 0, heavy: 0, defense: 0, reflect: 0, avant: 0, avantSab: 0, avantPrice: 1000, coinRescue: "" });
+        const nextRescue = (orders[nextP.id] && orders[nextP.id].coinRescue) || "";
+        setHumanHackDraft({ quick: 0, heavy: 0, defense: 0, reflect: 0, avant: 0, avantSab: 0, avantPrice: 1000, coinRescue: nextRescue || "" });
         setPassBanner({ name: nextP.name, phaseLabel: "市場HACK" });
         scrollToTop();
         return;
@@ -3786,7 +3792,7 @@ function FactorTrader() {
     rescuedPlayers = rescuedPlayers.map((p) => {
       if (p.isBankrupt || p.isAI) return p;
       const hk = humanHacksSoFar[p.id] || {};
-      const choice = hk.coinRescue || "";
+      const choice = hk.coinRescue || (orders[p.id] && orders[p.id].coinRescue) || "";
       if (!choice || endgame) return p;
       const st = p.cards.stock != null ? p.cards.stock : 0;
       if (choice === "zero10" && st !== 0) return p;
@@ -7320,7 +7326,7 @@ function ActionPanel(props) {
     }
 
     function setAction(a) {
-      if (coinRescueOn) return; // COIN補充中は様子見固定
+      if (coinRescueOn) return;
       if (endgameLock && a === "stay") return;
       const cap = a === "buy" ? maxBuyShares : a === "sell" ? maxSellShares : 0;
       if (a === "stay") {
@@ -7359,6 +7365,69 @@ function ActionPanel(props) {
             </span>
           )}
         </p>
+        {canCoinRescue ? (
+          <div className="ft-hack-row" style={{ marginBottom: 12, flexDirection: "column", alignItems: "stretch", gap: 8, border: "1px solid rgba(57,255,156,0.35)", borderRadius: 4, padding: 10 }}>
+            <div style={{ fontSize: 12, color: "var(--ft-accent)", fontWeight: 600 }}>COIN補充（ラスト5TERNは不可）</div>
+            <div style={{ fontSize: 11, opacity: 0.8, lineHeight: 1.55 }}>
+              COIN 残り <b>{stockNow}</b> 枚 ／ 総資産目安 <b>{Math.floor(totalValue(human, priceBefore)).toLocaleString()}円</b>
+              （仮株価 {yenNum(priceBefore)}円）
+              <br />
+              <span style={{ color: "var(--ft-amber)" }}>補充する場合、このTERNの注文は強制で様子見になります。</span>
+            </div>
+            {stockNow <= 5 ? (
+              <button
+                type="button"
+                onClick={() => setCoinRescue("half5")}
+                style={{
+                  display: "flex", alignItems: "center", gap: 10, textAlign: "left",
+                  padding: "8px 10px", borderRadius: 4, cursor: "pointer",
+                  border: humanHackDraft.coinRescue === "half5" ? "1px solid rgba(51,209,255,0.85)" : "1px solid rgba(255,255,255,0.25)",
+                  background: humanHackDraft.coinRescue === "half5" ? "rgba(51,209,255,0.18)" : "rgba(255,255,255,0.04)",
+                  color: humanHackDraft.coinRescue === "half5" ? "#9ae6ff" : "var(--ft-text)",
+                  boxShadow: humanHackDraft.coinRescue === "half5" ? "0 0 10px rgba(51,209,255,0.35)" : "none",
+                }}
+              >
+                <span style={{
+                  width: 14, height: 14, borderRadius: "50%", flexShrink: 0,
+                  border: humanHackDraft.coinRescue === "half5" ? "2px solid #33d1ff" : "2px solid rgba(255,255,255,0.55)",
+                  background: humanHackDraft.coinRescue === "half5" ? "#33d1ff" : "transparent",
+                  boxShadow: humanHackDraft.coinRescue === "half5" ? "0 0 8px rgba(51,209,255,0.8)" : "none",
+                }} />
+                <span style={{ fontSize: 12, lineHeight: 1.55 }}>
+                  総資産50%→COIN5枚
+                  <br />
+                  <span style={{ opacity: 0.75 }}>（残資産 {Math.floor(totalValue(human, priceBefore) * 0.5).toLocaleString()}円）</span>
+                </span>
+              </button>
+            ) : null}
+            {stockNow === 0 ? (
+              <button
+                type="button"
+                onClick={() => setCoinRescue("zero10")}
+                style={{
+                  display: "flex", alignItems: "center", gap: 10, textAlign: "left",
+                  padding: "8px 10px", borderRadius: 4, cursor: "pointer",
+                  border: humanHackDraft.coinRescue === "zero10" ? "1px solid rgba(51,209,255,0.85)" : "1px solid rgba(255,255,255,0.25)",
+                  background: humanHackDraft.coinRescue === "zero10" ? "rgba(51,209,255,0.18)" : "rgba(255,255,255,0.04)",
+                  color: humanHackDraft.coinRescue === "zero10" ? "#9ae6ff" : "var(--ft-text)",
+                  boxShadow: humanHackDraft.coinRescue === "zero10" ? "0 0 10px rgba(51,209,255,0.35)" : "none",
+                }}
+              >
+                <span style={{
+                  width: 14, height: 14, borderRadius: "50%", flexShrink: 0,
+                  border: humanHackDraft.coinRescue === "zero10" ? "2px solid #33d1ff" : "2px solid rgba(255,255,255,0.55)",
+                  background: humanHackDraft.coinRescue === "zero10" ? "#33d1ff" : "transparent",
+                  boxShadow: humanHackDraft.coinRescue === "zero10" ? "0 0 8px rgba(51,209,255,0.8)" : "none",
+                }} />
+                <span style={{ fontSize: 12, lineHeight: 1.55 }}>
+                  総資産75%→COIN10枚
+                  <br />
+                  <span style={{ opacity: 0.75 }}>（残資産 {Math.floor(totalValue(human, priceBefore) * 0.25).toLocaleString()}円）</span>
+                </span>
+              </button>
+            ) : null}
+          </div>
+        ) : null}
         <div className="ft-private-box" style={{ marginBottom: 12 }}>
           <div className="ft-private-head">操作した場合の株価</div>
           <div className="ft-private-desc" style={{ lineHeight: 1.7, fontSize: 12 }}>
@@ -7421,79 +7490,6 @@ function ActionPanel(props) {
             </div>
           )}
         </div>
-        {canCoinRescue ? (
-          <div className="ft-hack-row" style={{ marginBottom: 12, flexDirection: "column", alignItems: "stretch", gap: 8, border: "1px solid rgba(57,255,156,0.35)", borderRadius: 4, padding: 10 }}>
-            <div style={{ fontSize: 12, color: "var(--ft-accent)", fontWeight: 600 }}>COIN補充（ラスト5TERNは不可）</div>
-            <div style={{ fontSize: 11, opacity: 0.8, lineHeight: 1.55 }}>
-              COIN 残り <b>{stockNow}</b> 枚 ／ 総資産目安 <b>{Math.floor(totalValue(human, priceBefore)).toLocaleString()}円</b>
-              （仮株価 {yenNum(priceBefore)}円）
-              <br />
-              <span style={{ color: "var(--ft-amber)" }}>補充する場合、このTERNの注文は強制で様子見になります。</span>
-            </div>
-            {stockNow <= 5 ? (
-              <button
-                type="button"
-                onClick={() => setCoinRescue("half5")}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                  textAlign: "left",
-                  padding: "8px 10px",
-                  borderRadius: 4,
-                  cursor: "pointer",
-                  border: humanHackDraft.coinRescue === "half5" ? "1px solid rgba(51,209,255,0.85)" : "1px solid rgba(255,255,255,0.25)",
-                  background: humanHackDraft.coinRescue === "half5" ? "rgba(51,209,255,0.18)" : "rgba(255,255,255,0.04)",
-                  color: humanHackDraft.coinRescue === "half5" ? "#9ae6ff" : "var(--ft-text)",
-                  boxShadow: humanHackDraft.coinRescue === "half5" ? "0 0 10px rgba(51,209,255,0.35)" : "none",
-                }}
-              >
-                <span style={{
-                  width: 14, height: 14, borderRadius: "50%", flexShrink: 0,
-                  border: humanHackDraft.coinRescue === "half5" ? "2px solid #33d1ff" : "2px solid rgba(255,255,255,0.55)",
-                  background: humanHackDraft.coinRescue === "half5" ? "#33d1ff" : "transparent",
-                  boxShadow: humanHackDraft.coinRescue === "half5" ? "0 0 8px rgba(51,209,255,0.8)" : "none",
-                }} />
-                <span style={{ fontSize: 12, lineHeight: 1.55 }}>
-                  総資産50%→COIN5枚
-                  <br />
-                  <span style={{ opacity: 0.75 }}>（残資産 {Math.floor(totalValue(human, priceBefore) * 0.5).toLocaleString()}円）</span>
-                </span>
-              </button>
-            ) : null}
-            {stockNow === 0 ? (
-              <button
-                type="button"
-                onClick={() => setCoinRescue("zero10")}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                  textAlign: "left",
-                  padding: "8px 10px",
-                  borderRadius: 4,
-                  cursor: "pointer",
-                  border: humanHackDraft.coinRescue === "zero10" ? "1px solid rgba(51,209,255,0.85)" : "1px solid rgba(255,255,255,0.25)",
-                  background: humanHackDraft.coinRescue === "zero10" ? "rgba(51,209,255,0.18)" : "rgba(255,255,255,0.04)",
-                  color: humanHackDraft.coinRescue === "zero10" ? "#9ae6ff" : "var(--ft-text)",
-                  boxShadow: humanHackDraft.coinRescue === "zero10" ? "0 0 10px rgba(51,209,255,0.35)" : "none",
-                }}
-              >
-                <span style={{
-                  width: 14, height: 14, borderRadius: "50%", flexShrink: 0,
-                  border: humanHackDraft.coinRescue === "zero10" ? "2px solid #33d1ff" : "2px solid rgba(255,255,255,0.55)",
-                  background: humanHackDraft.coinRescue === "zero10" ? "#33d1ff" : "transparent",
-                  boxShadow: humanHackDraft.coinRescue === "zero10" ? "0 0 8px rgba(51,209,255,0.8)" : "none",
-                }} />
-                <span style={{ fontSize: 12, lineHeight: 1.55 }}>
-                  総資産75%→COIN10枚
-                  <br />
-                  <span style={{ opacity: 0.75 }}>（残資産 {Math.floor(totalValue(human, priceBefore) * 0.25).toLocaleString()}円）</span>
-                </span>
-              </button>
-            ) : null}
-          </div>
-        ) : null}
         <div className="ft-order-btns">
           <button
             className={"ft-order-btn long" + (action === "buy" ? " active" : "")}
