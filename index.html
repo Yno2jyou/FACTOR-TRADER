@@ -790,9 +790,11 @@ function evaluateTitlesAfterGame(isLocal, isFirst, finalTV, finalCoins, stats, s
 
 
 
-/** 防衛・反射の連続使用制限は廃止（常に使用可） */
+/** 連続TERN使用不可（どちらか使用した翌TERNは両方不可） */
 function isProtectOnCooldown(p, turn) {
-  return false;
+  const last = Math.max(0, Math.floor(Number(p && p.lastProtectTurn) || 0));
+  const t = Math.max(0, Math.floor(Number(turn) || 0));
+  return last > 0 && t > 0 && last === t - 1;
 }
 
 /** ラスト5TERNか */
@@ -2604,7 +2606,7 @@ function aiDecideCards(cards, turn, totalTurns, order, nStart, priceBefore, allO
   if (useDefense && useReflect) useReflect = 0; // 同時不可・防衛優先
   // 最初の3TERNは通常妨害が無いため防衛/反射は使わない（COIN温存）
   if (turn <= 3) { useDefense = 0; useReflect = 0; }
-  // 防衛・反射の連続使用制限は廃止
+  // 防衛・反射の連続使用禁止（前TERNにどちらか使用していれば両方不可）
   if (isProtectOnCooldown(selfPlDef, turn)) { useDefense = 0; useReflect = 0; }
 
   // 妨害使用時の反射対策: 跳ね返り被妨害で破産するなら防衛必須（反射では防げない）
@@ -3494,6 +3496,8 @@ function FactorTrader() {
   }
 
   function confirmOrders() {
+    // COIN補充選択時は強制様子見
+    const forceStay = !!(humanHackDraft && humanHackDraft.coinRescue);
     // ---- ONLINE ----
     if (playMode === "online") {
       const me = players.find((p) => p.id === myPlayerId) || players.find((p) => !p.isAI);
@@ -3501,7 +3505,9 @@ function FactorTrader() {
       let nOrd = Math.floor(Number(currentN) || 0);
       if (nOrd < 10000) { nOrd = randBase(); setCurrentN(nOrd); stateRef.current = { ...stateRef.current, currentN: nOrd }; }
       const px = sopf(nOrd);
-      const clamped = clampOrder(humanOrderDraft, me.cash, me.holdings, px, turn, totalTurns);
+      const clamped = forceStay
+        ? { action: "stay", shares: 0 }
+        : clampOrder(humanOrderDraft, me.cash, me.holdings, px, turn, totalTurns);
       if (onlineRole === "guest") {
         setISubmittedOrder(true);
         sendToHost({ type: "order", order: clamped });
@@ -3532,7 +3538,9 @@ function FactorTrader() {
     let nOrd = Math.floor(Number(currentN) || 0);
     if (nOrd < 10000) { nOrd = randBase(); setCurrentN(nOrd); stateRef.current = { ...stateRef.current, currentN: nOrd }; }
     const px = sopf(nOrd);
-    const clamped = clampOrder(humanOrderDraft, cur.cash, cur.holdings, px, turn, totalTurns);
+    const clamped = forceStay
+      ? { action: "stay", shares: 0 }
+      : clampOrder(humanOrderDraft, cur.cash, cur.holdings, px, turn, totalTurns);
     const nextOrders = { ...orders, [cur.id]: clamped };
     setOrders(nextOrders);
     const nextIdx = inputHumanIdx + 1;
@@ -3760,7 +3768,7 @@ function FactorTrader() {
   function finalizeHacksAndResolve(humanHacksSoFar, playersBase) {
     const endgame = isLastFiveTurns(turn, totalTurns);
     let rescuedPlayers = (playersBase || players).map((p) => ({ ...p, cards: { ...(p.cards || {}) }, history: [...(p.history || [])] }));
-    // （連続使用制限は廃止）
+    // 防衛・反射の連続使用禁止を強制
     humanHacksSoFar = { ...(humanHacksSoFar || {}) };
     Object.keys(humanHacksSoFar).forEach((pid) => {
       const pl = rescuedPlayers.find((x) => String(x.id) === String(pid));
@@ -4143,7 +4151,7 @@ function FactorTrader() {
 
     const focusReveal = perHuman[focusId] || Object.values(perHuman)[0];
 
-    // lastProtectTurn は互換のため残す（制限には使わない）
+    // 防衛・反射を使ったプレイヤーは lastProtectTurn を記録（翌TERN連続使用不可）
     const updatedWithProtect = updated.map((p) => {
       const hk = hacks[p.id] || {};
       if (hk.defense || hk.reflect) {
@@ -4773,6 +4781,7 @@ function RulesContent() {
             <ul>
               <li>5枚 / 妨害・反射・奥義妨害を無効</li>
               <li>最初の3TERN不可</li>
+              <li>連続TERN使用不可</li>
             </ul>
           </div>
           <div className="ft-card-type reflect">
@@ -4780,6 +4789,7 @@ function RulesContent() {
             <ul>
               <li>5枚 / 妨害を相手に返す</li>
               <li>最初の3TERN不可</li>
+              <li>連続TERN使用不可</li>
             </ul>
           </div>
           <div className="ft-card-type avant">
@@ -6286,7 +6296,7 @@ function TutorialModal({ onClose }) {
                 <li><strong>帳消し</strong>：破産しそうな買いをCOIN10枚で強制キャンセル（COIN10枚ないときは破産・ゲームオーバー）</li>
                 <li><strong>COIN補充</strong>：枚数少のとき総資産の一部と交換（ラスト5TERNは不可）</li>
                 <li><strong>終盤ラスト5TERN</strong>：様子見禁止・売買は50%以上・突入時COIN+10</li>
-                <li><strong>不可</strong>：最初の3TERNは妨害・防衛・反射・AVANT-GARDE-妨害の使用不可、防衛と反射は同時には使用不可</li>
+                <li><strong>不可</strong>：最初の3TERNは妨害・防衛・反射・AVANT-GARDE-妨害の使用不可、防衛と反射は連続で使用不可</li>
                 <li><strong>奥義：AVANT-GARDEの優先</strong>：複数奥義が競合したら総資産が少ない側が優先</li>
               </ul>
               <p className="ft-tut-note">ここまでの5TERNで、注文とHACKの中心メカニクスは一通り触れました。</p>
@@ -7265,10 +7275,17 @@ function ActionPanel(props) {
     const maxBuyShares = priceBefore > 0 ? Math.floor(human.cash / priceBefore) : 0;
     const maxSellShares = human.holdings;
     const endgameLock = isLastFiveTurns(turn, totalTurns);
+    const stockNow = human.cards && human.cards.stock != null ? human.cards.stock : 0;
+    const canCoinRescue = !endgameLock && stockNow <= 5;
+    const coinRescueOn = !!(humanHackDraft && humanHackDraft.coinRescue);
     // 終盤は様子見を許さない（ドラフトが stay のまま残っていても表示・操作を補正）
+    // COIN補充選択時は強制様子見
     let action = humanOrderDraft.action;
     let shares = humanOrderDraft.shares || 0;
-    if (endgameLock && action === "stay") {
+    if (coinRescueOn) {
+      action = "stay";
+      shares = 0;
+    } else if (endgameLock && action === "stay") {
       if (maxSellShares > 0) {
         action = "sell";
         shares = minOrderShares("sell", human.holdings, maxBuyShares);
@@ -7277,7 +7294,7 @@ function ActionPanel(props) {
         shares = minOrderShares("buy", human.holdings, maxBuyShares);
       }
     }
-    if (endgameLock && (action === "buy" || action === "sell")) {
+    if (!coinRescueOn && endgameLock && (action === "buy" || action === "sell")) {
       const cap = action === "buy" ? maxBuyShares : maxSellShares;
       const minS = minOrderShares(action, human.holdings, maxBuyShares);
       if (cap > 0) {
@@ -7291,7 +7308,19 @@ function ActionPanel(props) {
       ? (endgameLock ? minOrderShares(action, human.holdings, maxBuyShares) : 1)
       : 0;
 
+    function setCoinRescue(choice) {
+      const turningOn = (humanHackDraft.coinRescue || "") !== choice;
+      setHumanHackDraft((d) => ({
+        ...d,
+        coinRescue: d.coinRescue === choice ? "" : choice,
+      }));
+      if (turningOn) {
+        setHumanOrderDraft({ action: "stay", shares: 0 });
+      }
+    }
+
     function setAction(a) {
+      if (coinRescueOn) return; // COIN補充中は様子見固定
       if (endgameLock && a === "stay") return;
       const cap = a === "buy" ? maxBuyShares : a === "sell" ? maxSellShares : 0;
       if (a === "stay") {
@@ -7392,29 +7421,103 @@ function ActionPanel(props) {
             </div>
           )}
         </div>
+        {canCoinRescue ? (
+          <div className="ft-hack-row" style={{ marginBottom: 12, flexDirection: "column", alignItems: "stretch", gap: 8, border: "1px solid rgba(57,255,156,0.35)", borderRadius: 4, padding: 10 }}>
+            <div style={{ fontSize: 12, color: "var(--ft-accent)", fontWeight: 600 }}>COIN補充（ラスト5TERNは不可）</div>
+            <div style={{ fontSize: 11, opacity: 0.8, lineHeight: 1.55 }}>
+              COIN 残り <b>{stockNow}</b> 枚 ／ 総資産目安 <b>{Math.floor(totalValue(human, priceBefore)).toLocaleString()}円</b>
+              （仮株価 {yenNum(priceBefore)}円）
+              <br />
+              <span style={{ color: "var(--ft-amber)" }}>補充する場合、このTERNの注文は強制で様子見になります。</span>
+            </div>
+            {stockNow <= 5 ? (
+              <button
+                type="button"
+                onClick={() => setCoinRescue("half5")}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  textAlign: "left",
+                  padding: "8px 10px",
+                  borderRadius: 4,
+                  cursor: "pointer",
+                  border: humanHackDraft.coinRescue === "half5" ? "1px solid rgba(51,209,255,0.85)" : "1px solid rgba(255,255,255,0.25)",
+                  background: humanHackDraft.coinRescue === "half5" ? "rgba(51,209,255,0.18)" : "rgba(255,255,255,0.04)",
+                  color: humanHackDraft.coinRescue === "half5" ? "#9ae6ff" : "var(--ft-text)",
+                  boxShadow: humanHackDraft.coinRescue === "half5" ? "0 0 10px rgba(51,209,255,0.35)" : "none",
+                }}
+              >
+                <span style={{
+                  width: 14, height: 14, borderRadius: "50%", flexShrink: 0,
+                  border: humanHackDraft.coinRescue === "half5" ? "2px solid #33d1ff" : "2px solid rgba(255,255,255,0.55)",
+                  background: humanHackDraft.coinRescue === "half5" ? "#33d1ff" : "transparent",
+                  boxShadow: humanHackDraft.coinRescue === "half5" ? "0 0 8px rgba(51,209,255,0.8)" : "none",
+                }} />
+                <span style={{ fontSize: 12, lineHeight: 1.55 }}>
+                  総資産50%→COIN5枚
+                  <br />
+                  <span style={{ opacity: 0.75 }}>（残資産 {Math.floor(totalValue(human, priceBefore) * 0.5).toLocaleString()}円）</span>
+                </span>
+              </button>
+            ) : null}
+            {stockNow === 0 ? (
+              <button
+                type="button"
+                onClick={() => setCoinRescue("zero10")}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  textAlign: "left",
+                  padding: "8px 10px",
+                  borderRadius: 4,
+                  cursor: "pointer",
+                  border: humanHackDraft.coinRescue === "zero10" ? "1px solid rgba(51,209,255,0.85)" : "1px solid rgba(255,255,255,0.25)",
+                  background: humanHackDraft.coinRescue === "zero10" ? "rgba(51,209,255,0.18)" : "rgba(255,255,255,0.04)",
+                  color: humanHackDraft.coinRescue === "zero10" ? "#9ae6ff" : "var(--ft-text)",
+                  boxShadow: humanHackDraft.coinRescue === "zero10" ? "0 0 10px rgba(51,209,255,0.35)" : "none",
+                }}
+              >
+                <span style={{
+                  width: 14, height: 14, borderRadius: "50%", flexShrink: 0,
+                  border: humanHackDraft.coinRescue === "zero10" ? "2px solid #33d1ff" : "2px solid rgba(255,255,255,0.55)",
+                  background: humanHackDraft.coinRescue === "zero10" ? "#33d1ff" : "transparent",
+                  boxShadow: humanHackDraft.coinRescue === "zero10" ? "0 0 8px rgba(51,209,255,0.8)" : "none",
+                }} />
+                <span style={{ fontSize: 12, lineHeight: 1.55 }}>
+                  総資産75%→COIN10枚
+                  <br />
+                  <span style={{ opacity: 0.75 }}>（残資産 {Math.floor(totalValue(human, priceBefore) * 0.25).toLocaleString()}円）</span>
+                </span>
+              </button>
+            ) : null}
+          </div>
+        ) : null}
         <div className="ft-order-btns">
           <button
             className={"ft-order-btn long" + (action === "buy" ? " active" : "")}
             onClick={() => setAction("buy")}
-            disabled={maxBuyShares <= 0}
+            disabled={coinRescueOn || maxBuyShares <= 0}
+            title={coinRescueOn ? "COIN補充中は様子見固定" : ""}
           >
             <TrendingUp size={16} /> 買い
           </button>
           <button
             className={"ft-order-btn short" + (action === "sell" ? " active" : "")}
             onClick={() => setAction("sell")}
-            disabled={maxSellShares <= 0}
-            title={maxSellShares <= 0 ? "保有株がありません" : ""}
+            disabled={coinRescueOn || maxSellShares <= 0}
+            title={coinRescueOn ? "COIN補充中は様子見固定" : (maxSellShares <= 0 ? "保有株がありません" : "")}
           >
             <TrendingDown size={16} /> 売り
           </button>
           <button
-            className={"ft-order-btn stay" + (!endgameLock && action === "stay" ? " active" : "")}
+            className={"ft-order-btn stay" + ((!endgameLock || coinRescueOn) && action === "stay" ? " active" : "")}
             onClick={() => setAction("stay")}
-            disabled={endgameLock}
-            title={endgameLock ? "ラスト5TERNは様子見禁止" : ""}
+            disabled={endgameLock && !coinRescueOn}
+            title={coinRescueOn ? "COIN補充のため様子見固定" : (endgameLock ? "ラスト5TERNは様子見禁止" : "")}
           >
-            <Minus size={16} /> 様子見{endgameLock ? "（終盤禁止）" : ""}
+            <Minus size={16} /> 様子見{coinRescueOn ? "（補充時固定）" : (endgameLock ? "（終盤禁止）" : "")}
           </button>
         </div>
         {action !== "stay" && (
@@ -7483,75 +7586,9 @@ function ActionPanel(props) {
             COIN 残り <b>{human.cards.stock != null ? human.cards.stock : 0}</b> 枚
             （使用: {(humanHackDraft.quick || 0) + ((humanHackDraft.heavy || 0) > 0 ? 5 : 0) + (humanHackDraft.defense ? 5 : 0) + (humanHackDraft.reflect ? 5 : 0) + ((humanHackDraft.avant || humanHackDraft.avantSab) ? 10 : 0)} 枚）
           </div>
-          {!isLastFiveTurns(turn, totalTurns) && (human.cards.stock != null ? human.cards.stock : 0) <= 5 ? (
-            <div className="ft-hack-row" style={{ marginBottom: 10, flexDirection: "column", alignItems: "stretch", gap: 8, border: "1px solid rgba(57,255,156,0.35)", borderRadius: 4, padding: 10 }}>
-              <div style={{ fontSize: 12, color: "var(--ft-accent)", fontWeight: 600 }}>COIN補充（ラスト5TERNは不可）</div>
-              <div style={{ fontSize: 11, opacity: 0.8 }}>
-                総資産目安 <b>{Math.floor(totalValue(human, priceBefore)).toLocaleString()}円</b>
-                （仮株価 {yenNum(priceBefore)}円）
-              </div>
-              {(human.cards.stock != null ? human.cards.stock : 0) <= 5 ? (
-                <button
-                  type="button"
-                  onClick={() => setHumanHackDraft((d) => ({ ...d, coinRescue: d.coinRescue === "half5" ? "" : "half5" }))}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    textAlign: "left",
-                    padding: "8px 10px",
-                    borderRadius: 4,
-                    cursor: "pointer",
-                    border: humanHackDraft.coinRescue === "half5" ? "1px solid rgba(51,209,255,0.85)" : "1px solid rgba(255,255,255,0.25)",
-                    background: humanHackDraft.coinRescue === "half5" ? "rgba(51,209,255,0.18)" : "rgba(255,255,255,0.04)",
-                    color: humanHackDraft.coinRescue === "half5" ? "#9ae6ff" : "var(--ft-text)",
-                    boxShadow: humanHackDraft.coinRescue === "half5" ? "0 0 10px rgba(51,209,255,0.35)" : "none",
-                  }}
-                >
-                  <span style={{
-                    width: 14, height: 14, borderRadius: "50%", flexShrink: 0,
-                    border: humanHackDraft.coinRescue === "half5" ? "2px solid #33d1ff" : "2px solid rgba(255,255,255,0.55)",
-                    background: humanHackDraft.coinRescue === "half5" ? "#33d1ff" : "transparent",
-                    boxShadow: humanHackDraft.coinRescue === "half5" ? "0 0 8px rgba(51,209,255,0.8)" : "none",
-                  }} />
-                  <span style={{ fontSize: 12, lineHeight: 1.55 }}>
-                    総資産50%→COIN5枚
-                    <br />
-                    <span style={{ opacity: 0.75 }}>（残資産 {Math.floor(totalValue(human, priceBefore) * 0.5).toLocaleString()}円）</span>
-                  </span>
-                </button>
-              ) : null}
-              {(human.cards.stock != null ? human.cards.stock : 0) === 0 ? (
-                <button
-                  type="button"
-                  onClick={() => setHumanHackDraft((d) => ({ ...d, coinRescue: d.coinRescue === "zero10" ? "" : "zero10" }))}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    textAlign: "left",
-                    padding: "8px 10px",
-                    borderRadius: 4,
-                    cursor: "pointer",
-                    border: humanHackDraft.coinRescue === "zero10" ? "1px solid rgba(51,209,255,0.85)" : "1px solid rgba(255,255,255,0.25)",
-                    background: humanHackDraft.coinRescue === "zero10" ? "rgba(51,209,255,0.18)" : "rgba(255,255,255,0.04)",
-                    color: humanHackDraft.coinRescue === "zero10" ? "#9ae6ff" : "var(--ft-text)",
-                    boxShadow: humanHackDraft.coinRescue === "zero10" ? "0 0 10px rgba(51,209,255,0.35)" : "none",
-                  }}
-                >
-                  <span style={{
-                    width: 14, height: 14, borderRadius: "50%", flexShrink: 0,
-                    border: humanHackDraft.coinRescue === "zero10" ? "2px solid #33d1ff" : "2px solid rgba(255,255,255,0.55)",
-                    background: humanHackDraft.coinRescue === "zero10" ? "#33d1ff" : "transparent",
-                    boxShadow: humanHackDraft.coinRescue === "zero10" ? "0 0 8px rgba(51,209,255,0.8)" : "none",
-                  }} />
-                  <span style={{ fontSize: 12, lineHeight: 1.55 }}>
-                    総資産75%→COIN10枚
-                    <br />
-                    <span style={{ opacity: 0.75 }}>（残資産 {Math.floor(totalValue(human, priceBefore) * 0.25).toLocaleString()}円）</span>
-                  </span>
-                </button>
-              ) : null}
+          {humanHackDraft.coinRescue ? (
+            <div className="ft-hack-row" style={{ marginBottom: 10, border: "1px solid rgba(51,209,255,0.45)", borderRadius: 4, padding: "8px 12px", background: "rgba(51,209,255,0.1)", fontSize: 12, color: "#9ae6ff", lineHeight: 1.55 }}>
+              COIN補充を選択済み（{coinRescueLabel(humanHackDraft.coinRescue)}）。注文は様子見で確定しています。
             </div>
           ) : null}
           <div className="ft-hack-row">
@@ -7613,7 +7650,7 @@ function ActionPanel(props) {
                 {turn <= 3
                   ? "最初の3TERNは使用不可"
                   : (isProtectOnCooldown(human, turn)
-                    ? "使用不可"
+                    ? "前TERNに防衛/反射使用のため不可"
                     : "相手からの妨害を無効化")}
               </span>
             </div>
@@ -7642,7 +7679,7 @@ function ActionPanel(props) {
                 {turn <= 3
                   ? "最初の3TERNは使用不可"
                   : (isProtectOnCooldown(human, turn)
-                    ? "使用不可"
+                    ? "前TERNに防衛/反射使用のため不可"
                     : "妨害の効果を相手に反射")}
               </span>
             </div>
