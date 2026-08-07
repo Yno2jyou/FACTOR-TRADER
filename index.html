@@ -304,7 +304,7 @@ function Activity(props) {
    1TERNのシーケンス:
      1. 市場開示  : N_start を公開し、仮株価 sopf(N_start) を表示
      2. 投資注文  : 各プレイヤー(人間+AI)が 買い/売り/様子見 を秘密裏に決定
-     3. 市場HACK: 生涯COINから操作/妨害を裏向きで決定
+     3. 市場介入: 生涯COINから操作/妨害を裏向きで決定
      4. 清算（個人株価）:
           - 操作: 自分の N にだけ +1 → 自分の株価だけ操作
           - 妨害: 自分以外の N にだけ +1（重複可） → 相手の株価だけ妨害方向に作用
@@ -1019,6 +1019,51 @@ function coinRescueLabel(choice) {
   if (choice === "zero10") return "総資産75% → COIN+10";
   return "";
 }
+
+/** AIがCOIN補充するか（注文確定時点で判定。補充なら注文は様子見に固定） */
+function aiDecideCoinRescue(p, order, nStart, priceBefore, allPlayers, allOrders, turn, totalTurns) {
+  if (!p || p.isBankrupt || !p.isAI) return "";
+  const endgame = isLastFiveTurns(turn, totalTurns);
+  const st = p.cards && p.cards.stock != null ? p.cards.stock : 0;
+  if (endgame || st > 5) return "";
+  const ord = order || { action: "stay", shares: 0 };
+  let need = false;
+  if (ord.action === "buy" && (ord.shares || 0) >= 1) {
+    const priceHit = personalExecPrice(nStart, 0, 1, "buy");
+    const req = (ord.shares || 0) * priceHit;
+    const liq = (p.cash || 0) + (p.holdings || 0) * priceHit;
+    need = req > liq + 1e-9;
+  }
+  const trading = (ord.action === "buy" || ord.action === "sell") && (ord.shares || 0) >= 1;
+  const staying = ord.action === "stay";
+  let humanAhead = false;
+  const selfTV = (p.cash || 0) + (p.holdings || 0) * (priceBefore || 0);
+  (allPlayers || []).forEach((hp) => {
+    if (!hp || hp.isAI || hp.isBankrupt) return;
+    const tv = (hp.cash || 0) + (hp.holdings || 0) * (priceBefore || 0);
+    if (tv > selfTV * 1.05) humanAhead = true;
+  });
+  const humanTrading = (allPlayers || []).some((hp) => {
+    if (!hp || hp.isAI || hp.isBankrupt) return false;
+    const o = (allOrders && allOrders[hp.id]) || {};
+    return (o.action === "buy" || o.action === "sell") && (o.shares || 0) > 0;
+  });
+  let choice = "";
+  if (st === 0) {
+    if (need) choice = Math.random() < 0.97 ? "zero10" : "half5";
+    else if (humanAhead || humanTrading || staying) choice = Math.random() < 0.88 ? "zero10" : (Math.random() < 0.7 ? "half5" : "");
+    else if (trading) choice = Math.random() < 0.82 ? "zero10" : (Math.random() < 0.55 ? "half5" : "");
+    else choice = Math.random() < 0.7 ? "zero10" : (Math.random() < 0.4 ? "half5" : "");
+  } else if (st <= 5) {
+    if (need) choice = Math.random() < 0.95 ? "half5" : "";
+    else if (humanAhead || humanTrading || staying) choice = Math.random() < 0.85 ? "half5" : "";
+    else if (trading) choice = Math.random() < 0.75 ? "half5" : "";
+    else choice = Math.random() < 0.55 ? "half5" : "";
+  }
+  return choice || "";
+}
+
+
 
 // AIの投資判断: 株価の急騰・急落に強く反応する大胆スタイル
 // - 数百円→数万円級の急騰時は保有株を大量売却
@@ -3572,7 +3617,7 @@ function FactorTrader() {
       } else if (!p.isAI) {
         newOrders[p.id] = { action: "stay", shares: 0 };
       } else {
-        newOrders[p.id] = clampOrder(
+        let ao = clampOrder(
           aiDecideTrade(Math.random(), nStartL, priceBeforeL, p.cash, p.holdings, refL, {
             turn: st.turn,
             totalTurns: st.totalTurns,
@@ -3581,6 +3626,17 @@ function FactorTrader() {
           }),
           p.cash, p.holdings, priceBeforeL, st.turn, st.totalTurns
         );
+        // 暫定注文を入れた後、全注文を見て補充判定するため後段で処理
+        newOrders[p.id] = ao;
+      }
+    });
+    // AIのCOIN補充は注文確定時点で決定し、様子見に固定（介入画面で売り表示→清算で様子見のチート感を防ぐ）
+    (st.players || []).forEach((p) => {
+      if (!p || p.isBankrupt || !p.isAI) return;
+      const ao = newOrders[p.id] || { action: "stay", shares: 0 };
+      const rescue = aiDecideCoinRescue(p, ao, nStartL, priceBeforeL, st.players, newOrders, st.turn, st.totalTurns);
+      if (rescue) {
+        newOrders[p.id] = { action: "stay", shares: 0, coinRescue: rescue };
       }
     });
     setOrders(newOrders);
@@ -3629,13 +3685,22 @@ function FactorTrader() {
         );
       }
     });
+    // AIのCOIN補充は注文確定時点で決定し、様子見に固定
+    players.forEach((p) => {
+      if (!p || p.isBankrupt || !p.isAI) return;
+      const ao = newOrders[p.id] || { action: "stay", shares: 0 };
+      const rescue = aiDecideCoinRescue(p, ao, nStart, priceBefore, players, newOrders, turn, totalTurns);
+      if (rescue) {
+        newOrders[p.id] = { action: "stay", shares: 0, coinRescue: rescue };
+      }
+    });
     setOrders(newOrders);
     stateRef.current = { ...stateRef.current, orders: newOrders, phase: "hack", currentN: ensureBaseN(stateRef.current.currentN) };
     const ah = aliveHumans(players);
     setInputHumanIdx(0);
     const firstRescue = (ah[0] && newOrders[ah[0].id] && newOrders[ah[0].id].coinRescue) || "";
     setHumanHackDraft({ quick: 0, heavy: 0, defense: 0, reflect: 0, avant: 0, avantSab: 0, avantPrice: 1000, coinRescue: firstRescue || "" });
-    setPassBanner(ah.length > 1 && ah[0] ? { name: ah[0].name, phaseLabel: "市場HACK" } : null);
+    setPassBanner(ah.length > 1 && ah[0] ? { name: ah[0].name, phaseLabel: "市場介入" } : null);
     setPhase("hack");
     scrollToTop();
   }
@@ -3748,7 +3813,7 @@ function FactorTrader() {
         const nextP = ah[nextIdx];
         setInputHumanIdx(nextIdx);
         setHumanHackDraft({ quick: 0, heavy: 0, defense: 0, reflect: 0, avant: 0, avantSab: 0, avantPrice: 1000, coinRescue: "" });
-        setPassBanner({ name: nextP.name, phaseLabel: "市場HACK" });
+        setPassBanner({ name: nextP.name, phaseLabel: "市場介入" });
         scrollToTop();
         return;
       }
@@ -3795,48 +3860,22 @@ function FactorTrader() {
       return next;
     });
 
-    // AI の COIN 補充（積極化: 妨害・防衛用の弾を切らさない）
+    // AI の COIN 補充（注文確定時に決めた coinRescue のみ適用。ここで注文を書き換えない）
     rescuedPlayers = rescuedPlayers.map((p) => {
       if (p.isBankrupt || !p.isAI) return p;
-      const st = p.cards.stock != null ? p.cards.stock : 0;
-      if (endgame || st > 5) return p;
       const ord = ordersLocal[p.id] || { action: "stay", shares: 0 };
-      let need = false;
-      if (ord.action === "buy" && (ord.shares || 0) >= 1) {
-        const priceHit = personalExecPrice(nStart, 0, 1, "buy");
-        const req = (ord.shares || 0) * priceHit;
-        const liq = (p.cash || 0) + (p.holdings || 0) * priceHit;
-        need = req > liq + 1e-9;
+      let choice = ord.coinRescue || "";
+      const st0 = p.cards.stock != null ? p.cards.stock : 0;
+      // フォールバック: 注文時未設定の旧セーブ互換。ただし売買注文は強制様子見にしない
+      if (!choice && !endgame && st0 <= 5) {
+        const tentative = aiDecideCoinRescue(p, ord, nStart, priceBefore, rescuedPlayers, ordersLocal, turn, totalTurns);
+        // 既に売買を公開済みなら補充しても注文は変えない（表示と清算の一致優先）
+        if (tentative && ord.action === "stay") choice = tentative;
       }
-      const trading = (ord.action === "buy" || ord.action === "sell") && (ord.shares || 0) >= 1;
-      const staying = ord.action === "stay";
-      // 人間が有利か
-      let humanAhead = false;
-      const selfTV = (p.cash || 0) + (p.holdings || 0) * (priceBefore || 0);
-      rescuedPlayers.forEach((hp) => {
-        if (!hp || hp.isAI || hp.isBankrupt) return;
-        const tv = (hp.cash || 0) + (hp.holdings || 0) * (priceBefore || 0);
-        if (tv > selfTV * 1.05) humanAhead = true;
-      });
-      // 人間が売買中なら妨害用に補充を急ぐ
-      const humanTrading = rescuedPlayers.some((hp) => {
-        if (!hp || hp.isAI || hp.isBankrupt) return false;
-        const o = orders[hp.id] || {};
-        return (o.action === "buy" || o.action === "sell") && (o.shares || 0) > 0;
-      });
-      let choice = "";
-      if (st === 0) {
-        if (need) choice = Math.random() < 0.97 ? "zero10" : "half5";
-        else if (humanAhead || humanTrading || staying) choice = Math.random() < 0.88 ? "zero10" : (Math.random() < 0.7 ? "half5" : "");
-        else if (trading) choice = Math.random() < 0.82 ? "zero10" : (Math.random() < 0.55 ? "half5" : "");
-        else choice = Math.random() < 0.7 ? "zero10" : (Math.random() < 0.4 ? "half5" : "");
-      } else if (st <= 5) {
-        if (need) choice = Math.random() < 0.95 ? "half5" : "";
-        else if (humanAhead || humanTrading || staying) choice = Math.random() < 0.85 ? "half5" : "";
-        else if (trading) choice = Math.random() < 0.75 ? "half5" : "";
-        else choice = Math.random() < 0.55 ? "half5" : "";
-      }
-      if (!choice) return p;
+      if (!choice || endgame) return p;
+      if (choice === "zero10" && st0 !== 0) return p;
+      if (choice === "half5" && st0 > 5) return p;
+      if (st0 > 5) return p;
       const next = applyCoinRescue(p, choice, priceBefore);
       coinRescueMap[p.id] = choice;
       ordersLocal[p.id] = { action: "stay", shares: 0, coinRescue: choice };
@@ -4735,7 +4774,7 @@ function RulesContent() {
           </div>
           <div className="ft-flow-step">
             <div className="ft-flow-num">3</div>
-            <div className="ft-flow-body"><b>市場HACK</b><span>COINで操作・妨害など</span></div>
+            <div className="ft-flow-body"><b>市場介入</b><span>COINで操作・妨害など</span></div>
           </div>
           <div className="ft-flow-step">
             <div className="ft-flow-num">4</div>
@@ -4749,15 +4788,15 @@ function RulesContent() {
           <Coin size={14} className="icon-coin" /> COIN
         </div>
         <ul className="ft-rules-bullets">
-          <li>開始時に人数・モード分を配布。市場HACK専用</li>
-          <li>補充：5枚以下→総資産50%で+5／0枚→総資産75%で+10（HACK中・ラスト5は不可）</li>
+          <li>開始時に人数・モード分を配布。市場介入専用</li>
+          <li>補充：5枚以下→総資産50%で+5／0枚→総資産75%で+10（介入中・ラスト5は不可）</li>
           <li><strong>破産</strong>：買い代金を現金＋全株売却でも払えないとき</li>
           <li><strong>帳消し</strong>：COIN10枚でその買いをキャンセル（破産回避）</li>
         </ul>
       </div>
 
       <div className="ft-rules-section">
-        <div className="ft-rules-h">市場HACK</div>
+        <div className="ft-rules-h">市場介入</div>
         <div className="ft-card-types">
           <div className="ft-card-type op">
             <div className="ft-card-type-title"><Zap size={14} className="icon-quick" /> 操作</div>
@@ -5377,7 +5416,7 @@ function TutorialModal({ onClose }) {
   const stepLabel = phase === "intro" ? "導入"
     : phase === "lesson" ? "補足"
     : phase === "summary" ? "完了"
-    : (tern.title + " · " + ({ market: "開示", order: "注文", hack: "HACK", reveal: "清算" }[phase] || ""));
+    : (tern.title + " · " + ({ market: "開示", order: "注文", hack: "介入", reveal: "清算" }[phase] || ""));
 
   const progressPct = phase === "intro" ? 4
     : phase === "summary" ? 100
@@ -5629,14 +5668,14 @@ function TutorialModal({ onClose }) {
                           <div className="ft-pc-holdings">現金{yen(oCash)} ／ {sharesFmt(oHold)}株{oHold > 0 ? "(@" + Number(oAvg || 0).toFixed(1) + ")" : ""}</div>
                           <div className="ft-pc-cards"><Coin size={12} className="icon-coin" /> {oCoins}</div>
                           {showOrders ? orderTag(oppOrderDisp) : (
-                            <div className="ft-pc-order tag-stay" style={{ opacity: 0.65 }}>注文・HACK非公開</div>
+                            <div className="ft-pc-order tag-stay" style={{ opacity: 0.65 }}>注文・介入非公開</div>
                           )}
                         </div>
                       </div>
                       {phase === "market" || phase === "order" ? (
                         <div className="ft-traders-notes">
                           <div style={{ color: "var(--ft-text-dim)" }}>
-                            {OPP} の注文とHACKは確定後に公開されます。カードの枠色・注記で行動が分かります。
+                            {OPP} の注文と介入は確定後に公開されます。カードの枠色・注記で行動が分かります。
                           </div>
                         </div>
                       ) : null}
@@ -5752,10 +5791,10 @@ function TutorialModal({ onClose }) {
                 const predPrice = sopf(predN);
                 return (
                 <div className="ft-panel ft-action" style={{ margin: 0 }}>
-                  <div className="ft-panel-head">STEP 3 — 市場HACK</div>
+                  <div className="ft-panel-head">STEP 3 — 市場介入</div>
                   <div className="ft-holdings-box">
                     YOUの注文: <b>{orderAction === "buy" ? "買い " + orderShares + "株" : orderAction === "sell" ? "売り " + orderShares + "株" : "様子見"}</b>
-                    {" ／ "}残COIN <b>{coins}</b>（このHACK消費見込み <b>{coinCostPreview()}</b>）
+                    {" ／ "}残COIN <b>{coins}</b>（この介入の消費見込み <b>{coinCostPreview()}</b>）
                   </div>
 
                   <div className="ft-hack-controls">
@@ -5825,7 +5864,7 @@ function TutorialModal({ onClose }) {
                       予測：反射 {reflectOn ? "ON" : "OFF"} → 妨害を相手に返します
                     </div>
                   ) : (
-                    <div className="ft-tut-preview">ガイドに従ってHACKを設定してください</div>
+                    <div className="ft-tut-preview">ガイドに従って介入を設定してください</div>
                   )}
                   <button type="button" className="ft-primary-btn danger" onClick={confirmHack}>COINを確定 ▶</button>
                 </div>
@@ -6082,7 +6121,7 @@ function TutorialModal({ onClose }) {
                         lines.push("相手から妨害を受け、YOUのNが+" + result.incoming + "されました。最終株価は" + result.myPrice + "円です。");
                       }
                       if (lines.length === 0) {
-                        lines.push("このTERNでは特別な市場HACKの価格差は発生しませんでした。YOUの最終株価は" + result.myPrice + "円です。");
+                        lines.push("このTERNでは特別な市場介入の価格差は発生しませんでした。YOUの最終株価は" + result.myPrice + "円です。");
                       }
                       lines.push("続けて「" + OPP + "」タブを開き、相手の清算結果も確認してください。");
                       return lines.map((t, i) => <p key={i} className="ft-tut-effect-p">{t}</p>);
@@ -6322,7 +6361,7 @@ function TutorialModal({ onClose }) {
                 <li><strong>不可</strong>：最初の3TERNは妨害・防衛・反射・AVANT-GARDE-妨害の使用不可、防衛と反射は連続で使用不可</li>
                 <li><strong>奥義：AVANT-GARDEの優先</strong>：複数奥義が競合したら総資産が少ない側が優先</li>
               </ul>
-              <p className="ft-tut-note">ここまでの5TERNで、注文とHACKの中心メカニクスは一通り触れました。</p>
+              <p className="ft-tut-note">ここまでの5TERNで、注文と介入の中心メカニクスは一通り触れました。</p>
             </div>
           ) : null}
 
@@ -7353,7 +7392,7 @@ function ActionPanel(props) {
         <div className="ft-panel-head">STEP 2 — 投資注文</div>
         <p className="ft-action-desc">
           現仮株価 <b className="ft-highlight">{yenNum(priceBefore)}円</b> を目安に、何株「買う」か「売る」かを決めます。
-          実際の株価は、この後の市場HACKで確定する<b>最終株価</b>で行われます。
+          実際の株価は、この後の市場介入で確定する<b>最終株価</b>で行われます。
           {endgameLock && (
             <span style={{ display: "block", marginTop: 8, color: "var(--ft-amber)" }}>
               終盤ルール（ラスト5TERN）: 様子見禁止 / 売りは保有の50%以上・買いは買付余力の50%以上から自由に選択
@@ -7534,7 +7573,7 @@ function ActionPanel(props) {
   if (phase === "hack") {
     return (
       <div className="ft-panel ft-action">
-        <div className="ft-panel-head">STEP 3 — 市場HACK（裏向き）</div>
+        <div className="ft-panel-head">STEP 3 — 市場介入（裏向き）</div>
         <p className="ft-action-desc">生涯COINを投入しますか？ 使えばもう戻りません。</p>
         <div className="ft-hack-controls">
           <div className="ft-hack-row" style={{ marginBottom: 8, opacity: 0.85, fontSize: 12 }}>
@@ -7847,7 +7886,7 @@ function ActionPanel(props) {
         })() : null}
         {multiHuman ? (
           <div style={{ fontSize: 12, marginBottom: 10, color: "var(--ft-amber)" }}>
-            {human.name} の市場HACK（{inputHumanIdx + 1}/{humanInputTotal}）
+            {human.name} の市場介入（{inputHumanIdx + 1}/{humanInputTotal}）
           </div>
         ) : null}
         {isOnline ? (
@@ -8305,7 +8344,7 @@ function TitlesModal({ titleSave, onClose, onEquip, canEquip }) {
   const cats = [
     { key: "A", label: "A 取引・資産" },
     { key: "B", label: "B COIN" },
-    { key: "C", label: "C 市場ハック" },
+    { key: "C", label: "C 市場介入" },
     { key: "D", label: "D 通算プレイ" },
     { key: "E", label: "E 総合" },
   ];
