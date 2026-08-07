@@ -1653,7 +1653,7 @@ function defaultAiLearn() {
       aggression: 0.82,
       protect: 0.94,
       heavy: 0.78,
-      stayTrap: 0.22,
+      stayTrap: 0.12,
       primeBuy: 0.72,
       highSell: 0.72,
       endgame: 0.78,
@@ -2008,31 +2008,28 @@ function aiDecideTrade(rnd, nStart, priceBefore, cash, holdings, refPrice, ctx) 
   edge += (Math.random() - 0.5) * noiseAmp;
   edge *= 0.9 + 0.25 * (ww.aggression || 0.55) * skill;
 
-  // --- 様子見＋後でCOIN妨害を狙う戦術 ---
-  // 人間が有利（CPUがビハインド）のとき積極的に様子見→妨害
-  // （COINフェーズでは全注文が見える）
-  let sabotageStayChance = behindHuman ? 0.48 : (aheadHuman ? 0.32 : 0.30);
-  sabotageStayChance *= 0.8 + 0.5 * (ww.stayTrap || 0.42);
+  // --- 様子見は控えめ（攻防を激しくするため） ---
+  // 妨害待ちの様子見は稀。基本は積極的に売買する
+  let sabotageStayChance = behindHuman ? 0.14 : (aheadHuman ? 0.10 : 0.12);
+  sabotageStayChance *= 0.55 + 0.25 * (ww.stayTrap || 0.22);
   if (behindHuman) {
-    // 人間有利時はエッジが中程度でも様子見を取りやすい
-    sabotageStayChance = Math.min(0.72, sabotageStayChance + 0.18 * skill);
+    sabotageStayChance = Math.min(0.22, sabotageStayChance + 0.04 * skill);
   }
-  // 防衛/反射クールダウン中は破産回避のため様子見（→妨害）を強く優先
+  // 防衛/反射クールダウン中のみ様子見をやや優先（破産回避）
   if (protectCd && !endgameLock) {
-    sabotageStayChance = Math.min(0.95, sabotageStayChance + 0.4);
+    sabotageStayChance = Math.min(0.45, sabotageStayChance + 0.18);
   }
-  // 人間が買いが多いと学習 → 様子見で妨害待ちを増やす
-  if ((humMem.buyRate || 0) > 0.4) sabotageStayChance = Math.min(0.75, sabotageStayChance + 0.12 * skill);
-  const stayEdgeLimit = behindHuman ? 1.25 : 0.85;
+  if ((humMem.buyRate || 0) > 0.4) sabotageStayChance = Math.min(0.28, sabotageStayChance + 0.04 * skill);
+  const stayEdgeLimit = behindHuman ? 0.55 : 0.40;
   if (!endgameLock && Math.abs(edge) < stayEdgeLimit && Math.random() < sabotageStayChance) {
     return { action: "stay", shares: 0 };
   }
-  // 終盤でリードしているときは様子見多め（ただしラスト5は禁止）
-  if (!endgameLock && progress > 0.7 && aheadHuman && Math.abs(edge) < 1.1 && Math.random() < 0.4) {
+  // 終盤リード時の様子見も抑制（ラスト5は禁止）
+  if (!endgameLock && progress > 0.7 && aheadHuman && Math.abs(edge) < 0.55 && Math.random() < 0.12) {
     return { action: "stay", shares: 0 };
   }
-  // 人間有利・終盤寄りでもラスト5以外は妨害用に様子見を残す
-  if (!endgameLock && behindHuman && progress > 0.55 && Math.abs(edge) < 1.4 && Math.random() < 0.35 + 0.15 * skill) {
+  // 人間有利・終盤寄りでも妨害待ち様子見はごく稀
+  if (!endgameLock && behindHuman && progress > 0.55 && Math.abs(edge) < 0.65 && Math.random() < 0.10 + 0.05 * skill) {
     return { action: "stay", shares: 0 };
   }
 
@@ -2064,17 +2061,17 @@ function aiDecideTrade(rnd, nStart, priceBefore, cash, holdings, refPrice, ctx) 
   }
 
   // --- 中程度のエッジでも厚め（振り切り寄り） ---
-  if (edge > 0.25 && maxBuyShares > 0) {
-    const pct = 0.75 + Math.random() * 0.2; // 75-95%
+  if (edge > 0.12 && maxBuyShares > 0) {
+    const pct = 0.78 + Math.random() * 0.2; // 78-98%
     return preferStayOrSafe({ action: "buy", shares: Math.max(1, Math.floor(maxBuyShares * pct))  });
   }
-  if (edge < -0.25 && holdings > 0) {
-    const pct = 0.75 + Math.random() * 0.2;
+  if (edge < -0.12 && holdings > 0) {
+    const pct = 0.78 + Math.random() * 0.2;
     return { action: "sell", shares: Math.max(1, Math.floor(holdings * pct)) };
   }
 
-  // エッジほぼなし → 様子見（COIN妨害待ち）※ラスト5は不可
-  if (!endgameLock && Math.random() < 0.55) return { action: "stay", shares: 0 };
+  // エッジほぼなしでも売買寄り（様子見は稀）※ラスト5は不可
+  if (!endgameLock && Math.random() < 0.18) return { action: "stay", shares: 0 };
   if (maxBuyShares > 0 && equityRatio < 0.4) {
     return preferStayOrSafe(clampOrder({ action: "buy", shares: Math.max(1, Math.floor(maxBuyShares * (0.7 + Math.random() * 0.25))) }, cash, holdings, priceBefore, turn, totalTurns));
   }
@@ -4286,7 +4283,7 @@ function FactorTrader() {
       return;
     }
     const next = turn + 1;
-    // ラスト5TERN突入時、破産していない生存者にCOIN10枚追加（終盤盛り上げ）
+    // ラスト5TERN突入時、破産していない生存者にCOIN5枚追加（終盤盛り上げ）
     if (isLastFiveTurns(next, totalTurns) && !isLastFiveTurns(turn, totalTurns)) {
       setPlayers((prev) =>
         prev.map((p) => {
@@ -4294,11 +4291,11 @@ function FactorTrader() {
           const stock = p.cards && p.cards.stock != null ? p.cards.stock : 0;
           return {
             ...p,
-            cards: { ...p.cards, stock: stock + 10 },
+            cards: { ...p.cards, stock: stock + 5 },
           };
         })
       );
-      const bonusText = "ラスト5TERN・ボーナス：COINが10枚配られました";
+      const bonusText = "ラスト5TERN・ボーナス：COINが5枚配られました";
       setEndgameBonusMsg(bonusText);
       pushLog("[ICON:alert] " + bonusText);
     }
@@ -4864,7 +4861,7 @@ function RulesContent() {
         <ul className="ft-rules-bullets">
           <li>様子見禁止（必ず買い or 売り）</li>
           <li>売りは保有の50%以上／買いは余力の50%以上</li>
-          <li>突入時、生存者全員にCOIN+10</li>
+          <li>突入時、生存者全員にCOIN+5</li>
           <li>COIN補充は使用不可</li>
         </ul>
       </div>
@@ -6357,7 +6354,7 @@ function TutorialModal({ onClose }) {
               <ul className="ft-rules-bullets">
                 <li><strong>帳消し</strong>：破産しそうな買いをCOIN10枚で強制キャンセル（COIN10枚ないときは破産・ゲームオーバー）</li>
                 <li><strong>COIN補充</strong>：枚数少のとき総資産の一部と交換（ラスト5TERNは不可）</li>
-                <li><strong>終盤ラスト5TERN</strong>：様子見禁止・売買は50%以上・突入時COIN+10</li>
+                <li><strong>終盤ラスト5TERN</strong>：様子見禁止・売買は50%以上・突入時COIN+5</li>
                 <li><strong>不可</strong>：最初の3TERNは妨害・防衛・反射・AVANT-GARDE-妨害の使用不可、防衛と反射は連続で使用不可</li>
                 <li><strong>奥義：AVANT-GARDEの優先</strong>：複数奥義が競合したら総資産が少ない側が優先</li>
               </ul>
