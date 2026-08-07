@@ -4869,8 +4869,8 @@ function TutorialModal({ onClose }) {
       id: 3,
       n: 90,
       title: "TERN 3：買い × 防衛",
-      marketTip: "N=90（2×3²×5）→ 仮株価13円。相手があなたへ妨害してきます。",
-      orderTip: "「買い」50株で確定してください（チュートリアルでは株数固定）。守らないと高い価格で買わされる可能性があります。",
+      marketTip: "N=90（2×3²×5）→ 仮株価13円。相手がYOUへ妨害してきます。",
+      orderTip: "「買い」50株で確定してください（チュートリアルでは株数固定）。CPU-練習は妨害をしてきます。守らないと高い価格で買わされる可能性があります。",
       hackTip: "「防衛」をON（5枚）にして、被妨害を無効化してください。",
       require: { action: "buy", shares: 50, defense: true },
       oppOrder: { action: "stay", shares: 0 },
@@ -4988,7 +4988,41 @@ function TutorialModal({ onClose }) {
     resetHackDraft();
     setResult(null);
     setConfirmedOrder(null);
+    setRevealView("you");
+    setViewedOppReveal(false);
+    if (i === 0 && logLines.length === 0) {
+      setLogLines(["チュートリアル開始 / YOU vs " + OPP + " / 5TERN"]);
+    }
     setPhase("market");
+  }
+
+  function goBackStep() {
+    if (phase === "order") {
+      setConfirmedOrder(null);
+      setPhase("market");
+      return;
+    }
+    if (phase === "hack") {
+      resetHackDraft();
+      setPhase("order");
+      return;
+    }
+    if (phase === "reveal") {
+      // 清算済みのため、同一TERNを資産を戻してやり直せない簡略化:
+      // 結果を閉じ、直前のHACK入力に戻すには資産復元が必要なため、同TERNの市場開示へは不可。
+      // 代わりに「このTERNの結果を維持したまま」戻れないので、注文確定前の段階のみ戻す。
+      flash("清算後は前の操作に戻れません。次へ進んでください");
+      return;
+    }
+    if (phase === "market") {
+      if (ternIdx > 0) {
+        // 前TERNの清算結果表示へは資産が既に進行済みのため、導入 or 警告
+        flash("前のTERNには戻れません（資産が確定済みです）");
+        return;
+      }
+      setPhase("intro");
+      return;
+    }
   }
 
   function coinCostPreview() {
@@ -5174,9 +5208,9 @@ function TutorialModal({ onClose }) {
         nextAvg = newHold > 0 ? ((nextAvg * nextHold) + costBuy) / newHold : 0;
         nextCash -= costBuy;
         nextHold = newHold;
-        notes.push("あなた：買い " + filled + " 株 @ " + myPrice + "円");
+        notes.push("YOU：買い " + filled + " 株 @ " + myPrice + "円");
       } else {
-        notes.push("あなた：買い不成立（資金不足）");
+        notes.push("YOU：買い不成立（資金不足）");
       }
     } else if (action === "sell") {
       filled = Math.min(orderShares, nextHold);
@@ -5185,10 +5219,10 @@ function TutorialModal({ onClose }) {
         nextCash += filled * myPrice;
         nextHold -= filled;
         if (nextHold <= 0) nextAvg = 0;
-        notes.push("あなた：売り " + filled + " 株 @ " + myPrice + "円");
+        notes.push("YOU：売り " + filled + " 株 @ " + myPrice + "円");
       }
     } else {
-      notes.push("あなた：様子見");
+      notes.push("YOU：様子見");
     }
 
     // 相手約定（資産も本番同様に更新）
@@ -5503,38 +5537,38 @@ function TutorialModal({ onClose }) {
                     traderNotes.push({
                       cls: r.quickNull ? "note-heavy" : "note-quick",
                       icon: "quick",
-                      text: "あなたが操作を " + r.myQuick + " 枚使用" + (r.quickNull ? " → 被妨害により無効化" : "（N+" + r.myQuick + "）"),
+                      text: "YOUが操作を " + r.myQuick + " 枚使用" + (r.quickNull ? " → 被妨害により無効化" : "（N+" + r.myQuick + "）"),
                     });
                   }
                   if (r.myHeavy) {
-                    traderNotes.push({ cls: "note-heavy", icon: "heavy", text: "あなたが妨害を使用 → " + OPP + " のN+1" });
+                    traderNotes.push({ cls: "note-heavy", icon: "heavy", text: "YOUが妨害を使用 → " + OPP + " のN+1" });
                   }
                   if (r.myDef) {
                     traderNotes.push({
                       cls: "note-defense",
                       icon: "defense",
-                      text: "あなたが防衛" + ((r.blocked || 0) > 0 ? "（妨害×" + r.blocked + "を無効化）" : ""),
+                      text: "YOUが防衛" + ((r.blocked || 0) > 0 ? "（妨害×" + r.blocked + "を無効化）" : ""),
                     });
                   }
                   if (r.myRef) {
                     traderNotes.push({
                       cls: "note-reflect",
                       icon: "reflect",
-                      text: "あなたが反射" + ((r.reflected || 0) > 0 ? "（妨害×" + r.reflected + "を返した）" : ""),
+                      text: "YOUが反射" + ((r.reflected || 0) > 0 ? "（妨害×" + r.reflected + "を返した）" : ""),
                     });
                   }
                   if (r.myAvant) {
                     traderNotes.push({
                       cls: "note-avant",
                       icon: "avant",
-                      text: "あなたが奥義AVANT-GARDE・" + (r.avantMode === "op" ? "操作" : "妨害") + "（指定 " + r.myAvantPrice + "円）",
+                      text: "YOUが奥義AVANT-GARDE・" + (r.avantMode === "op" ? "操作" : "妨害") + "（指定 " + r.myAvantPrice + "円）",
                     });
                   }
                   if ((oh.heavy || 0) > 0) {
                     traderNotes.push({
                       cls: "note-heavy",
                       icon: "heavy",
-                      text: OPP + "が妨害を使用" + ((r.blocked || 0) > 0 ? " → 防衛で無効" : (r.reflected || 0) > 0 ? " → 反射で返された" : " → あなたのN+1"),
+                      text: OPP + "が妨害を使用" + ((r.blocked || 0) > 0 ? " → 防衛で無効" : (r.reflected || 0) > 0 ? " → 反射で返された" : " → YOUのN+1"),
                     });
                   }
                   if ((oh.quick || 0) > 0) {
@@ -5548,11 +5582,11 @@ function TutorialModal({ onClose }) {
                     });
                   }
                   if (r.action === "buy" && (r.filled || 0) > 0) {
-                    traderNotes.push({ cls: "note-quick", text: "あなた：買い " + r.filled + "株 @ " + r.myPrice + "円" });
+                    traderNotes.push({ cls: "note-quick", text: "YOU：買い " + r.filled + "株 @ " + r.myPrice + "円" });
                   } else if (r.action === "sell" && (r.filled || 0) > 0) {
-                    traderNotes.push({ cls: "note-heavy", text: "あなた：売り " + r.filled + "株 @ " + r.myPrice + "円" });
+                    traderNotes.push({ cls: "note-heavy", text: "YOU：売り " + r.filled + "株 @ " + r.myPrice + "円" });
                   } else if (r.action === "stay") {
-                    traderNotes.push({ cls: "", text: "あなた：様子見" });
+                    traderNotes.push({ cls: "", text: "YOU：様子見" });
                   }
                   if (r.oppOrder && r.oppOrder.action === "buy") {
                     traderNotes.push({
@@ -5587,7 +5621,7 @@ function TutorialModal({ onClose }) {
                       <div className="ft-players-grid">
                         <div className={"ft-player-card human" + meGlow}>
                           <span className="ft-pc-rank">{rankMe}位</span>
-                          <div className="ft-pc-name"><User size={13} /> あなた</div>
+                          <div className="ft-pc-name"><User size={13} /> YOU</div>
                           <div className="ft-pc-cash">{yen(meTV)}</div>
                           <div className="ft-pc-holdings">現金{yen(meCash)} ／ {sharesFmt(meHold)}株{meHold > 0 ? "(@" + Number(meAvg || 0).toFixed(1) + ")" : ""}</div>
                           <div className="ft-pc-cards"><Coin size={12} className="icon-coin" /> {meCoins}</div>
@@ -5636,7 +5670,10 @@ function TutorialModal({ onClose }) {
                 <div className="ft-panel ft-action" style={{ margin: 0 }}>
                   <div className="ft-panel-head">STEP 1 — 市場開示</div>
                   <p className="ft-action-desc">{tern.marketTip}</p>
-                  <button type="button" className="ft-primary-btn" onClick={() => setPhase("order")}>注文フェーズへ ▶</button>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button type="button" className="ft-modal-cancel" style={{ flex: "0 0 auto", padding: "12px 14px" }} onClick={goBackStep}>◀ 戻る</button>
+                    <button type="button" className="ft-primary-btn" style={{ flex: 1 }} onClick={() => setPhase("order")}>注文フェーズへ ▶</button>
+                  </div>
                 </div>
               ) : null}
 
@@ -5708,7 +5745,10 @@ function TutorialModal({ onClose }) {
                     </div>
                     );
                   })() : null}
-                  <button type="button" className="ft-primary-btn" onClick={confirmOrder}>注文を確定 ▶</button>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button type="button" className="ft-modal-cancel" style={{ flex: "0 0 auto", padding: "12px 14px" }} onClick={goBackStep}>◀ 戻る</button>
+                    <button type="button" className="ft-primary-btn" style={{ flex: 1 }} onClick={confirmOrder}>注文を確定 ▶</button>
+                  </div>
                 </div>
               ) : null}
 
@@ -5725,7 +5765,7 @@ function TutorialModal({ onClose }) {
                 <div className="ft-panel ft-action" style={{ margin: 0 }}>
                   <div className="ft-panel-head">STEP 3 — 市場HACK</div>
                   <div className="ft-holdings-box">
-                    あなたの注文: <b>{orderAction === "buy" ? "買い " + orderShares + "株" : orderAction === "sell" ? "売り " + orderShares + "株" : "様子見"}</b>
+                    YOUの注文: <b>{orderAction === "buy" ? "買い " + orderShares + "株" : orderAction === "sell" ? "売り " + orderShares + "株" : "様子見"}</b>
                     {" ／ "}残COIN <b>{coins}</b>（このHACK消費見込み <b>{coinCostPreview()}</b>）
                   </div>
 
@@ -5798,7 +5838,10 @@ function TutorialModal({ onClose }) {
                   ) : (
                     <div className="ft-tut-preview">ガイドに従ってHACKを設定してください</div>
                   )}
-                  <button type="button" className="ft-primary-btn danger" onClick={confirmHack}>COINを確定 ▶</button>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button type="button" className="ft-modal-cancel" style={{ flex: "0 0 auto", padding: "12px 14px" }} onClick={goBackStep}>◀ 戻る</button>
+                    <button type="button" className="ft-primary-btn danger" style={{ flex: 1 }} onClick={confirmHack}>COINを確定 ▶</button>
+                  </div>
                 </div>
                 );
               })() : null}
@@ -5946,7 +5989,7 @@ function TutorialModal({ onClose }) {
                       </b>
                     </div>
                     <div className="ft-reveal-row price">
-                      <span>あなたの株価</span>
+                      <span>YOUの株価</span>
                       <b>
                         {result.myPrice}円
                         <span className="ft-factor-note"> {factorSumFormula(result.myN)}</span>
@@ -5954,7 +5997,7 @@ function TutorialModal({ onClose }) {
                     </div>
                   </div>
 
-                  <div className="ft-panel-head" style={{ marginTop: 4 }}>あなたの株価結果</div>
+                  <div className="ft-panel-head" style={{ marginTop: 4 }}>YOUの株価結果</div>
                   <div className="ft-reveal-box">
                     <div className="ft-reveal-row">
                       <span>注文</span>
@@ -6019,7 +6062,7 @@ function TutorialModal({ onClose }) {
                             lines.push("操作を" + result.myQuick + "枚使用しました。操作は自分のNにだけ作用し、自分の最終株価は" + result.myPrice + "円です。");
                           }
                         } else {
-                          lines.push("操作を" + result.myQuick + "枚使用しました。操作は自分のNにだけ+するため、相手の株価には影響しません。あなたの最終株価は" + result.myPrice + "円です。");
+                          lines.push("操作を" + result.myQuick + "枚使用しました。操作は自分のNにだけ+するため、相手の株価には影響しません。YOUの最終株価は" + result.myPrice + "円です。");
                         }
                       }
                       if ((result.myHeavy || 0) > 0) {
@@ -6027,16 +6070,16 @@ function TutorialModal({ onClose }) {
                       }
                       if (result.myDef) {
                         if ((result.blocked || 0) > 0) {
-                          lines.push("防衛を使用し、相手からの妨害×" + result.blocked + "を無効化しました。防衛中は被妨害でNが増えないため、あなたの株価は操作・市場の結果どおり" + result.myPrice + "円です。");
+                          lines.push("防衛を使用し、相手からの妨害×" + result.blocked + "を無効化しました。防衛中は被妨害でNが増えないため、YOUの株価は操作・市場の結果どおり" + result.myPrice + "円です。");
                         } else {
-                          lines.push("防衛を使用しました。このTERNは相手から妨害が来なかったため、防衛の無効化対象はありませんでした。あなたの最終株価は" + result.myPrice + "円です。");
+                          lines.push("防衛を使用しました。このTERNは相手から妨害が来なかったため、防衛の無効化対象はありませんでした。YOUの最終株価は" + result.myPrice + "円です。");
                         }
                       }
                       if (result.myRef) {
                         if ((result.reflected || 0) > 0) {
-                          lines.push("反射を使用し、相手からの妨害×" + result.reflected + "を相手へ返しました。反射した妨害は自分には残らず、相手のNに加算されます。あなたの最終株価は" + result.myPrice + "円です。");
+                          lines.push("反射を使用し、相手からの妨害×" + result.reflected + "を相手へ返しました。反射した妨害は自分には残らず、相手のNに加算されます。YOUの最終株価は" + result.myPrice + "円です。");
                         } else {
-                          lines.push("反射を使用しました。このTERNは反射する妨害がなかったため、効果は発生しませんでした。あなたの最終株価は" + result.myPrice + "円です。");
+                          lines.push("反射を使用しました。このTERNは反射する妨害がなかったため、効果は発生しませんでした。YOUの最終株価は" + result.myPrice + "円です。");
                         }
                       }
                       if (result.myAvant && result.avantMode === "op") {
@@ -6044,16 +6087,16 @@ function TutorialModal({ onClose }) {
                           const diff = result.basePrice - result.myPrice;
                           lines.push("奥義・AVANT-GARDE-操作で株価を" + result.myPrice + "円に指定しました。仮株価" + result.basePrice + "円よりも" + Math.max(0, diff) + "円安い価格で" + result.filled + "株を購入できました（約" + Math.max(0, diff * result.filled).toLocaleString() + "円分の差）。奥義は自分の約定株価だけを強制します。");
                         } else {
-                          lines.push("奥義・AVANT-GARDE-操作により、あなたの最終株価は指定どおり" + result.myPrice + "円になりました。奥義は自分の約定にだけ作用します。");
+                          lines.push("奥義・AVANT-GARDE-操作により、YOUの最終株価は指定どおり" + result.myPrice + "円になりました。奥義は自分の約定にだけ作用します。");
                         }
                       } else if (result.myAvant && result.avantMode === "sab") {
-                        lines.push("奥義・AVANT-GARDE-妨害を使用しました。相手の最終株価を" + (result.myAvantPrice || result.oppPrice) + "円に強制します（相手が防衛している場合は無効）。あなた自身の株価には影響しません。");
+                        lines.push("奥義・AVANT-GARDE-妨害を使用しました。相手の最終株価を" + (result.myAvantPrice || result.oppPrice) + "円に強制します（相手が防衛している場合は無効）。YOU自身の株価には影響しません。");
                       }
                       if ((result.incoming || 0) > 0) {
-                        lines.push("相手から妨害を受け、あなたのNが+" + result.incoming + "されました。最終株価は" + result.myPrice + "円です。");
+                        lines.push("相手から妨害を受け、YOUのNが+" + result.incoming + "されました。最終株価は" + result.myPrice + "円です。");
                       }
                       if (lines.length === 0) {
-                        lines.push("このTERNでは特別な市場HACKの価格差は発生しませんでした。あなたの最終株価は" + result.myPrice + "円です。");
+                        lines.push("このTERNでは特別な市場HACKの価格差は発生しませんでした。YOUの最終株価は" + result.myPrice + "円です。");
                       }
                       lines.push("続けて「" + OPP + "」タブを開き、相手の清算結果も確認してください。");
                       return lines.map((t, i) => <p key={i} className="ft-tut-effect-p">{t}</p>);
@@ -6270,14 +6313,14 @@ function TutorialModal({ onClose }) {
                 </div>
               ) : null}
 
-              {logLines.length > 0 ? (
-                <div className="ft-panel ft-logpanel" style={{ margin: 0 }}>
-                  <div className="ft-panel-head">TRANSACTION LOG</div>
-                  <div className="ft-log-scroll" style={{ maxHeight: 160 }}>
-                    {logLines.map((l, i) => <div key={i} className="ft-log-line">{l}</div>)}
-                  </div>
+              <div className="ft-panel ft-logpanel" style={{ margin: 0 }}>
+                <div className="ft-panel-head">TRANSACTION LOG</div>
+                <div className="ft-log-scroll" style={{ maxHeight: 160 }}>
+                  {logLines.length > 0
+                    ? logLines.map((l, i) => <div key={i} className="ft-log-line">{l}</div>)
+                    : <div className="ft-log-line" style={{ opacity: 0.65 }}>ログはここに表示されます</div>}
                 </div>
-              ) : null}
+              </div>
               </div>{/* ft-col-right */}
               </div>{/* ft-main */}
             </div>
@@ -7830,7 +7873,7 @@ function ActionPanel(props) {
                 {!humanHackDraft.avant && !humanHackDraft.avantSab && humanHackDraft.quick > 0 ? (
                   <span style={{ display: "block", marginBottom: 8 }}>
                     <b style={{ color: "var(--ft-blue)" }}>操作</b>：自分の株価を操作（被妨害時は無効）<br />
-                    あなたの株価目安 <b>{yenNum(selfPrice)}円</b>
+                    YOUの株価目安 <b>{yenNum(selfPrice)}円</b>
                     {baseP !== selfPrice ? `（操作前 ${yenNum(baseP)}円）` : ""}
                     <br />
                     自分のみ作用。
@@ -8098,20 +8141,20 @@ function ActionPanel(props) {
             </div>
           )}
           <div className="ft-reveal-row final">
-            <span>あなたの N</span>
+            <span>YOUの N</span>
             <b>
               {view.nFinal.toLocaleString()}
               <span className="ft-factor-note">（{factorString(view.nFinal)}）</span>
             </b>
           </div>
           <div className="ft-reveal-row price">
-            <span>あなたの株価</span>
+            <span>YOUの株価</span>
             <b>{yenNum(view.priceFinal)}円</b>
             <span className="ft-factor-note">{factorSumFormula(view.nFinal)}</span>
           </div>
         </div>
 
-        <div className="ft-panel-head" style={{ marginTop: 4 }}>あなたの株価結果</div>
+        <div className="ft-panel-head" style={{ marginTop: 4 }}>YOUの株価結果</div>
         <div className="ft-reveal-box">
           <div className="ft-reveal-row">
             <span>注文</span>
