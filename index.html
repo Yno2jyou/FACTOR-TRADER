@@ -1653,7 +1653,7 @@ function defaultAiLearn() {
       aggression: 0.82,
       protect: 0.94,
       heavy: 0.78,
-      stayTrap: 0.12,
+      stayTrap: 0.28,
       primeBuy: 0.72,
       highSell: 0.72,
       endgame: 0.78,
@@ -2008,28 +2008,30 @@ function aiDecideTrade(rnd, nStart, priceBefore, cash, holdings, refPrice, ctx) 
   edge += (Math.random() - 0.5) * noiseAmp;
   edge *= 0.9 + 0.25 * (ww.aggression || 0.55) * skill;
 
-  // --- 様子見は控えめ（攻防を激しくするため） ---
-  // 妨害待ちの様子見は稀。基本は積極的に売買する
-  let sabotageStayChance = behindHuman ? 0.14 : (aheadHuman ? 0.10 : 0.12);
-  sabotageStayChance *= 0.55 + 0.25 * (ww.stayTrap || 0.22);
+  // --- 様子見＋後でCOIN妨害を狙う戦術（意図的に維持） ---
+  // 強い売買シグナルが無いときは様子見→介入で妨害、という攻防を作る
+  let sabotageStayChance = behindHuman ? 0.42 : (aheadHuman ? 0.28 : 0.26);
+  sabotageStayChance *= 0.75 + 0.45 * (ww.stayTrap || 0.22);
   if (behindHuman) {
-    sabotageStayChance = Math.min(0.22, sabotageStayChance + 0.04 * skill);
+    // 人間有利時はエッジが中程度でも様子見→妨害を取りやすい
+    sabotageStayChance = Math.min(0.68, sabotageStayChance + 0.16 * skill);
   }
-  // 防衛/反射クールダウン中のみ様子見をやや優先（破産回避）
+  // 防衛/反射クールダウン中は破産回避のため様子見（→妨害）を優先
   if (protectCd && !endgameLock) {
-    sabotageStayChance = Math.min(0.45, sabotageStayChance + 0.18);
+    sabotageStayChance = Math.min(0.92, sabotageStayChance + 0.35);
   }
-  if ((humMem.buyRate || 0) > 0.4) sabotageStayChance = Math.min(0.28, sabotageStayChance + 0.04 * skill);
-  const stayEdgeLimit = behindHuman ? 0.55 : 0.40;
+  // 人間が買いが多いと学習 → 様子見で妨害待ちを増やす
+  if ((humMem.buyRate || 0) > 0.4) sabotageStayChance = Math.min(0.70, sabotageStayChance + 0.10 * skill);
+  const stayEdgeLimit = behindHuman ? 1.15 : 0.78;
   if (!endgameLock && Math.abs(edge) < stayEdgeLimit && Math.random() < sabotageStayChance) {
     return { action: "stay", shares: 0 };
   }
-  // 終盤リード時の様子見も抑制（ラスト5は禁止）
-  if (!endgameLock && progress > 0.7 && aheadHuman && Math.abs(edge) < 0.55 && Math.random() < 0.12) {
+  // 終盤でリードしているときは様子見多め（ただしラスト5は禁止）
+  if (!endgameLock && progress > 0.7 && aheadHuman && Math.abs(edge) < 1.0 && Math.random() < 0.32) {
     return { action: "stay", shares: 0 };
   }
-  // 人間有利・終盤寄りでも妨害待ち様子見はごく稀
-  if (!endgameLock && behindHuman && progress > 0.55 && Math.abs(edge) < 0.65 && Math.random() < 0.10 + 0.05 * skill) {
+  // 人間有利・終盤寄りでも妨害用に様子見を残す
+  if (!endgameLock && behindHuman && progress > 0.55 && Math.abs(edge) < 1.25 && Math.random() < 0.30 + 0.12 * skill) {
     return { action: "stay", shares: 0 };
   }
 
@@ -2070,8 +2072,8 @@ function aiDecideTrade(rnd, nStart, priceBefore, cash, holdings, refPrice, ctx) 
     return { action: "sell", shares: Math.max(1, Math.floor(holdings * pct)) };
   }
 
-  // エッジほぼなしでも売買寄り（様子見は稀）※ラスト5は不可
-  if (!endgameLock && Math.random() < 0.18) return { action: "stay", shares: 0 };
+  // エッジほぼなし → 様子見（COIN妨害待ち）※ラスト5は不可
+  if (!endgameLock && Math.random() < 0.42) return { action: "stay", shares: 0 };
   if (maxBuyShares > 0 && equityRatio < 0.4) {
     return preferStayOrSafe(clampOrder({ action: "buy", shares: Math.max(1, Math.floor(maxBuyShares * (0.7 + Math.random() * 0.25))) }, cash, holdings, priceBefore, turn, totalTurns));
   }
@@ -4510,6 +4512,7 @@ function FactorTrader() {
           onJoinRoom={joinOnlineRoom}
           onOpenTitles={() => setShowTitlesModal(true)}
           equippedTitleName={equippedTitleNamesLabel(titleSave)}
+          equippedTitleIds={equippedTitleIds(titleSave)}
         />
         {showTitlesModal ? (
           <TitlesModal
@@ -6406,7 +6409,7 @@ function TutorialModal({ onClose }) {
 
 
 
-function SetupAccountMenu({ onProgressApplied }) {
+function SetupAccountMenu({ onProgressApplied, equippedTitleIds }) {
   const [open, setOpen] = React.useState(false);
   const [view, setView] = React.useState("menu"); // menu | login | register | otp
   const [userId, setUserId] = React.useState("");
@@ -6544,6 +6547,7 @@ function SetupAccountMenu({ onProgressApplied }) {
     }
   }
 
+  const eqIds = (Array.isArray(equippedTitleIds) ? equippedTitleIds : []).filter((id) => id && TITLE_BY_ID[id]).slice(0, MAX_EQUIPPED_TITLES);
   return (
     <div className="ft-account-menu" ref={rootRef}>
       <button
@@ -6555,6 +6559,13 @@ function SetupAccountMenu({ onProgressApplied }) {
       >
         {loggedId ? "ACCOUNT" : "LOGIN"}
       </button>
+      {eqIds.length > 0 ? (
+        <div className="ft-account-equipped-titles" title={eqIds.map((id) => (TITLE_BY_ID[id] || {}).name).filter(Boolean).join(" / ")}>
+          {eqIds.map((id) => (
+            <TitleBadge key={id} titleId={id} size={18} />
+          ))}
+        </div>
+      ) : null}
       {open ? (
         <>
         <div className="ft-account-menu-backdrop" aria-hidden="true" onClick={() => setOpen(false)} />
@@ -6642,7 +6653,7 @@ function SetupAccountMenu({ onProgressApplied }) {
   );
 }
 
-function SetupScreen({ playerCount, setPlayerCount, humanCount, setHumanCount, humanNames, setHumanNames, seriousMode, setSeriousMode, onStart, playMode, setPlayMode, myName, setMyName, joinCodeInput, setJoinCodeInput, netStatus, onCreateRoom, onJoinRoom, onOpenTitles, equippedTitleName }) {
+function SetupScreen({ playerCount, setPlayerCount, humanCount, setHumanCount, humanNames, setHumanNames, seriousMode, setSeriousMode, onStart, playMode, setPlayMode, myName, setMyName, joinCodeInput, setJoinCodeInput, netStatus, onCreateRoom, onJoinRoom, onOpenTitles, equippedTitleName, equippedTitleIds }) {
   const baseCoins = CARDS_TABLE[playerCount] || CARDS_TABLE[3];
   const coins = baseCoins + (seriousMode ? SERIOUS_COIN_BONUS : 0);
   const hc = Math.max(1, Math.min(playerCount, Number(humanCount) || 1));
@@ -6688,6 +6699,7 @@ function SetupScreen({ playerCount, setPlayerCount, humanCount, setHumanCount, h
           </div>
           <div className="ft-setup-header-right">
                     <SetupAccountMenu
+            equippedTitleIds={equippedTitleIds}
             onProgressApplied={() => {
               if (typeof window !== "undefined" && window.__ftReloadProgress) window.__ftReloadProgress();
               try {
@@ -8651,6 +8663,23 @@ const CSS = `
 .ft-account-menu {
   position: relative;
   z-index: 50;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+.ft-account-equipped-titles {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 4px;
+  max-width: 120px;
+  min-height: 22px;
+}
+.ft-account-equipped-titles .ft-title-badge-icon {
+  width: 22px;
+  height: 22px;
 }
 .ft-account-menu-btn {
   min-width: 64px;
