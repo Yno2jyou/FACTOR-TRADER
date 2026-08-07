@@ -585,7 +585,7 @@ function loadTitleSave() {
   try {
     const raw = localStorage.getItem(FT_TITLE_KEY);
     if (!raw) {
-      return { unlocked: {}, equipped: [], avantTotal: 0, comebackTotal: 0, coinRichTotal: 0, coinPoorTotal: 0, gamesPlayed: 0 };
+      return { unlocked: {}, equipped: [], equippedAt: 0, avantTotal: 0, comebackTotal: 0, coinRichTotal: 0, coinPoorTotal: 0, gamesPlayed: 0 };
     }
     const o = JSON.parse(raw);
     // 旧「連続」データを累計へ引き継ぎ
@@ -598,6 +598,7 @@ function loadTitleSave() {
     return {
       unlocked: unlocked,
       equipped: normalizeEquipped(o.equipped),
+      equippedAt: Math.max(0, Number(o.equippedAt) || 0),
       avantTotal: Math.max(0, Number(o.avantTotal) || 0),
       comebackTotal: comebackTotal,
       coinRichTotal: richLegacy,
@@ -605,7 +606,7 @@ function loadTitleSave() {
       gamesPlayed: Math.max(0, Number(o.gamesPlayed) || 0),
     };
   } catch (e) {
-    return { unlocked: {}, equipped: [], avantTotal: 0, comebackTotal: 0, coinRichTotal: 0, coinPoorTotal: 0, gamesPlayed: 0 };
+    return { unlocked: {}, equipped: [], equippedAt: 0, avantTotal: 0, comebackTotal: 0, coinRichTotal: 0, coinPoorTotal: 0, gamesPlayed: 0 };
   }
 }
 
@@ -1027,6 +1028,9 @@ function aiDecideCoinRescue(p, order, nStart, priceBefore, allPlayers, allOrders
   const endgame = isLastFiveTurns(turn, totalTurns);
   const st = p.cards && p.cards.stock != null ? p.cards.stock : 0;
   if (endgame || st > 5) return "";
+  // ラスト5直前は防衛用に補充を積極化
+  const remaining = Math.max(0, (Number(totalTurns) || 0) - (Number(turn) || 0) + 1);
+  const preEndgame = remaining > 5 && remaining <= 8;
   const ord = order || { action: "stay", shares: 0 };
   let need = false;
   if (ord.action === "buy" && (ord.shares || 0) >= 1) {
@@ -1052,11 +1056,13 @@ function aiDecideCoinRescue(p, order, nStart, priceBefore, allPlayers, allOrders
   let choice = "";
   if (st === 0) {
     if (need) choice = Math.random() < 0.97 ? "zero10" : "half5";
+    else if (preEndgame) choice = Math.random() < 0.95 ? "zero10" : "half5";
     else if (humanAhead || humanTrading || staying) choice = Math.random() < 0.88 ? "zero10" : (Math.random() < 0.7 ? "half5" : "");
     else if (trading) choice = Math.random() < 0.82 ? "zero10" : (Math.random() < 0.55 ? "half5" : "");
     else choice = Math.random() < 0.7 ? "zero10" : (Math.random() < 0.4 ? "half5" : "");
   } else if (st <= 5) {
     if (need) choice = Math.random() < 0.95 ? "half5" : "";
+    else if (preEndgame) choice = Math.random() < 0.92 ? "half5" : "";
     else if (humanAhead || humanTrading || staying) choice = Math.random() < 0.85 ? "half5" : "";
     else if (trading) choice = Math.random() < 0.75 ? "half5" : "";
     else choice = Math.random() < 0.55 ? "half5" : "";
@@ -1169,11 +1175,30 @@ function mergeTitleSaves(a, b) {
   });
   const equippedA = normalizeEquipped(A.equipped);
   const equippedB = normalizeEquipped(B.equipped);
-  let equipped = equippedA.length ? equippedA : equippedB;
+  const atA = Math.max(0, Number(A.equippedAt) || 0);
+  const atB = Math.max(0, Number(B.equippedAt) || 0);
+  // 装備は「後から変更した側」を優先（同期で装備だけ戻る問題を防ぐ）
+  let equipped;
+  if (atA !== atB) {
+    equipped = atA > atB ? equippedA : equippedB;
+  } else if (equippedA.length && equippedB.length) {
+    // 時刻不明・同値: 両方の先頭からユニーク結合（最大3）
+    const seen = {};
+    equipped = [];
+    equippedA.concat(equippedB).forEach((id) => {
+      if (id && !seen[id] && equipped.length < MAX_EQUIPPED_TITLES) {
+        seen[id] = true;
+        equipped.push(id);
+      }
+    });
+  } else {
+    equipped = equippedA.length ? equippedA : equippedB;
+  }
   equipped = normalizeEquipped(equipped.filter((id) => unlocked[id]));
   return {
     unlocked,
     equipped,
+    equippedAt: Math.max(atA, atB),
     avantTotal: Math.max(0, Number(A.avantTotal) || 0, Number(B.avantTotal) || 0),
     comebackTotal: Math.max(0, Number(A.comebackTotal) || 0, Number(B.comebackTotal) || 0),
     coinRichTotal: Math.max(0, Number(A.coinRichTotal) || 0, Number(B.coinRichTotal) || 0),
@@ -3179,23 +3204,24 @@ function aiDecideCards(cards, turn, totalTurns, order, nStart, priceBefore, allO
     const selfGainScale = (selfAction === "buy" || selfAction === "sell")
       ? selfShares * Math.max(1, Math.abs((priceBefore || 1) - (selfAction === "buy" ? 1 : 99999)))
       : 0;
+    // 奥義妨害(99999)は「防衛されなければ破産確定の大口買い」があるときだけ
     let pickSab = false;
-    if (sabChance > 0 && bestSabScore > 0) {
-      if (playerN < 5) {
-        // 少人数: 他者への損害が自分の奥義利益を明確に上回るときだけ妨害
-        const clearSabWin = bestSabScore >= selfGainScale * 1.15 || selfAction === "stay";
-        const marginal = bestSabScore >= selfGainScale * 0.85 && sabChance >= avChance + 0.12;
-        pickSab = clearSabWin || marginal;
-      } else {
-        // 多人数: 傾向に沿いつつ状況も見る
-        if (styleBias > 0) {
-          pickSab = selfAction === "stay" || bestSabScore >= selfGainScale * 0.45 || sabChance >= avChance;
-        } else {
-          pickSab = (selfAction === "stay" && bestSabScore >= 20000) || bestSabScore >= selfGainScale * 1.4;
-        }
-      }
+    let hasBankruptBuyTarget = false;
+    (playersList || []).forEach((pl) => {
+      if (!pl || String(pl.id) === String(selfId) || pl.isBankrupt) return;
+      const tOrder = allOrders && allOrders[pl.id];
+      if (!tOrder || tOrder.action !== "buy" || (tOrder.shares || 0) < 1) return;
+      const forced = 99999;
+      const req = (tOrder.shares || 0) * forced;
+      const liq = (pl.cash || 0) + (pl.holdings || 0) * forced;
+      if (req > liq + 1e-9) hasBankruptBuyTarget = true;
+    });
+    if (sabChance > 0 && bestSabScore > 0 && hasBankruptBuyTarget) {
+      // 破産確定の大口買いがある → 高確率で99999妨害
+      pickSab = true;
+      sabChance = Math.max(sabChance, 0.85);
     }
-    // 鉄則: 破産回避が必要な大口買いでは、妨害型奥義より操作型奥義（自株価固定）を優先
+    // 鉄則: 自分が破産回避必要な大口買いでは操作型奥義を優先
     if (mustProtectBankruptcy && selfAction === "buy") {
       pickSab = false;
       if (stockLeft >= 10 && selfPl && !selfPl.avantUsed) {
@@ -3203,7 +3229,7 @@ function aiDecideCards(cards, turn, totalTurns, order, nStart, priceBefore, allO
         avPrice = 1;
       }
     }
-    if (pickSab && !mustProtectBankruptcy && Math.random() < Math.min(0.98, Math.max(sabChance, playerN < 5 ? 0.28 : 0.35))) {
+    if (pickSab && !mustProtectBankruptcy && hasBankruptBuyTarget && Math.random() < Math.min(0.98, Math.max(sabChance, 0.82))) {
       avantSab = 1;
       avantPrice = 99999;
       bestQuick = 0;
@@ -3224,6 +3250,41 @@ function aiDecideCards(cards, turn, totalTurns, order, nStart, priceBefore, allO
 
   // 買い取り下げは禁止。破産回避は防衛・反射・奥義で行う
   cancelBuyToAvoidBankruptcy = false;
+
+  // ラスト5TERN: 人間のAVANT-GARDE-妨害に備え、防衛用COINを最低5枚温存
+  const endFive = isLastFiveTurns(turn, totalTurns);
+  if (endFive && !avant && !avantSab) {
+    const humanAlive = (playersList || []).some((pl) => pl && !pl.isAI && !pl.isBankrupt);
+    if (humanAlive) {
+      // 防衛を優先確保
+      let spent = bestQuick + (bestHeavy > 0 ? 5 : 0) + (useDefense ? 5 : 0) + (useReflect ? 5 : 0);
+      let left = stock - spent;
+      if (left < 5 && stock >= 5) {
+        // 操作・妨害を削って防衛枠5を残す
+        if (bestHeavy > 0 && stock - bestQuick - 5 >= 5) {
+          // keep heavy, cut quick
+          bestQuick = Math.max(0, stock - 5 - 5);
+        } else {
+          bestHeavy = 0;
+          bestQuick = Math.max(0, Math.min(bestQuick, stock - 5));
+        }
+        spent = bestQuick + (bestHeavy > 0 ? 5 : 0) + (useDefense ? 5 : 0) + (useReflect ? 5 : 0);
+        left = stock - spent;
+      }
+      if (stock - bestQuick - (bestHeavy > 0 ? 5 : 0) >= 5) {
+        // 人間が大口買い・売りをしていなくても終盤は防衛を厚めに
+        if (!useDefense && !useReflect) {
+          useDefense = 1;
+          useReflect = 0;
+        }
+        // 予算再調整
+        if (bestQuick + (bestHeavy > 0 ? 5 : 0) + 5 > stock) {
+          bestHeavy = 0;
+          bestQuick = Math.max(0, stock - 5);
+        }
+      }
+    }
+  }
 
   return { quick: bestQuick, heavy: bestHeavy, defense: useDefense, reflect: useReflect, avant: avant, avantSab: avantSab, avantPrice: avantPrice, cancelBuyToAvoidBankruptcy: !!cancelBuyToAvoidBankruptcy, mustProtectBankruptcy: !!mustProtectBankruptcy };
 }
@@ -4903,7 +4964,7 @@ function FactorTrader() {
                 // 満杯時は先頭を外して追加
                 list = list.slice(1).concat([id]);
               }
-              const next = { ...titleSave, equipped: list };
+              const next = { ...titleSave, equipped: list, equippedAt: Date.now() };
               setTitleSave(next);
               saveTitleSave(next);
             }}
@@ -5065,7 +5126,7 @@ function FactorTrader() {
                 // 満杯時は先頭を外して追加
                 list = list.slice(1).concat([id]);
               }
-              const next = { ...titleSave, equipped: list };
+              const next = { ...titleSave, equipped: list, equippedAt: Date.now() };
               setTitleSave(next);
               saveTitleSave(next);
             }}
