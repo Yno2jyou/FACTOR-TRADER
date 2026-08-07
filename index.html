@@ -5708,7 +5708,7 @@ function TutorialModal({ onClose }) {
                     </div>
                     );
                   })() : null}
-                  <button type="button" className="ft-start-btn" onClick={confirmOrder}>注文を確定 → HACKへ</button>
+                  <button type="button" className="ft-primary-btn" onClick={confirmOrder}>注文を確定 ▶</button>
                 </div>
               ) : null}
 
@@ -5798,7 +5798,7 @@ function TutorialModal({ onClose }) {
                   ) : (
                     <div className="ft-tut-preview">ガイドに従ってHACKを設定してください</div>
                   )}
-                  <button type="button" className="ft-start-btn" onClick={confirmHack}>HACK確定 → 清算</button>
+                  <button type="button" className="ft-primary-btn danger" onClick={confirmHack}>COINを確定 ▶</button>
                 </div>
                 );
               })() : null}
@@ -6259,6 +6259,14 @@ function TutorialModal({ onClose }) {
                   </div>
                     </>
                   )}
+                  <button
+                    type="button"
+                    className="ft-primary-btn"
+                    style={{ marginTop: 12 }}
+                    onClick={nextAfterReveal}
+                  >
+                    {ternIdx < TERNS.length - 1 ? "次のTERNへ ▶" : "補足ルールへ ▶"}
+                  </button>
                 </div>
               ) : null}
 
@@ -6301,6 +6309,7 @@ function TutorialModal({ onClose }) {
           ) : null}
         </div>
 
+        {(phase === "intro" || phase === "lesson" || phase === "summary") ? (
         <div className="ft-tutorial-footer">
           <div className="ft-tutorial-nav">
             {phase === "intro" ? (
@@ -6308,23 +6317,6 @@ function TutorialModal({ onClose }) {
                 <button type="button" className="ft-modal-cancel" onClick={onClose}>閉じる</button>
                 <button type="button" className="ft-modal-confirm" style={{ background: "var(--ft-accent)", color: "#041008", borderColor: "var(--ft-accent)" }} onClick={() => startTern(0)}>体験を始める</button>
               </>
-            ) : null}
-            {phase === "market" ? (
-              <>
-                <button type="button" className="ft-modal-cancel" onClick={() => (ternIdx === 0 ? setPhase("intro") : startTern(ternIdx - 1))}>戻る</button>
-                <button type="button" className="ft-modal-confirm" style={{ background: "var(--ft-accent)", color: "#041008", borderColor: "var(--ft-accent)" }} onClick={() => setPhase("order")}>注文へ</button>
-              </>
-            ) : null}
-            {phase === "order" ? (
-              <button type="button" className="ft-modal-cancel" style={{ flex: 1 }} onClick={() => setPhase("market")}>開示に戻る</button>
-            ) : null}
-            {phase === "hack" ? (
-              <button type="button" className="ft-modal-cancel" style={{ flex: 1 }} onClick={() => setPhase("order")}>注文に戻る</button>
-            ) : null}
-            {phase === "reveal" ? (
-              <button type="button" className="ft-modal-confirm" style={{ flex: 1, background: "var(--ft-accent)", color: "#041008", borderColor: "var(--ft-accent)" }} onClick={nextAfterReveal}>
-                {ternIdx < TERNS.length - 1 ? "次のTERNへ" : "補足ルールへ"}
-              </button>
             ) : null}
             {phase === "lesson" ? (
               <button type="button" className="ft-modal-confirm" style={{ flex: 1, background: "var(--ft-accent)", color: "#041008", borderColor: "var(--ft-accent)" }} onClick={() => {
@@ -6335,12 +6327,13 @@ function TutorialModal({ onClose }) {
             ) : null}
             {phase === "summary" ? (
               <>
-                <button type="button" className="ft-modal-cancel" onClick={() => { setCash(10000); setHoldings(0); setAvgPrice(0); setCoins(40); setOppCash(10000); setOppHoldings(0); setOppAvgPrice(0); setOppCoins(40); setConfirmedOrder(null); setAvantUsed(false); setLogLines([]); setPriceHistory([]); setPhase("intro"); }}>最初から</button>
+                <button type="button" className="ft-modal-cancel" onClick={() => { setCash(10000); setHoldings(0); setAvgPrice(0); setCoins(40); setOppCash(10000); setOppHoldings(0); setOppAvgPrice(0); setOppCoins(40); setConfirmedOrder(null); setAvantUsed(false); setLogLines([]); setPriceHistory([]); setPhase("intro"); setTutorialTitleClaimed(false); }}>最初から</button>
                 <button type="button" className="ft-modal-confirm" style={{ background: "var(--ft-accent)", color: "#041008", borderColor: "var(--ft-accent)" }} onClick={onClose}>はじめる</button>
               </>
             ) : null}
           </div>
         </div>
+        ) : null}
       </div>
     </div>
   );
