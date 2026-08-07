@@ -8660,8 +8660,8 @@ const CSS = `
   align-items: flex-start;
   gap: 10px;
   flex-shrink: 0;
-  /* 称号バッジ分の下余白（絶対配置でも下の要素と重ならない） */
-  padding-bottom: 44px;
+  /* 称号バッジ分の下余白のみ（余分な空白を作らない） */
+  padding-bottom: 38px;
 }
 .ft-account-menu {
   position: relative;
@@ -8672,7 +8672,7 @@ const CSS = `
 }
 .ft-account-equipped-titles {
   position: absolute;
-  top: calc(100% + 10px);
+  top: calc(100% + 6px);
   right: 0;
   left: auto;
   display: flex;
@@ -8839,8 +8839,8 @@ const CSS = `
   justify-content: space-between;
   gap: 18px 28px;
   flex-wrap: nowrap;
-  margin-bottom: 20px;
-  padding-bottom: 18px;
+  margin-bottom: 10px;
+  padding-bottom: 10px;
   border-bottom: 1px solid rgba(28, 42, 53, 0.9);
 }
 .ft-setup-brand {
