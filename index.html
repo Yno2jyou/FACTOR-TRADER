@@ -3644,7 +3644,6 @@ function FactorTrader() {
     // ハックフェーズへ：最初の生存人間
     const ah = aliveHumans(players);
     setInputHumanIdx(0);
-    // 注文画面で選んだCOIN補充を引き継ぐ
     const firstRescue = (ah[0] && newOrders[ah[0].id] && newOrders[ah[0].id].coinRescue) || "";
     setHumanHackDraft({ quick: 0, heavy: 0, defense: 0, reflect: 0, avant: 0, avantSab: 0, avantPrice: 1000, coinRescue: firstRescue || "" });
     setPassBanner(ah.length > 1 && ah[0] ? { name: ah[0].name, phaseLabel: "市場HACK" } : null);
@@ -7582,11 +7581,6 @@ function ActionPanel(props) {
             COIN 残り <b>{human.cards.stock != null ? human.cards.stock : 0}</b> 枚
             （使用: {(humanHackDraft.quick || 0) + ((humanHackDraft.heavy || 0) > 0 ? 5 : 0) + (humanHackDraft.defense ? 5 : 0) + (humanHackDraft.reflect ? 5 : 0) + ((humanHackDraft.avant || humanHackDraft.avantSab) ? 10 : 0)} 枚）
           </div>
-          {humanHackDraft.coinRescue ? (
-            <div className="ft-hack-row" style={{ marginBottom: 10, border: "1px solid rgba(51,209,255,0.45)", borderRadius: 4, padding: "8px 12px", background: "rgba(51,209,255,0.1)", fontSize: 12, color: "#9ae6ff", lineHeight: 1.55 }}>
-              COIN補充を選択済み（{coinRescueLabel(humanHackDraft.coinRescue)}）。注文は様子見で確定しています。
-            </div>
-          ) : null}
           <div className="ft-hack-row">
             <div className="ft-hack-label">
               <Zap size={16} className="icon-quick" /> 操作
