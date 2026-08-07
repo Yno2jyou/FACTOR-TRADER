@@ -5,13 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>FACTOR/TRADER</title>
 
-<link rel="icon" href="favicon.ico" sizes="any" />
 <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png" />
 <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png" />
+<link rel="icon" type="image/png" sizes="48x48" href="favicon-48x48.png" />
+<link rel="icon" href="favicon.ico" sizes="any" />
 <link rel="apple-touch-icon" href="apple-touch-icon.png" />
 <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png" />
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
 <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png" />
+<link rel="shortcut icon" href="favicon-32x32.png" />
 <meta name="theme-color" content="#05070a" />
 <meta name="mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -423,6 +425,7 @@ const TITLE_DEFS = [
   { id: "play120", cat: "D", group: "play", name: "マスタートレーダー", desc: "通算プレイ120回（ゲーム終了まで）", kind: "cumul", icon: "play", rank: "purple", threshold: 120},
   { id: "play200", cat: "D", group: "play", name: "ウルトラトレーダー", desc: "通算プレイ200回（ゲーム終了まで）", kind: "cumul", icon: "play", rank: "crimson", threshold: 200},
   { id: "play300", cat: "D", group: "play", name: "ミラクルトレーダー", desc: "通算プレイ300回（ゲーム終了まで）", kind: "cumul", icon: "play", rank: "rainbow", threshold: 300},
+  { id: "ichininmae", cat: "D", group: "tutorial", name: "一人前", desc: "チュートリアルをすべて完了", kind: "cumul", icon: "star", rank: "rainbow", threshold: 1},
   // E 総合
   { id: "ultimate", cat: "E", group: "ultimate", name: "アルティメット・クラウン・トレーダー", desc: "すべての称号を手に入れた", kind: "cumul", icon: "ultimate", rank: "ultimate", threshold: null},
 ];
@@ -459,6 +462,19 @@ function LineChart(props) {
   );
 }
 
+
+/** 星（一人前称号） */
+function StarMedal(props) {
+  const size = props.size || 16;
+  const className = props.className || "";
+  const style = props.style || {};
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="1" strokeLinejoin="round" className={className} style={style} xmlns="http://www.w3.org/2000/svg">
+      <path d="M12 2.5l2.9 5.88 6.49.94-4.7 4.58 1.11 6.47L12 17.27 6.2 20.37l1.11-6.47-4.7-4.58 6.49-.94L12 2.5z" />
+    </svg>
+  );
+}
+
 function TitleBadgeIcon({ icon, size = 14 }) {
   if (icon === "crown") return <Crown size={size} />;
   if (icon === "reverse") return <Reverse size={size} />;
@@ -471,6 +487,7 @@ function TitleBadgeIcon({ icon, size = 14 }) {
   if (icon === "coin_plus") return <Coin size={size} />;
   if (icon === "coin_minus") return <Coin size={size} />;
   if (icon === "play") return <FlagMedal size={size} />;
+  if (icon === "star") return <StarMedal size={size} />;
   if (icon === "ultimate") return <LineChart size={size} />;
   return <Crown size={size} />;
 }
@@ -628,6 +645,27 @@ function emptyGameTitleStats() {
   };
 }
 /** LOCALゲーム終了時の称号判定。通算プレイは順位不問。他は1位のみ。新規解除ID配列を返す */
+
+function unlockTitleById(id) {
+  try {
+    const save = loadTitleSave();
+    if (!save.unlocked) save.unlocked = {};
+    if (save.unlocked[id]) return false;
+    save.unlocked[id] = true;
+    const eq = normalizeEquipped(save.equipped);
+    if (!eq.length) save.equipped = normalizeEquipped([id]);
+    // ultimate re-check
+    const allOthers = TITLE_DEFS.filter((t) => t.id !== "ultimate");
+    if (allOthers.every((t) => save.unlocked[t.id])) {
+      save.unlocked.ultimate = true;
+    }
+    saveTitleSave(save);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
 function evaluateTitlesAfterGame(isLocal, isFirst, finalTV, finalCoins, stats, save) {
   const newly = [];
   if (!isLocal || !stats) return { newly, save };
@@ -2789,19 +2827,34 @@ function sharesFmt(n) {
   return Math.round(Number(n) || 0).toLocaleString();
 }
 
-function factorString(n) {
-  let num = n;
+function factorParts(n) {
+  let num = Math.floor(Number(n) || 0);
   const factors = [];
+  if (num < 2) return factors;
   let d = 2;
   while (d * d <= num) {
     while (num % d === 0) {
       factors.push(d);
-      num /= d;
+      num = Math.floor(num / d);
     }
     d += 1;
   }
   if (num > 1) factors.push(num);
-  return factors.join(" × ");
+  return factors;
+}
+function factorString(n) {
+  const factors = factorParts(n);
+  return factors.length ? factors.join(" × ") : String(Math.floor(Number(n) || 0));
+}
+/** 素因数の和の式 → 「2 + 2 + 3 = 7円」 */
+function factorSumFormula(n) {
+  const factors = factorParts(n);
+  if (!factors.length) {
+    const v = Math.floor(Number(n) || 0);
+    return v + " = " + v + "円";
+  }
+  const sum = factors.reduce((a, b) => a + b, 0);
+  return factors.join(" + ") + " = " + sum + "円";
 }
 
 // ---------- メインコンポーネント ----------
@@ -4785,6 +4838,1497 @@ function RulesContent() {
 }
 
 
+
+/** 体験型チュートリアル：複数TERNで主要機能を一通り操作 */
+function TutorialModal({ onClose }) {
+  const OPP = "CPU-練習";
+  const TERNS = [
+    {
+      id: 1,
+      n: 35,
+      title: "TERN 1：買い × 操作",
+      marketTip: "N=35（5×7）→ 仮株価12円。操作でNを増やすと36（10円）になり、安く買えます。",
+      orderTip: "「買い」を選び、株数は 50 株で確定してください（チュートリアルでは株数固定）。",
+      hackTip: "「操作」をちょうど1枚使ってください。自分のNだけ+1され、自分の約定価格が変わります。",
+      require: { action: "buy", shares: 50, minQuick: 1 },
+      oppOrder: { action: "stay", shares: 0 },
+      oppHack: { quick: 0, heavy: 0, defense: 0, reflect: 0, avant: 0 },
+    },
+    {
+      id: 2,
+      n: 48,
+      title: "TERN 2：様子見 × 妨害",
+      marketTip: "N=48（2⁴×3）→ 仮株価11円。相手は大口の「買い」予定です。",
+      orderTip: "自分は「様子見」を選んでください。相手の取引だけ邪魔します。",
+      hackTip: "「妨害」をON（5枚）にしてください。相手のN+1で相手の株価だけが動きます。",
+      require: { action: "stay", heavy: true },
+      oppOrder: { action: "buy", shares: 200 },
+      oppHack: { quick: 0, heavy: 0, defense: 0, reflect: 0, avant: 0 },
+    },
+    {
+      id: 3,
+      n: 90,
+      title: "TERN 3：買い × 防衛",
+      marketTip: "N=90（2×3²×5）→ 仮株価13円。相手があなたへ妨害してきます。",
+      orderTip: "「買い」50株で確定してください（チュートリアルでは株数固定）。守らないと高い価格で買わされる可能性があります。",
+      hackTip: "「防衛」をON（5枚）にして、被妨害を無効化してください。",
+      require: { action: "buy", shares: 50, defense: true },
+      oppOrder: { action: "stay", shares: 0 },
+      oppHack: { quick: 0, heavy: 1, defense: 0, reflect: 0, avant: 0 },
+    },
+    {
+      id: 4,
+      n: 85,
+      title: "TERN 4：様子見 × 反射",
+      marketTip: "N=85（5×17）→ 仮株価22円。再び相手の妨害が飛んできます。反射すると相手は86（株価45円）になり、差がはっきりします。",
+      orderTip: "「様子見」で構いません。反射で妨害を相手に返します。",
+      hackTip: "「反射」をON（5枚）にしてください。妨害が相手に跳ね返ります。",
+      require: { action: "stay", reflect: true },
+      oppOrder: { action: "buy", shares: 100 },
+      oppHack: { quick: 0, heavy: 1, defense: 0, reflect: 0, avant: 0 },
+    },
+    {
+      id: 5,
+      n: 100,
+      title: "TERN 5：奥義 AVANT-GARDE",
+      marketTip: "N=100（2²×5²）→ 仮株価14円。奥義で自分の株価を自由に指定できます。",
+      orderTip: "「買い」100株で確定してください（チュートリアルでは株数固定）。奥義操作で極端に安い価格を指定します。",
+      hackTip: "奥義「AVANT-GARDE・操作」をONし、株価に 1 を指定してください（COIN10・一度限り）。",
+      require: { action: "buy", shares: 100, avantOp: true, avantPrice: 1 },
+      oppOrder: { action: "stay", shares: 0 },
+      oppHack: { quick: 0, heavy: 0, defense: 0, reflect: 0, avant: 0 },
+    },
+  ];
+
+  const [phase, setPhase] = React.useState("intro"); // intro | market | order | hack | reveal | lesson | summary
+  const [ternIdx, setTernIdx] = React.useState(0);
+  const [cash, setCash] = React.useState(10000);
+  const [holdings, setHoldings] = React.useState(0);
+  const [avgPrice, setAvgPrice] = React.useState(0);
+  const [coins, setCoins] = React.useState(40);
+  const [avantUsed, setAvantUsed] = React.useState(false);
+  const [orderAction, setOrderAction] = React.useState("buy");
+  const [orderShares, setOrderShares] = React.useState(50);
+  const [quick, setQuick] = React.useState(0);
+  const [heavyOn, setHeavyOn] = React.useState(false);
+  const [defenseOn, setDefenseOn] = React.useState(false);
+  const [reflectOn, setReflectOn] = React.useState(false);
+  const [avantOn, setAvantOn] = React.useState(false);
+  const [avantMode, setAvantMode] = React.useState("op"); // op | sab
+  const [avantPrice, setAvantPrice] = React.useState(1);
+  const [result, setResult] = React.useState(null);
+  const [revealView, setRevealView] = React.useState("you"); // you | opp
+  const [viewedOppReveal, setViewedOppReveal] = React.useState(false);
+  const [tutorialTitleClaimed, setTutorialTitleClaimed] = React.useState(false);
+  const [hint, setHint] = React.useState("");
+  const [logLines, setLogLines] = React.useState([]);
+  const [priceHistory, setPriceHistory] = React.useState([]); // { turn, price } 本番MARKET FEEDと同じ
+  const tutBodyRef = React.useRef(null);
+  const scrollTutTop = React.useCallback(() => {
+    const el = tutBodyRef.current;
+    if (el && typeof el.scrollTo === "function") {
+      el.scrollTo(0, 0);
+    } else if (el) {
+      el.scrollTop = 0;
+    }
+    try {
+      const head = el && el.parentElement && el.parentElement.querySelector(".ft-setup-rules-fs-head");
+      if (head && head.scrollIntoView) head.scrollIntoView({ block: "start", behavior: "auto" });
+    } catch (e) {}
+  }, []);
+  React.useEffect(() => {
+    scrollTutTop();
+    const t1 = setTimeout(scrollTutTop, 0);
+    const t2 = setTimeout(scrollTutTop, 40);
+    const t3 = setTimeout(scrollTutTop, 120);
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
+  }, [phase, ternIdx, scrollTutTop]);
+  // 相手（CPU-練習）の資産も本番TRADERS同様に追跡
+  const [oppCash, setOppCash] = React.useState(10000);
+  const [oppHoldings, setOppHoldings] = React.useState(0);
+  const [oppAvgPrice, setOppAvgPrice] = React.useState(0);
+  const [oppCoins, setOppCoins] = React.useState(40);
+  const [confirmedOrder, setConfirmedOrder] = React.useState(null); // 注文確定後にTRADERSへ表示
+
+  const tern = TERNS[ternIdx] || TERNS[0];
+  const nStart = tern.n;
+  const basePrice = sopf(nStart);
+  const maxBuy = basePrice > 0 ? Math.floor(cash / Math.max(1, basePrice)) : 0;
+  const maxSell = holdings;
+
+  function pushLog(line) {
+    setLogLines((L) => [...L.slice(-12), line]);
+  }
+  function flash(msg) {
+    setHint(msg);
+    setTimeout(() => setHint(""), 1800);
+  }
+  function resetHackDraft() {
+    setQuick(0);
+    setHeavyOn(false);
+    setDefenseOn(false);
+    setReflectOn(false);
+    setAvantOn(false);
+    setAvantMode("op");
+    setAvantPrice(1);
+  }
+  function startTern(i) {
+    setTernIdx(i);
+    const req = TERNS[i].require || {};
+    setOrderAction(req.action || "stay");
+    if (req.shares != null) {
+      setOrderShares(Math.max(1, Math.floor(Number(req.shares) || 1)));
+    } else if (req.action === "buy") {
+      const bp = sopf(TERNS[i].n);
+      const mb = bp > 0 ? Math.floor(10000 / bp) : 50;
+      setOrderShares(Math.min(50, Math.max(1, mb)));
+    } else {
+      setOrderShares(0);
+    }
+    resetHackDraft();
+    setResult(null);
+    setConfirmedOrder(null);
+    setPhase("market");
+  }
+
+  function coinCostPreview() {
+    if (avantOn) return 10;
+    let c = quick;
+    if (heavyOn) c += 5;
+    if (defenseOn) c += 5;
+    if (reflectOn) c += 5;
+    return c;
+  }
+
+  function confirmOrder() {
+    const req = tern.require || {};
+    if (req.action && orderAction !== req.action) {
+      const label = req.action === "buy" ? "買い" : req.action === "sell" ? "売り" : "様子見";
+      flash("このTERNでは「" + label + "」を選んでください");
+      return;
+    }
+    // チュートリアルでは買い/売り株数を require.shares で固定
+    let fixedShares = req.shares != null ? Math.max(1, Math.floor(Number(req.shares) || 1)) : null;
+    if (orderAction === "buy") {
+      let sh = fixedShares != null ? fixedShares : Math.max(0, Math.floor(Number(orderShares) || 0));
+      if (fixedShares != null) setOrderShares(sh);
+      if (sh < 1) {
+        flash("1株以上指定してください");
+        return;
+      }
+      if (sh > maxBuy) {
+        flash("現金不足です（最大 " + maxBuy + " 株）");
+        return;
+      }
+      setOrderShares(sh);
+      setConfirmedOrder({ action: "buy", shares: sh });
+    } else if (orderAction === "sell") {
+      let sh = fixedShares != null ? fixedShares : Math.max(0, Math.floor(Number(orderShares) || 0));
+      if (sh < 1 || sh > holdings) {
+        flash("売却株数が不正です");
+        return;
+      }
+      setOrderShares(sh);
+      setConfirmedOrder({ action: "sell", shares: sh });
+    } else {
+      setOrderShares(0);
+      setConfirmedOrder({ action: "stay", shares: 0 });
+    }
+    resetHackDraft();
+    setPhase("hack");
+  }
+
+  function confirmHack() {
+    const req = tern.require || {};
+    const cost = coinCostPreview();
+    if (cost > coins) {
+      flash("COINが足りません（必要 " + cost + "）");
+      return;
+    }
+    if (req.minQuick && quick < req.minQuick) {
+      flash("操作を " + req.minQuick + " 枚使ってください");
+      return;
+    }
+    if (req.minQuick && quick > req.minQuick) {
+      flash("このTERNの操作は最大 " + req.minQuick + " 枚までです");
+      return;
+    }
+    if (req.heavy && !heavyOn) {
+      flash("妨害をONにしてください（5枚）");
+      return;
+    }
+    if (req.defense && !defenseOn) {
+      flash("防衛をONにしてください（5枚）");
+      return;
+    }
+    if (req.reflect && !reflectOn) {
+      flash("反射をONにしてください（5枚）");
+      return;
+    }
+    if (req.avantOp) {
+      if (!avantOn || avantMode !== "op") {
+        flash("奥義・操作をONにしてください");
+        return;
+      }
+      const ap = Math.max(1, Math.min(99999, Math.floor(Number(avantPrice) || 0)));
+      if (ap !== (req.avantPrice || 1)) {
+        flash("奥義の指定株価を " + (req.avantPrice || 1) + " 円にしてください");
+        return;
+      }
+      setAvantPrice(ap);
+    }
+    if (defenseOn && reflectOn) {
+      flash("防衛と反射は同時に使えません");
+      return;
+    }
+    if (avantOn && (quick > 0 || heavyOn || defenseOn || reflectOn)) {
+      flash("奥義は他のCOINと併用できません");
+      return;
+    }
+    if (avantOn && avantUsed) {
+      flash("奥義は一度しか使えません");
+      return;
+    }
+
+    // --- 解決シミュレーション ---
+    const opp = tern.oppHack || {};
+    const oppOrd = tern.oppOrder || { action: "stay", shares: 0 };
+    let myQuick = quick;
+    let myHeavy = heavyOn ? 1 : 0;
+    let myDef = defenseOn ? 1 : 0;
+    let myRef = reflectOn ? 1 : 0;
+    let myAvant = avantOn ? 1 : 0;
+    let myAvantPrice = Math.max(1, Math.min(99999, Math.floor(Number(avantPrice) || 1)));
+    let spent = 0;
+    if (myAvant) spent += 10;
+    else {
+      spent += myQuick;
+      if (myHeavy) spent += 5;
+      if (myDef) spent += 5;
+      if (myRef) spent += 5;
+    }
+
+    // 相手→自分への妨害
+    let incoming = opp.heavy || 0;
+    let reflected = 0;
+    let blocked = 0;
+    if (incoming > 0) {
+      if (myDef) {
+        blocked = incoming;
+        incoming = 0;
+      } else if (myRef) {
+        reflected = incoming;
+        incoming = 0;
+      }
+    }
+    // 自分→相手への妨害（相手に防衛なし想定）
+    let oppIncoming = myHeavy;
+    if (reflected > 0) oppIncoming += reflected;
+
+    // 自分の最終価格
+    let myPrice;
+    let myN = nStart;
+    let quickNull = false;
+    if (myAvant && avantMode === "op") {
+      myPrice = myAvantPrice;
+      myN = nStart;
+    } else {
+      if (incoming > 0 && myQuick > 0) {
+        // 被妨害があると操作無効（ゲーム仕様に寄せる）
+        quickNull = true;
+        myN = nStart + incoming;
+      } else {
+        myN = nStart + myQuick + incoming;
+      }
+      myPrice = sopf(myN);
+      if (quickNull) {
+        myN = nStart + incoming;
+        myPrice = sopf(myN);
+      }
+    }
+
+    // 相手の最終価格
+    let oppN = nStart + (opp.quick || 0) + oppIncoming;
+    let oppPrice = sopf(oppN);
+
+    // 自分の約定
+    const cashBefore = cash;
+    const holdBefore = holdings;
+    const avgBefore = avgPrice;
+    const valueBefore = cash + holdings * basePrice;
+    let nextCash = cash;
+    let nextHold = holdings;
+    let nextAvg = avgPrice;
+    let filled = 0;
+    let action = orderAction;
+    let notes = [];
+    let tradeCost = 0;
+
+    if (action === "buy") {
+      const can = myPrice > 0 ? Math.floor(nextCash / myPrice) : 0;
+      filled = Math.min(orderShares, can);
+      if (filled > 0) {
+        const costBuy = filled * myPrice;
+        tradeCost = costBuy;
+        const newHold = nextHold + filled;
+        nextAvg = newHold > 0 ? ((nextAvg * nextHold) + costBuy) / newHold : 0;
+        nextCash -= costBuy;
+        nextHold = newHold;
+        notes.push("あなた：買い " + filled + " 株 @ " + myPrice + "円");
+      } else {
+        notes.push("あなた：買い不成立（資金不足）");
+      }
+    } else if (action === "sell") {
+      filled = Math.min(orderShares, nextHold);
+      if (filled > 0) {
+        tradeCost = filled * myPrice;
+        nextCash += filled * myPrice;
+        nextHold -= filled;
+        if (nextHold <= 0) nextAvg = 0;
+        notes.push("あなた：売り " + filled + " 株 @ " + myPrice + "円");
+      }
+    } else {
+      notes.push("あなた：様子見");
+    }
+
+    // 相手約定（資産も本番同様に更新）
+    const oppCashBefore = oppCash;
+    const oppHoldBefore = oppHoldings;
+    const oppAvgBefore = oppAvgPrice;
+    const oppValueBefore = oppCash + oppHoldings * basePrice;
+    let nextOppCash = oppCash;
+    let nextOppHold = oppHoldings;
+    let nextOppAvg = oppAvgPrice;
+    let oppFilled = 0;
+    let oppSpentCoins = 0;
+    const oppHk = opp || {};
+    if ((oppHk.quick || 0) > 0) oppSpentCoins += oppHk.quick || 0;
+    if ((oppHk.heavy || 0) > 0) oppSpentCoins += 5;
+    if ((oppHk.defense || 0) > 0) oppSpentCoins += 5;
+    if ((oppHk.reflect || 0) > 0) oppSpentCoins += 5;
+    if ((oppHk.avant || 0) > 0) oppSpentCoins += 10;
+    const nextOppCoins = Math.max(0, oppCoins - oppSpentCoins);
+
+    if (oppOrd.action === "buy" && (oppOrd.shares || 0) > 0) {
+      const can = oppPrice > 0 ? Math.floor(nextOppCash / oppPrice) : 0;
+      oppFilled = Math.min(oppOrd.shares || 0, can);
+      if (oppFilled > 0) {
+        const costBuy = oppFilled * oppPrice;
+        const newHold = nextOppHold + oppFilled;
+        nextOppAvg = newHold > 0 ? ((nextOppAvg * nextOppHold) + costBuy) / newHold : 0;
+        nextOppCash -= costBuy;
+        nextOppHold = newHold;
+        notes.push(OPP + "：買い " + oppFilled + " 株 @ " + oppPrice + "円（N=" + oppN + "）");
+      } else {
+        notes.push(OPP + "：買い不成立（資金不足）・最終株価 " + oppPrice + "円");
+      }
+    } else if (oppOrd.action === "sell") {
+      oppFilled = Math.min(oppOrd.shares || nextOppHold, nextOppHold);
+      if (oppFilled > 0) {
+        nextOppCash += oppFilled * oppPrice;
+        nextOppHold -= oppFilled;
+        if (nextOppHold <= 0) nextOppAvg = 0;
+        notes.push(OPP + "：売り " + oppFilled + " 株 @ " + oppPrice + "円");
+      } else {
+        notes.push(OPP + "：売り（保有なし）");
+      }
+    } else {
+      notes.push(OPP + "：様子見");
+    }
+
+    if (myQuick > 0) notes.push(quickNull ? "操作 " + myQuick + " 枚 → 被妨害により無効" : "操作 " + myQuick + " 枚使用（N+" + myQuick + "）");
+    if (myHeavy) notes.push("妨害を使用（相手N+1）");
+    if (myDef) notes.push("防衛で被妨害を無効化");
+    if (myRef) notes.push("反射で妨害を返した（×" + reflected + "）");
+    if (myAvant) notes.push("奥義AVANT-GARDE・" + (avantMode === "op" ? "操作" : "妨害") + " 指定 " + myAvantPrice + "円");
+    if (incoming > 0) notes.push("被妨害が残存（N+" + incoming + "）");
+    if ((oppHk.heavy || 0) > 0) notes.push(OPP + "が妨害を使用");
+    if ((oppHk.quick || 0) > 0) notes.push(OPP + "が操作を " + oppHk.quick + " 枚使用");
+
+    const nextCoins = coins - spent;
+    setCash(nextCash);
+    setHoldings(nextHold);
+    setAvgPrice(nextAvg);
+    setCoins(nextCoins);
+    setOppCash(nextOppCash);
+    setOppHoldings(nextOppHold);
+    setOppAvgPrice(nextOppAvg);
+    setOppCoins(nextOppCoins);
+    if (myAvant) setAvantUsed(true);
+    const valueAfter = nextCash + nextHold * myPrice;
+    // 操作なし・被妨害なしなら仮株価で約定した場合との差額（買いなら安いほど得）
+    let counterfactualPrice = basePrice;
+    if (myAvant && avantMode === "op") {
+      counterfactualPrice = basePrice; // 奥義なしなら仮株価
+    } else if (!quickNull && myQuick > 0) {
+      counterfactualPrice = basePrice;
+    }
+    let benefit = 0;
+    if (action === "buy" && filled > 0) {
+      benefit = (counterfactualPrice - myPrice) * filled; // 正=安く買えた
+    } else if (action === "sell" && filled > 0) {
+      benefit = (myPrice - counterfactualPrice) * filled; // 正=高く売れた
+    }
+    setResult({
+      myPrice,
+      myN,
+      oppPrice,
+      oppN,
+      filled,
+      action,
+      spent,
+      notes,
+      basePrice,
+      quickNull,
+      blocked,
+      reflected,
+      myQuick,
+      myHeavy,
+      myDef,
+      myRef,
+      myAvant,
+      avantMode,
+      myAvantPrice,
+      cashBefore,
+      cashAfter: nextCash,
+      holdBefore,
+      holdAfter: nextHold,
+      avgAfter: nextAvg,
+      valueBefore,
+      valueAfter,
+      valueDiff: valueAfter - valueBefore,
+      benefit,
+      tradeCost,
+      orderShares,
+      incoming,
+      oppIncoming,
+      oppIncomingDirect: Math.max(0, myHeavy || 0),
+      oppIncomingReflected: Math.max(0, reflected || 0),
+      coinsAfter: nextCoins,
+      oppFilled,
+      oppCashAfter: nextOppCash,
+      oppHoldAfter: nextOppHold,
+      oppAvgAfter: nextOppAvg,
+      oppCoinsAfter: nextOppCoins,
+      oppOrder: { action: oppOrd.action || "stay", shares: oppOrd.shares || 0 },
+      oppHack: {
+        quick: oppHk.quick || 0,
+        heavy: oppHk.heavy || 0,
+        defense: oppHk.defense || 0,
+        reflect: oppHk.reflect || 0,
+        avant: oppHk.avant || 0,
+      },
+      oppCashBefore,
+      oppHoldBefore,
+      oppAvgBefore,
+      oppValueBefore,
+      oppValueAfter: nextOppCash + nextOppHold * oppPrice,
+      oppValueDiff: (nextOppCash + nextOppHold * oppPrice) - oppValueBefore,
+      oppSpentCoins,
+    });
+    // 本番と同様、フォーカス（あなた）の最終株価をMARKET FEEDに積む
+    setPriceHistory((h) => [...h, { turn: tern.id, price: myPrice, nFinal: myN }]);
+    notes.forEach((n) => pushLog("T" + tern.id + " " + n));
+    setRevealView("you");
+    setViewedOppReveal(false);
+    setPhase("reveal");
+  }
+
+  function nextAfterReveal() {
+    if (!viewedOppReveal) {
+      flash("CPU-練習の清算結果も確認してください（タブを切り替えてください）");
+      setRevealView("opp");
+      return;
+    }
+    if (ternIdx < TERNS.length - 1) {
+      startTern(ternIdx + 1);
+    } else {
+      setPhase("lesson");
+    }
+  }
+
+  const totalSteps = 2 + TERNS.length * 4 + 2; // rough progress display
+  const stepLabel = phase === "intro" ? "導入"
+    : phase === "lesson" ? "補足"
+    : phase === "summary" ? "完了"
+    : (tern.title + " · " + ({ market: "開示", order: "注文", hack: "HACK", reveal: "清算" }[phase] || ""));
+
+  const progressPct = phase === "intro" ? 4
+    : phase === "summary" ? 100
+    : phase === "lesson" ? 90
+    : Math.min(88, 8 + ternIdx * 16 + ({ market: 0, order: 4, hack: 8, reveal: 12 }[phase] || 0));
+
+  return (
+    <div className="ft-setup-rules-fs ft-tutorial-fs" role="dialog" aria-modal="true" aria-label="チュートリアル">
+      <div className="ft-setup-rules-fs-inner ft-tutorial-inner" onClick={(e) => e.stopPropagation()}>
+        <div className="ft-setup-rules-fs-head">
+          <div className="ft-modal-title" style={{ margin: 0, fontSize: 15 }}>
+            チュートリアル
+            <span className="ft-tut-progress"> {stepLabel}</span>
+          </div>
+          <button type="button" className="ft-setup-rules-fs-close" onClick={onClose}>閉じる</button>
+        </div>
+
+        <div className="ft-title-progress-bar" style={{ margin: "0 16px", height: 4, flexShrink: 0 }}>
+          <div className="ft-title-progress-fill" style={{ width: progressPct + "%" }} />
+        </div>
+
+        <div className="ft-setup-rules-fs-body ft-tutorial-body" ref={tutBodyRef}>
+          {hint ? <div className="ft-tut-shake" style={{ marginBottom: 8 }}>{hint}</div> : null}
+
+          {phase === "intro" ? (
+            <div className="ft-tut-panel">
+              <div className="ft-tut-step-title">TUTORIAL</div>
+              <p className="ft-tut-p">本番に近いUIで、<strong>5TERN</strong>に分けて主要アクションを体験します。</p>
+
+              <div className="ft-tut-price-guide">
+                <div className="ft-tut-price-guide-title">株価の仕組み（最重要）</div>
+                <p className="ft-tut-p" style={{ marginBottom: 10 }}>
+                  毎TERN、市場に数字 <b>N</b> が公開されます。<br />
+                  <b>株価 = N を素因数分解したときの「素因数の合計」</b>です。
+                </p>
+                <div className="ft-tut-examples">
+                  <div className="ft-tut-ex">
+                    <div className="ft-tut-ex-label">例1：合成数（安い）</div>
+                    <div>N = <b>12</b> = 2 × 2 × 3</div>
+                    <div className="ft-tut-ex-price">株価 = 2 + 2 + 3 = <b>7円</b></div>
+                  </div>
+                  <div className="ft-tut-ex">
+                    <div className="ft-tut-ex-label">例2：2の累乗（底値寄り）</div>
+                    <div>N = <b>64</b> = 2 × 2 × 2 × 2 × 2 × 2</div>
+                    <div className="ft-tut-ex-price">株価 = 2+2+2+2+2+2 = <b>12円</b></div>
+                  </div>
+                  <div className="ft-tut-ex is-prime">
+                    <div className="ft-tut-ex-label">例3：素数（高騰）</div>
+                    <div>N = <b>53</b>（これ以上割れない）</div>
+                    <div className="ft-tut-ex-price">株価 = <b>53円</b></div>
+                  </div>
+                  <div className="ft-tut-ex is-hack">
+                    <div className="ft-tut-ex-label">例4：操作でNを動かす</div>
+                    <div>N = 35（5×7）→ 仮株価 <b>12円</b></div>
+                    <div>操作1枚で N→36（2²×3²）</div>
+                    <div className="ft-tut-ex-price">株価 = 2+2+3+3 = <b>10円</b>（安く買える）</div>
+                  </div>
+                </div>
+                <p className="ft-tut-p" style={{ marginTop: 12, marginBottom: 0, fontSize: 13, color: "var(--ft-text-dim)" }}>
+                  ポイント：<b>買い</b>は安いほど有利、<b>売り</b>は高いほど有利。操作は自分のNだけ、妨害は相手のNだけを動かします。
+                </p>
+              </div>
+
+              <div className="ft-tut-price-guide-title" style={{ marginTop: 18 }}>体験する5TERN</div>
+              <ol className="ft-rules-bullets" style={{ listStyle: "decimal", paddingLeft: 20 }}>
+                <li>買い × 操作</li>
+                <li>様子見 × 妨害</li>
+                <li>買い × 防衛</li>
+                <li>様子見 × 反射</li>
+                <li>奥義 AVANT-GARDE</li>
+              </ol>
+              <p className="ft-tut-note">開始資産 10,000円・COIN 40枚。相手は「{OPP}」が自動で動きます。ガイドに沿って操作してください。</p>
+            </div>
+          ) : null}
+
+          {phase !== "intro" && phase !== "lesson" && phase !== "summary" ? (
+            <div className="ft-tut-play">
+              <div className="ft-tut-coach">
+                <div className="ft-tut-coach-title">{tern.title}</div>
+                <p className="ft-tut-coach-text">
+                  {phase === "market" ? tern.marketTip : phase === "order" ? tern.orderTip : phase === "hack" ? tern.hackTip : "YOUとCPU-練習の清算結果を両方確認してから、次へ進んでください。"}
+                </p>
+              </div>
+
+              <div className="ft-tut-status">
+                <div className="ft-tut-stat"><span>現金</span><b className="ft-money">{cash.toLocaleString()}円</b></div>
+                <div className="ft-tut-stat"><span>保有</span><b>{holdings}株</b></div>
+                <div className="ft-tut-stat"><span>COIN</span><b>{coins}</b></div>
+              </div>
+
+              <div className="ft-tut-feed-wrap">
+                <ChartPanel
+                  priceHistory={priceHistory}
+                  nStart={nStart}
+                  priceBefore={basePrice}
+                  refPrice={priceHistory.length > 0 ? priceHistory[priceHistory.length - 1].price : basePrice}
+                  phase={phase === "reveal" ? "reveal" : phase === "hack" ? "hack" : phase === "order" ? "order" : "market"}
+                />
+              </div>
+
+              {(() => {
+                // 本番と同型の TRADERS パネル（簡略化しない）
+                const displayPrice = phase === "reveal" && result ? result.myPrice : basePrice;
+                const showOrders = phase === "hack" || phase === "reveal";
+                const myOrderDisp = phase === "reveal" && result
+                  ? { action: result.action, shares: result.orderShares || 0 }
+                  : (confirmedOrder || null);
+                const oppOrderDisp = phase === "reveal" && result && result.oppOrder
+                  ? result.oppOrder
+                  : (showOrders ? (tern.oppOrder || { action: "stay", shares: 0 }) : null);
+                // reveal 時の資産は result の確定後値を優先（state更新直後の表示ズレ防止）
+                const meCash = phase === "reveal" && result ? result.cashAfter : cash;
+                const meHold = phase === "reveal" && result ? result.holdAfter : holdings;
+                const meAvg = phase === "reveal" && result ? result.avgAfter : avgPrice;
+                const meCoins = phase === "reveal" && result && result.coinsAfter != null ? result.coinsAfter : coins;
+                const oCash = phase === "reveal" && result && result.oppCashAfter != null ? result.oppCashAfter : oppCash;
+                const oHold = phase === "reveal" && result && result.oppHoldAfter != null ? result.oppHoldAfter : oppHoldings;
+                const oAvg = phase === "reveal" && result && result.oppAvgAfter != null ? result.oppAvgAfter : oppAvgPrice;
+                const oCoins = phase === "reveal" && result && result.oppCoinsAfter != null ? result.oppCoinsAfter : oppCoins;
+                const meTV = meCash + meHold * displayPrice;
+                const oTV = oCash + oHold * (phase === "reveal" && result ? result.oppPrice : displayPrice);
+                const rankMe = meTV >= oTV ? 1 : 2;
+                const rankOpp = meTV >= oTV ? 2 : 1;
+
+                let meGlow = "";
+                let oppGlow = "";
+                const traderNotes = [];
+                if (phase === "reveal" && result) {
+                  const r = result;
+                  // あなた側グロー
+                  if (r.myAvant) meGlow = " glow-purple";
+                  else if (r.quickNull || (r.incoming > 0 && (r.myQuick || 0) <= 0)) meGlow = " glow-red";
+                  else if ((r.myQuick || 0) > 0) meGlow = " glow-blue";
+                  else if (r.myDef) meGlow = " glow-amber";
+                  else if (r.myRef) meGlow = " glow-white";
+                  else if ((r.incoming || 0) > 0) meGlow = " glow-red";
+                  // 相手側グロー
+                  const oh = r.oppHack || {};
+                  if ((oh.avant || 0) > 0) oppGlow = " glow-purple";
+                  else if ((r.oppIncoming || 0) > 0) oppGlow = " glow-red";
+                  else if ((oh.quick || 0) > 0) oppGlow = " glow-blue";
+                  else if ((oh.defense || 0) > 0) oppGlow = " glow-amber";
+                  else if ((oh.reflect || 0) > 0) oppGlow = " glow-white";
+                  else if ((oh.heavy || 0) > 0) oppGlow = " glow-red";
+
+                  if ((r.myQuick || 0) > 0) {
+                    traderNotes.push({
+                      cls: r.quickNull ? "note-heavy" : "note-quick",
+                      icon: "quick",
+                      text: "あなたが操作を " + r.myQuick + " 枚使用" + (r.quickNull ? " → 被妨害により無効化" : "（N+" + r.myQuick + "）"),
+                    });
+                  }
+                  if (r.myHeavy) {
+                    traderNotes.push({ cls: "note-heavy", icon: "heavy", text: "あなたが妨害を使用 → " + OPP + " のN+1" });
+                  }
+                  if (r.myDef) {
+                    traderNotes.push({
+                      cls: "note-defense",
+                      icon: "defense",
+                      text: "あなたが防衛" + ((r.blocked || 0) > 0 ? "（妨害×" + r.blocked + "を無効化）" : ""),
+                    });
+                  }
+                  if (r.myRef) {
+                    traderNotes.push({
+                      cls: "note-reflect",
+                      icon: "reflect",
+                      text: "あなたが反射" + ((r.reflected || 0) > 0 ? "（妨害×" + r.reflected + "を返した）" : ""),
+                    });
+                  }
+                  if (r.myAvant) {
+                    traderNotes.push({
+                      cls: "note-avant",
+                      icon: "avant",
+                      text: "あなたが奥義AVANT-GARDE・" + (r.avantMode === "op" ? "操作" : "妨害") + "（指定 " + r.myAvantPrice + "円）",
+                    });
+                  }
+                  if ((oh.heavy || 0) > 0) {
+                    traderNotes.push({
+                      cls: "note-heavy",
+                      icon: "heavy",
+                      text: OPP + "が妨害を使用" + ((r.blocked || 0) > 0 ? " → 防衛で無効" : (r.reflected || 0) > 0 ? " → 反射で返された" : " → あなたのN+1"),
+                    });
+                  }
+                  if ((oh.quick || 0) > 0) {
+                    traderNotes.push({ cls: "note-quick", icon: "quick", text: OPP + "が操作を " + oh.quick + " 枚使用" });
+                  }
+                  if ((r.oppIncoming || 0) > 0) {
+                    traderNotes.push({
+                      cls: "note-heavy",
+                      icon: "heavy",
+                      text: OPP + "が被妨害を受けた（N+" + r.oppIncoming + " → 株価 " + r.oppPrice + "円）",
+                    });
+                  }
+                  if (r.action === "buy" && (r.filled || 0) > 0) {
+                    traderNotes.push({ cls: "note-quick", text: "あなた：買い " + r.filled + "株 @ " + r.myPrice + "円" });
+                  } else if (r.action === "sell" && (r.filled || 0) > 0) {
+                    traderNotes.push({ cls: "note-heavy", text: "あなた：売り " + r.filled + "株 @ " + r.myPrice + "円" });
+                  } else if (r.action === "stay") {
+                    traderNotes.push({ cls: "", text: "あなた：様子見" });
+                  }
+                  if (r.oppOrder && r.oppOrder.action === "buy") {
+                    traderNotes.push({
+                      cls: "note-quick",
+                      text: OPP + "：買い " + (r.oppFilled || r.oppOrder.shares || 0) + "株 @ " + r.oppPrice + "円",
+                    });
+                  } else if (r.oppOrder && r.oppOrder.action === "sell") {
+                    traderNotes.push({
+                      cls: "note-heavy",
+                      text: OPP + "：売り " + (r.oppFilled || 0) + "株 @ " + r.oppPrice + "円",
+                    });
+                  } else if (r.oppOrder) {
+                    traderNotes.push({ cls: "", text: OPP + "：様子見" });
+                  }
+                }
+
+                function orderTag(ord) {
+                  if (!ord) return null;
+                  const a = ord.action || "stay";
+                  const sh = ord.shares || 0;
+                  return (
+                    <div className={"ft-pc-order tag-" + a}>
+                      {a === "buy" ? "買い " + sharesFmt(sh) + "株" : a === "sell" ? "売り " + sharesFmt(sh) + "株" : "様子見"}
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="ft-panel ft-panel-players ft-tut-traders">
+                    <div className="ft-panel-head"><User size={15} /> TRADERS</div>
+                    <div className="ft-players-body">
+                      <div className="ft-players-grid">
+                        <div className={"ft-player-card human" + meGlow}>
+                          <span className="ft-pc-rank">{rankMe}位</span>
+                          <div className="ft-pc-name"><User size={13} /> あなた</div>
+                          <div className="ft-pc-cash">{yen(meTV)}</div>
+                          <div className="ft-pc-holdings">現金{yen(meCash)} ／ {sharesFmt(meHold)}株{meHold > 0 ? "(@" + Number(meAvg || 0).toFixed(1) + ")" : ""}</div>
+                          <div className="ft-pc-cards"><Coin size={12} className="icon-coin" /> {meCoins}</div>
+                          {showOrders ? orderTag(myOrderDisp) : null}
+                        </div>
+                        <div className={"ft-player-card ai" + oppGlow}>
+                          <span className="ft-pc-rank">{rankOpp}位</span>
+                          <div className="ft-pc-name"><Cpu size={13} /> {OPP}</div>
+                          <div className="ft-pc-cash">{yen(oTV)}</div>
+                          <div className="ft-pc-holdings">現金{yen(oCash)} ／ {sharesFmt(oHold)}株{oHold > 0 ? "(@" + Number(oAvg || 0).toFixed(1) + ")" : ""}</div>
+                          <div className="ft-pc-cards"><Coin size={12} className="icon-coin" /> {oCoins}</div>
+                          {showOrders ? orderTag(oppOrderDisp) : (
+                            <div className="ft-pc-order tag-stay" style={{ opacity: 0.65 }}>注文・HACK非公開</div>
+                          )}
+                        </div>
+                      </div>
+                      {phase === "market" || phase === "order" ? (
+                        <div className="ft-traders-notes">
+                          <div style={{ color: "var(--ft-text-dim)" }}>
+                            {OPP} の注文とHACKは確定後に公開されます。カードの枠色・注記で行動が分かります。
+                          </div>
+                        </div>
+                      ) : null}
+                      {traderNotes.length > 0 ? (
+                        <div className="ft-traders-notes">
+                          {traderNotes.map((n, i) => (
+                            <div key={i} className={n.cls || ""} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                              {n.icon === "quick" ? <Zap size={13} className="icon-quick" style={{ flexShrink: 0 }} /> : null}
+                              {n.icon === "heavy" ? <Bomb size={13} className="icon-heavy" style={{ flexShrink: 0 }} /> : null}
+                              {n.icon === "defense" ? <Shield size={13} className="icon-defense" style={{ flexShrink: 0 }} /> : null}
+                              {n.icon === "reflect" ? <Reflect size={13} className="icon-reflect" style={{ flexShrink: 0 }} /> : null}
+                              {n.icon === "avant" ? <Heptagram size={13} className="icon-avant" style={{ flexShrink: 0 }} /> : null}
+                              <span>{n.text}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {phase === "order" ? (
+                <div className="ft-tut-panel">
+                  <div className="ft-holdings-box">
+                    <div>現金: <b>{cash.toLocaleString()}円</b></div>
+                    <div>保有: <b>{holdings}株</b>{holdings > 0 ? "（平均 " + avgPrice.toFixed(1) + "円）" : ""}</div>
+                    <div>買付余力(仮): <b>{maxBuy}株</b></div>
+                  </div>
+                  <div className="ft-order-btns">
+                    <button type="button" className={"ft-order-btn long" + (orderAction === "buy" ? " active" : "")} onClick={() => setOrderAction("buy")} disabled={maxBuy <= 0 || (tern.require && tern.require.action && tern.require.action !== "buy")}>
+                      <TrendingUp size={16} /> 買い
+                    </button>
+                    <button type="button" className={"ft-order-btn short" + (orderAction === "sell" ? " active" : "")} onClick={() => setOrderAction("sell")} disabled={maxSell <= 0 || (tern.require && tern.require.action && tern.require.action !== "sell")}>
+                      <TrendingDown size={16} /> 売り
+                    </button>
+                    <button type="button" className={"ft-order-btn stay" + (orderAction === "stay" ? " active" : "")} onClick={() => setOrderAction("stay")} disabled={tern.require && tern.require.action && tern.require.action !== "stay"}>
+                      <Minus size={16} /> 様子見
+                    </button>
+                  </div>
+                  {(orderAction === "buy" || orderAction === "sell") ? (() => {
+                    const fixed = tern.require && tern.require.shares != null ? Math.max(1, Math.floor(Number(tern.require.shares) || 1)) : null;
+                    const dispShares = fixed != null ? fixed : Math.max(0, Math.floor(Number(orderShares) || 0));
+                    // 固定時は表示とstateを同期
+                    if (fixed != null && Number(orderShares) !== fixed) {
+                      // render中のsetState回避: 確定時に強制。表示はfixedを使う
+                    }
+                    return (
+                    <div className="ft-pct-block">
+                      <div className="ft-label">
+                        {orderAction === "buy" ? "購入株数" : "売却株数"}: {dispShares}株
+                        {fixed != null ? (
+                          <span className="ft-factor-note"> （チュートリアル指定・変更不可）</span>
+                        ) : (
+                          <span className="ft-factor-note">
+                            {" "}(最大 {orderAction === "buy" ? maxBuy : maxSell}株)
+                          </span>
+                        )}
+                      </div>
+                      {fixed == null ? (
+                        <>
+                          <input
+                            type="range"
+                            min={1}
+                            max={Math.max(1, orderAction === "buy" ? maxBuy : maxSell)}
+                            step="1"
+                            value={Math.min(Math.max(1, Math.floor(Number(orderShares) || 1)), Math.max(1, orderAction === "buy" ? maxBuy : maxSell))}
+                            onChange={(e) => setOrderShares(parseInt(e.target.value, 10))}
+                          />
+                          <input
+                            type="number"
+                            className="ft-shares-input"
+                            min={1}
+                            max={orderAction === "buy" ? maxBuy : maxSell}
+                            value={orderShares}
+                            onChange={(e) => setOrderShares(e.target.value)}
+                          />
+                        </>
+                      ) : (
+                        <div className="ft-tut-fixed-shares">指定 {fixed} 株</div>
+                      )}
+                      {orderAction === "buy" ? (
+                        <div className="ft-pct-amount">概算コスト: {(dispShares * basePrice).toLocaleString()}円（仮株価）</div>
+                      ) : (
+                        <div className="ft-pct-amount">概算受取: {(dispShares * basePrice).toLocaleString()}円（仮株価）</div>
+                      )}
+                    </div>
+                    );
+                  })() : null}
+                  <button type="button" className="ft-start-btn" onClick={confirmOrder}>注文を確定 → HACKへ</button>
+                </div>
+              ) : null}
+
+              {phase === "hack" ? (() => {
+                const req = tern.require || {};
+                const allowQuick = !!req.minQuick;
+                const allowHeavy = !!req.heavy;
+                const allowDefense = !!req.defense;
+                const allowReflect = !!req.reflect;
+                const allowAvant = !!req.avantOp || !!req.avantSab;
+                const predN = nStart + Math.max(0, quick);
+                const predPrice = sopf(predN);
+                return (
+                <div className="ft-tut-panel">
+                  <div className="ft-holdings-box">
+                    あなたの注文: <b>{orderAction === "buy" ? "買い " + orderShares + "株" : orderAction === "sell" ? "売り " + orderShares + "株" : "様子見"}</b>
+                    {" ／ "}残COIN <b>{coins}</b>（このHACK消費見込み <b>{coinCostPreview()}</b>）
+                  </div>
+
+                  <div className="ft-hack-controls">
+                    <div className={"ft-hack-row" + (!allowQuick ? " is-tut-locked" : "")}>
+                      <div className="ft-hack-label">
+                        <Zap size={14} className="icon-quick" /> 操作（1枚/自分N+1）
+
+                      </div>
+                      <div className="ft-hack-stepper">
+                        <button type="button" disabled={!allowQuick || quick <= 0} onClick={() => setQuick((q) => Math.max(0, q - 1))}>−</button>
+                        <b>{quick}</b>
+                        <button
+                          type="button"
+                          disabled={!allowQuick || quick >= Math.min(coins, Math.max(1, req.minQuick || 1))}
+                          onClick={() => setQuick((q) => Math.min(Math.min(coins, Math.max(1, req.minQuick || 1)), q + 1))}
+                        >＋</button>
+                      </div>
+                    </div>
+                    <div className={"ft-hack-row" + (!allowHeavy ? " is-tut-locked" : "")}>
+                      <div className="ft-hack-label"><Bomb size={14} className="icon-heavy" /> 妨害（5枚/相手N+1）</div>
+                      <button type="button" className={"ft-defense-toggle" + (heavyOn ? " is-heavy-on" : "")} disabled={!allowHeavy || coins < 5} onClick={() => setHeavyOn((v) => !v)}>{heavyOn ? "ON" : "OFF"}</button>
+                    </div>
+                    <div className={"ft-hack-row" + (!allowDefense ? " is-tut-locked" : "")}>
+                      <div className="ft-hack-label"><Shield size={14} className="icon-defense" /> 防衛（5枚/被妨害無効）</div>
+                      <button type="button" className={"ft-defense-toggle" + (defenseOn ? " is-on" : "")} disabled={!allowDefense || coins < 5} onClick={() => setDefenseOn((v) => !v)}>{defenseOn ? "ON" : "OFF"}</button>
+                    </div>
+                    <div className={"ft-hack-row" + (!allowReflect ? " is-tut-locked" : "")}>
+                      <div className="ft-hack-label"><Reflect size={14} className="icon-reflect" /> 反射（5枚/妨害を返す）</div>
+                      <button type="button" className={"ft-defense-toggle" + (reflectOn ? " is-reflect-on" : "")} disabled={!allowReflect || coins < 5} onClick={() => setReflectOn((v) => !v)}>{reflectOn ? "ON" : "OFF"}</button>
+                    </div>
+                    <div className={"ft-hack-row is-avant" + (avantOn ? " is-on" : "") + (!allowAvant ? " is-tut-locked" : "")}>
+                      <div className="ft-hack-label"><Heptagram size={14} className="icon-avant" /> 奥義 AVANT-GARDE（10枚・1回）</div>
+                      <button type="button" className={"ft-defense-toggle" + (avantOn ? " is-avant-on" : "")} disabled={!allowAvant || avantUsed || coins < 10} onClick={() => { setAvantOn((v) => !v); if (!avantOn) { setQuick(0); setHeavyOn(false); setDefenseOn(false); setReflectOn(false); setAvantMode("op"); } }}>{avantOn ? "ON" : "OFF"}</button>
+                    </div>
+                    {avantOn && allowAvant ? (
+                      <div className="ft-tut-avant-box">
+                        <div className="ft-order-btns" style={{ marginBottom: 8 }}>
+                          <button type="button" className={"ft-order-btn long" + (avantMode === "op" ? " active" : "")} onClick={() => setAvantMode("op")} disabled={!!req.avantSab && !req.avantOp}>奥義・操作</button>
+                          <button type="button" className={"ft-order-btn short" + (avantMode === "sab" ? " active" : "")} onClick={() => setAvantMode("sab")} disabled={!!req.avantOp && !req.avantSab}>奥義・妨害</button>
+                        </div>
+                        <div className="ft-label">指定株価（1〜99999）</div>
+                        <input className="ft-shares-input" type="number" min={1} max={99999} value={avantPrice} onChange={(e) => setAvantPrice(e.target.value)} />
+                      </div>
+                    ) : null}
+                  </div>
+
+                  {allowQuick ? (
+                    <div className="ft-tut-preview">
+                      予測：操作{quick}枚 / N+{quick} → 操作前株価：{basePrice}円 → 操作後{predPrice}円
+                      {predPrice < basePrice ? <span className="pnl-up">（{basePrice - predPrice}円安い）</span> : null}
+                      {predPrice > basePrice ? <span className="pnl-down">（{predPrice - basePrice}円高い）</span> : null}
+                    </div>
+                  ) : avantOn ? (
+                    <div className="ft-tut-preview">
+                      予測：奥義{avantMode === "op" ? "操作" : "妨害"} → 指定株価 {Math.max(1, Math.min(99999, Number(avantPrice) || 1))}円（操作前仮株価 {basePrice}円）
+                    </div>
+                  ) : allowHeavy ? (
+                    <div className="ft-tut-preview">
+                      予測：妨害 {heavyOn ? "ON（相手N+1）" : "OFF"} → 相手の最終株価が変化します（操作前の相手仮株価 {basePrice}円）
+                    </div>
+                  ) : allowDefense ? (
+                    <div className="ft-tut-preview">
+                      予測：防衛 {defenseOn ? "ON" : "OFF"} → 被妨害を無効化します
+                    </div>
+                  ) : allowReflect ? (
+                    <div className="ft-tut-preview">
+                      予測：反射 {reflectOn ? "ON" : "OFF"} → 妨害を相手に返します
+                    </div>
+                  ) : (
+                    <div className="ft-tut-preview">ガイドに従ってHACKを設定してください</div>
+                  )}
+                  <button type="button" className="ft-start-btn" onClick={confirmHack}>HACK確定 → 清算</button>
+                </div>
+                );
+              })() : null}
+
+              {phase === "reveal" && result ? (
+                <div className="ft-panel ft-action" style={{ margin: 0 }}>
+                  <div className="ft-panel-head">STEP 4 — 清算結果（{revealView === "opp" ? OPP : "YOU"}）</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
+                    <button
+                      type="button"
+                      onClick={() => setRevealView("you")}
+                      style={{
+                        padding: "6px 10px",
+                        fontSize: 11,
+                        borderRadius: 3,
+                        cursor: "pointer",
+                        border: revealView === "you" ? "1px solid var(--ft-accent)" : "1px solid var(--ft-border)",
+                        background: revealView === "you" ? "rgba(57,255,156,0.12)" : "var(--ft-panel-alt)",
+                        color: revealView === "you" ? "var(--ft-accent)" : "var(--ft-text-dim)",
+                      }}
+                    >
+                      YOU
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setRevealView("opp"); setViewedOppReveal(true); }}
+                      style={{
+                        padding: "6px 10px",
+                        fontSize: 11,
+                        borderRadius: 3,
+                        cursor: "pointer",
+                        border: revealView === "opp" ? "1px solid var(--ft-accent)" : "1px solid var(--ft-border)",
+                        background: revealView === "opp" ? "rgba(57,255,156,0.12)" : "var(--ft-panel-alt)",
+                        color: revealView === "opp" ? "var(--ft-accent)" : "var(--ft-text-dim)",
+                      }}
+                    >
+                      {OPP}（CPU）{!viewedOppReveal ? " ※要確認" : ""}
+                    </button>
+                  </div>
+                  {!viewedOppReveal ? (
+                    <p className="ft-action-desc" style={{ color: "var(--ft-amber)", marginBottom: 12 }}>
+                      CPU-練習の清算タブも開いて確認しないと、次のTERNへ進めません。
+                    </p>
+                  ) : null}
+
+                  {revealView === "you" ? (
+                    <>
+                  <div className="ft-card-banner">
+                    <div className="ft-card-banner-title">このTERNの結果</div>
+                    <div className="ft-card-banner-body">
+                      {result.myAvant ? (
+                        <span className="ft-card-banner-chip" style={{ color: "var(--ft-purple)", background: "rgba(192,132,252,0.15)", border: "1px solid rgba(192,132,252,0.45)" }}>
+                          <Heptagram size={14} style={{ marginRight: 4, verticalAlign: "middle" }} />
+                          奥義：AVANT-GARDE-{result.avantMode === "op" ? "操作" : "妨害"}
+                        </span>
+                      ) : null}
+                      {(result.myQuick || 0) > 0 ? (
+                        <span className={"ft-card-banner-chip " + (result.quickNull ? "heavy" : "quick")}>
+                          <Zap size={14} style={{ marginRight: 4, verticalAlign: "middle" }} />
+                          操作 ×{result.myQuick}{result.quickNull ? " → 被妨害で無効" : ""}
+                        </span>
+                      ) : null}
+                      {(result.incoming || 0) > 0 ? (
+                        <span className="ft-card-banner-chip heavy">
+                          <Bomb size={14} style={{ marginRight: 4, verticalAlign: "middle" }} />
+                          妨害 ×{result.incoming}
+                        </span>
+                      ) : null}
+                      {result.myDef ? (
+                        <span className="ft-card-banner-chip defense">
+                          <Shield size={14} style={{ marginRight: 4, verticalAlign: "middle" }} />
+                          防衛{(result.blocked || 0) > 0 ? "（妨害×" + result.blocked + "を無効化）" : "（妨害なし）"}
+                        </span>
+                      ) : null}
+                      {result.myRef ? (
+                        <span className="ft-card-banner-chip reflect">
+                          <Reflect size={14} style={{ marginRight: 4, verticalAlign: "middle" }} />
+                          反射{(result.reflected || 0) > 0 ? "（妨害×" + result.reflected + "を反射）" : "（反射対象なし）"}
+                        </span>
+                      ) : null}
+                      {!result.myDef && !result.myRef && (result.incoming || 0) <= 0 && !result.myAvant ? (
+                        <span className="ft-card-banner-chip none-hit">誰にも妨害されなかった</span>
+                      ) : null}
+                    </div>
+                    <div className="ft-card-banner-note">
+                      仮株価 {result.basePrice}円 → 最終株価 <b>{result.myPrice}円</b>
+                      {result.myPrice > result.basePrice
+                        ? "（+" + (result.myPrice - result.basePrice) + "円）"
+                        : result.myPrice < result.basePrice
+                        ? "（" + (result.myPrice - result.basePrice) + "円）"
+                        : ""}
+                    </div>
+                  </div>
+
+                  <div className="ft-reveal-box">
+                    <div className="ft-reveal-row">
+                      <span>N_start</span>
+                      <b>{nStart.toLocaleString()}</b>
+                    </div>
+                    {(result.myQuick || 0) > 0 ? (
+                      <div className={"ft-reveal-row " + (result.quickNull ? "heavy" : "quick")}>
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                          <Zap size={14} className="icon-quick" /> 操作
+                        </span>
+                        <b>+{result.myQuick}{result.quickNull ? "（被妨害で無効）" : ""}</b>
+                      </div>
+                    ) : null}
+                    {(result.incoming || 0) > 0 ? (
+                      <div className="ft-reveal-row heavy">
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                          <Bomb size={14} className="icon-heavy" /> 被妨害
+                        </span>
+                        <b>+{result.incoming}</b>
+                      </div>
+                    ) : null}
+                    {result.myDef && (result.blocked || 0) > 0 ? (
+                      <div className="ft-reveal-row defense">
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                          <Shield size={14} className="icon-defense" /> 防衛
+                        </span>
+                        <b>被妨害×{result.blocked}を無効化</b>
+                      </div>
+                    ) : null}
+                    {result.myRef ? (
+                      <div className="ft-reveal-row reflect">
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                          <Reflect size={14} className="icon-reflect" /> 反射
+                        </span>
+                        <b>妨害を返した×{result.reflected || 0}</b>
+                      </div>
+                    ) : null}
+                    {result.myAvant ? (
+                      <div className="ft-reveal-row avant">
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                          <Heptagram size={14} className="icon-avant" /> 奥義
+                        </span>
+                        <b>{result.avantMode === "op" ? "操作" : "妨害"} 指定 {result.myAvantPrice}円</b>
+                      </div>
+                    ) : null}
+                    <div className="ft-reveal-row final">
+                      <span>最終N</span>
+                      <b>
+                        {result.myN.toLocaleString()}
+                        <span className="ft-factor-note">（{factorString(result.myN)}）</span>
+                      </b>
+                    </div>
+                    <div className="ft-reveal-row price">
+                      <span>あなたの株価</span>
+                      <b>
+                        {result.myPrice}円
+                        <span className="ft-factor-note"> {factorSumFormula(result.myN)}</span>
+                      </b>
+                    </div>
+                  </div>
+
+                  <div className="ft-panel-head" style={{ marginTop: 4 }}>あなたの株価結果</div>
+                  <div className="ft-reveal-box">
+                    <div className="ft-reveal-row">
+                      <span>注文</span>
+                      <b>
+                        {result.action === "buy" ? "買い" : result.action === "sell" ? "売り" : "様子見"}
+                        {result.action !== "stay" ? " " + result.orderShares + "株" : ""}
+                      </b>
+                    </div>
+                    {result.action !== "stay" ? (
+                      <div className="ft-reveal-row">
+                        <span>約定</span>
+                        <b>{result.filled}株 @ {result.myPrice}円</b>
+                      </div>
+                    ) : null}
+                    <div className="ft-reveal-row">
+                      <span>現金</span>
+                      <b>{result.cashBefore.toLocaleString()}円 → {result.cashAfter.toLocaleString()}円</b>
+                    </div>
+                    <div className="ft-reveal-row">
+                      <span>保有株</span>
+                      <b>
+                        {result.holdBefore}株 → {result.holdAfter}株
+                        {result.holdAfter > 0 ? "（平均" + (result.avgAfter || 0).toFixed(1) + "円）" : ""}
+                      </b>
+                    </div>
+                    <div className="ft-reveal-row">
+                      <span>総資産</span>
+                      <b>{Math.round(result.valueBefore).toLocaleString()}円 → {Math.round(result.valueAfter).toLocaleString()}円</b>
+                    </div>
+                    <div className="ft-reveal-row final">
+                      <span>総資産の変動</span>
+                      <b className={result.valueDiff > 0 ? "pnl-up" : result.valueDiff < 0 ? "pnl-down" : ""}>
+                        {result.valueDiff === 0 ? "±0" : (result.valueDiff > 0 ? "+" : "") + Math.round(result.valueDiff).toLocaleString() + "円"}
+                      </b>
+                    </div>
+                    <div className="ft-reveal-row">
+                      <span>COIN消費</span>
+                      <b>{result.spent}枚（残 {coins}）</b>
+                    </div>
+                  </div>
+
+                  <div className="ft-tut-effect">
+                    {(() => {
+                      const lines = [];
+                      if ((result.myQuick || 0) > 0) {
+                        if (result.quickNull) {
+                          lines.push("操作を" + result.myQuick + "枚使用しましたが、被妨害により無効化されました。操作は自分のNだけを動かしますが、妨害を受けている間は効果がありません。");
+                        } else if (result.action === "buy" && result.filled > 0) {
+                          const diff = result.basePrice - result.myPrice;
+                          if (diff > 0) {
+                            lines.push("操作を" + result.myQuick + "枚使用したことにより、仮株価" + result.basePrice + "円よりも" + diff + "円安い" + result.myPrice + "円で株を買うことができました（" + result.filled + "株で約" + (diff * result.filled).toLocaleString() + "円分お得）。操作は自分のNにだけ作用します。");
+                          } else if (diff < 0) {
+                            lines.push("操作を" + result.myQuick + "枚使用した結果、仮株価" + result.basePrice + "円より" + (-diff) + "円高い" + result.myPrice + "円での買いになりました。操作は自分のNにだけ作用します。");
+                          } else {
+                            lines.push("操作を" + result.myQuick + "枚使用しました。操作は自分のNにだけ+し、自分の株価だけが変わります（このTERNでは仮株価と同じ" + result.myPrice + "円でした）。");
+                          }
+                        } else if (result.action === "sell" && result.filled > 0) {
+                          const diff = result.myPrice - result.basePrice;
+                          if (diff > 0) {
+                            lines.push("操作を" + result.myQuick + "枚使用したことにより、仮株価" + result.basePrice + "円よりも" + diff + "円高い" + result.myPrice + "円で株を売ることができました。操作は自分のNにだけ作用します。");
+                          } else {
+                            lines.push("操作を" + result.myQuick + "枚使用しました。操作は自分のNにだけ作用し、自分の最終株価は" + result.myPrice + "円です。");
+                          }
+                        } else {
+                          lines.push("操作を" + result.myQuick + "枚使用しました。操作は自分のNにだけ+するため、相手の株価には影響しません。あなたの最終株価は" + result.myPrice + "円です。");
+                        }
+                      }
+                      if ((result.myHeavy || 0) > 0) {
+                        lines.push("妨害を使用しました。妨害は自分以外の相手のNに+1するため、反射（後述）されない限りは、自分に効果が出ることはありません。");
+                      }
+                      if (result.myDef) {
+                        if ((result.blocked || 0) > 0) {
+                          lines.push("防衛を使用し、相手からの妨害×" + result.blocked + "を無効化しました。防衛中は被妨害でNが増えないため、あなたの株価は操作・市場の結果どおり" + result.myPrice + "円です。");
+                        } else {
+                          lines.push("防衛を使用しました。このTERNは相手から妨害が来なかったため、防衛の無効化対象はありませんでした。あなたの最終株価は" + result.myPrice + "円です。");
+                        }
+                      }
+                      if (result.myRef) {
+                        if ((result.reflected || 0) > 0) {
+                          lines.push("反射を使用し、相手からの妨害×" + result.reflected + "を相手へ返しました。反射した妨害は自分には残らず、相手のNに加算されます。あなたの最終株価は" + result.myPrice + "円です。");
+                        } else {
+                          lines.push("反射を使用しました。このTERNは反射する妨害がなかったため、効果は発生しませんでした。あなたの最終株価は" + result.myPrice + "円です。");
+                        }
+                      }
+                      if (result.myAvant && result.avantMode === "op") {
+                        if (result.action === "buy" && result.filled > 0) {
+                          const diff = result.basePrice - result.myPrice;
+                          lines.push("奥義・AVANT-GARDE-操作で株価を" + result.myPrice + "円に指定しました。仮株価" + result.basePrice + "円よりも" + Math.max(0, diff) + "円安い価格で" + result.filled + "株を購入できました（約" + Math.max(0, diff * result.filled).toLocaleString() + "円分の差）。奥義は自分の約定株価だけを強制します。");
+                        } else {
+                          lines.push("奥義・AVANT-GARDE-操作により、あなたの最終株価は指定どおり" + result.myPrice + "円になりました。奥義は自分の約定にだけ作用します。");
+                        }
+                      } else if (result.myAvant && result.avantMode === "sab") {
+                        lines.push("奥義・AVANT-GARDE-妨害を使用しました。相手の最終株価を" + (result.myAvantPrice || result.oppPrice) + "円に強制します（相手が防衛している場合は無効）。あなた自身の株価には影響しません。");
+                      }
+                      if ((result.incoming || 0) > 0) {
+                        lines.push("相手から妨害を受け、あなたのNが+" + result.incoming + "されました。最終株価は" + result.myPrice + "円です。");
+                      }
+                      if (lines.length === 0) {
+                        lines.push("このTERNでは特別な市場HACKの価格差は発生しませんでした。あなたの最終株価は" + result.myPrice + "円です。");
+                      }
+                      lines.push("続けて「" + OPP + "」タブを開き、相手の清算結果も確認してください。");
+                      return lines.map((t, i) => <p key={i} className="ft-tut-effect-p">{t}</p>);
+                    })()}
+                  </div>
+                    </>
+                  ) : (
+                    <>
+                  <div className="ft-card-banner">
+                    <div className="ft-card-banner-title">このTERNの結果</div>
+                    <div className="ft-card-banner-body">
+                      {((result.oppHack && result.oppHack.quick) || 0) > 0 ? (
+                        <span className="ft-card-banner-chip quick">
+                          <Zap size={14} style={{ marginRight: 4, verticalAlign: "middle" }} />
+                          操作 ×{result.oppHack.quick}
+                        </span>
+                      ) : null}
+                      {(result.oppIncoming || 0) > 0 ? (() => {
+                        const bounced = Math.max(0, Math.min(result.oppIncoming, result.oppIncomingReflected || 0));
+                        const direct = Math.max(0, result.oppIncoming - bounced);
+                        let detail = "";
+                        if (bounced > 0 && direct > 0) detail = "（全体×" + direct + " + 反射×" + bounced + "）";
+                        else if (bounced > 0) detail = "（反射×" + bounced + "）";
+                        else if (direct > 0) detail = "（全体×" + direct + "）";
+                        return (
+                          <span className="ft-card-banner-chip heavy">
+                            <Bomb size={14} style={{ marginRight: 4, verticalAlign: "middle" }} />
+                            妨害 ×{result.oppIncoming}{detail}
+                          </span>
+                        );
+                      })() : null}
+                      {((result.oppHack && result.oppHack.defense) || 0) > 0 ? (
+                        <span className="ft-card-banner-chip defense">
+                          <Shield size={14} style={{ marginRight: 4, verticalAlign: "middle" }} />
+                          防衛
+                        </span>
+                      ) : null}
+                      {((result.oppHack && result.oppHack.reflect) || 0) > 0 ? (
+                        <span className="ft-card-banner-chip reflect">
+                          <Reflect size={14} style={{ marginRight: 4, verticalAlign: "middle" }} />
+                          反射
+                        </span>
+                      ) : null}
+                      {((result.oppHack && result.oppHack.avant) || 0) > 0 ? (
+                        <span className="ft-card-banner-chip" style={{ color: "var(--ft-purple)", background: "rgba(192,132,252,0.15)", border: "1px solid rgba(192,132,252,0.45)" }}>
+                          <Heptagram size={14} style={{ marginRight: 4, verticalAlign: "middle" }} />
+                          奥義：AVANT-GARDE
+                        </span>
+                      ) : null}
+                      {!((result.oppHack && result.oppHack.defense) || 0) && !((result.oppHack && result.oppHack.reflect) || 0) && (result.oppIncoming || 0) <= 0 && !((result.oppHack && result.oppHack.avant) || 0) ? (
+                        <span className="ft-card-banner-chip none-hit">誰にも妨害されなかった</span>
+                      ) : null}
+                    </div>
+                    <div className="ft-card-banner-note">
+                      仮株価 {result.basePrice}円 → 最終株価 <b>{result.oppPrice}円</b>
+                      {result.oppPrice > result.basePrice
+                        ? "（+" + (result.oppPrice - result.basePrice) + "円）"
+                        : result.oppPrice < result.basePrice
+                        ? "（" + (result.oppPrice - result.basePrice) + "円）"
+                        : ""}
+                    </div>
+                  </div>
+
+                  <div className="ft-reveal-box">
+                    <div className="ft-reveal-row">
+                      <span>N_start</span>
+                      <b>{nStart.toLocaleString()}</b>
+                    </div>
+                    {((result.oppHack && result.oppHack.quick) || 0) > 0 ? (
+                      <div className="ft-reveal-row quick">
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                          <Zap size={14} className="icon-quick" /> 操作
+                        </span>
+                        <b>+{result.oppHack.quick}</b>
+                      </div>
+                    ) : null}
+                    {(result.oppIncoming || 0) > 0 ? (() => {
+                      const bounced = Math.max(0, Math.min(result.oppIncoming, result.oppIncomingReflected || 0));
+                      const direct = Math.max(0, result.oppIncoming - bounced);
+                      let detail = "";
+                      if (bounced > 0 && direct > 0) detail = "（全体+" + direct + " / 反射+" + bounced + "）";
+                      else if (bounced > 0) detail = "（反射+" + bounced + "）";
+                      else if (direct > 0) detail = "（全体+" + direct + "）";
+                      return (
+                        <div className="ft-reveal-row heavy">
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                            <Bomb size={14} className="icon-heavy" /> 妨害
+                          </span>
+                          <b>+{result.oppIncoming}{detail}</b>
+                        </div>
+                      );
+                    })() : null}
+                    <div className="ft-reveal-row final">
+                      <span>最終N</span>
+                      <b>
+                        {result.oppN.toLocaleString()}
+                        <span className="ft-factor-note">（{factorString(result.oppN)}）</span>
+                      </b>
+                    </div>
+                    <div className="ft-reveal-row price">
+                      <span>{OPP}の株価</span>
+                      <b>
+                        {result.oppPrice}円
+                        <span className="ft-factor-note"> {factorSumFormula(result.oppN)}</span>
+                      </b>
+                    </div>
+                  </div>
+
+                  <div className="ft-panel-head" style={{ marginTop: 4 }}>{OPP}の株価結果</div>
+                  <div className="ft-reveal-box">
+                    <div className="ft-reveal-row">
+                      <span>注文</span>
+                      <b>
+                        {(result.oppOrder && result.oppOrder.action === "buy")
+                          ? "買い"
+                          : (result.oppOrder && result.oppOrder.action === "sell")
+                          ? "売り"
+                          : "様子見"}
+                        {result.oppOrder && result.oppOrder.action !== "stay" && result.oppOrder.shares
+                          ? " " + result.oppOrder.shares + "株"
+                          : ""}
+                      </b>
+                    </div>
+                    {result.oppOrder && result.oppOrder.action !== "stay" ? (
+                      <div className="ft-reveal-row">
+                        <span>約定</span>
+                        <b>{result.oppFilled || 0}株 @ {result.oppPrice}円</b>
+                      </div>
+                    ) : null}
+                    <div className="ft-reveal-row">
+                      <span>現金</span>
+                      <b>{(result.oppCashBefore != null ? result.oppCashBefore : 0).toLocaleString()}円 → {(result.oppCashAfter != null ? result.oppCashAfter : 0).toLocaleString()}円</b>
+                    </div>
+                    <div className="ft-reveal-row">
+                      <span>保有株</span>
+                      <b>
+                        {result.oppHoldBefore != null ? result.oppHoldBefore : 0}株 → {result.oppHoldAfter != null ? result.oppHoldAfter : 0}株
+                        {(result.oppHoldAfter || 0) > 0 ? "（平均" + ((result.oppAvgAfter || 0).toFixed(1)) + "円）" : ""}
+                      </b>
+                    </div>
+                    <div className="ft-reveal-row">
+                      <span>総資産</span>
+                      <b>{Math.round(result.oppValueBefore || 0).toLocaleString()}円 → {Math.round(result.oppValueAfter || 0).toLocaleString()}円</b>
+                    </div>
+                    <div className="ft-reveal-row final">
+                      <span>総資産の変動</span>
+                      <b className={(result.oppValueDiff || 0) > 0 ? "pnl-up" : (result.oppValueDiff || 0) < 0 ? "pnl-down" : ""}>
+                        {(result.oppValueDiff || 0) === 0 ? "±0" : ((result.oppValueDiff || 0) > 0 ? "+" : "") + Math.round(result.oppValueDiff || 0).toLocaleString() + "円"}
+                      </b>
+                    </div>
+                    <div className="ft-reveal-row">
+                      <span>COIN消費</span>
+                      <b>{result.oppSpentCoins || 0}枚（残 {result.oppCoinsAfter != null ? result.oppCoinsAfter : oppCoins}）</b>
+                    </div>
+                  </div>
+
+                  <div className="ft-tut-effect">
+                    {(() => {
+                      const lines = [];
+                      // 反射で跳ね返ったケースは、その説明のみ（重複を避ける）
+                      if (result.myRef && (result.reflected || 0) > 0) {
+                        lines.push(OPP + "が放った妨害は、YOUの反射により" + OPP + "自身へ返されました。返ってきた妨害が" + OPP + "のNに加算され、最終株価は" + result.oppPrice + "円です。");
+                        return lines.map((t, i) => <p key={i} className="ft-tut-effect-p">{t}</p>);
+                      }
+                      if (result.myDef && (result.blocked || 0) > 0) {
+                        lines.push(OPP + "が放った妨害は、YOUの防衛で無効化されました。" + OPP + "側の最終株価は" + result.oppPrice + "円です。");
+                        return lines.map((t, i) => <p key={i} className="ft-tut-effect-p">{t}</p>);
+                      }
+                      if ((result.oppIncoming || 0) > 0) {
+                        const bounced = Math.max(0, result.oppIncomingReflected || 0);
+                        const direct = Math.max(0, (result.oppIncoming || 0) - bounced);
+                        if (bounced > 0 && direct > 0) {
+                          lines.push(OPP + "は妨害を受けました（全体+" + direct + "・反射+" + bounced + "）。Nが+" + result.oppIncoming + "され、最終株価は" + result.oppPrice + "円になりました。");
+                        } else if (bounced > 0) {
+                          lines.push(OPP + "は反射で跳ね返ってきた妨害を受けました。Nが+" + bounced + "され、最終株価は" + result.oppPrice + "円になりました。");
+                        } else {
+                          lines.push(OPP + "はYOUから妨害を使用されました。妨害により" + OPP + "のNが+" + result.oppIncoming + "され、最終株価は" + result.oppPrice + "円になりました。");
+                        }
+                      }
+                      if ((result.myQuick || 0) > 0 && !result.quickNull) {
+                        lines.push("YOUの操作は" + OPP + "のNには作用しません。" + OPP + "の株価は" + result.oppPrice + "円です。");
+                      }
+                      if ((result.myHeavy || 0) > 0 && (result.oppIncoming || 0) <= 0) {
+                        lines.push("YOUは妨害を使用しましたが、" + OPP + "への被妨害は残っていません。最終株価は" + result.oppPrice + "円です。");
+                      }
+                      if (result.myAvant && result.avantMode === "op") {
+                        lines.push("YOUの奥義・AVANT-GARDE-操作はYOUの約定だけを強制するため、" + OPP + "の株価（" + result.oppPrice + "円）には影響しません。");
+                      }
+                      if (result.myAvant && result.avantMode === "sab") {
+                        lines.push("YOUの奥義・AVANT-GARDE-妨害により、" + OPP + "の最終株価は" + result.oppPrice + "円に強制されました。");
+                      }
+                      if (((result.oppHack && result.oppHack.quick) || 0) > 0) {
+                        lines.push(OPP + "は操作を" + result.oppHack.quick + "枚使用し、自身のNを動かしています。最終株価は" + result.oppPrice + "円です。");
+                      }
+                      if (((result.oppHack && result.oppHack.heavy) || 0) > 0 && (result.oppIncoming || 0) <= 0) {
+                        lines.push(OPP + "は妨害を使用しました。妨害は相手（YOU）のNにだけ作用するため、" + OPP + "自身の株価には直接効きません（最終株価" + result.oppPrice + "円）。");
+                      }
+                      if (lines.length === 0) {
+                        lines.push(OPP + "の最終株価は" + result.oppPrice + "円（N=" + result.oppN.toLocaleString() + "）です。本番と同様、相手の清算も確認してから次のTERNへ進みましょう。");
+                      }
+                      return lines.map((t, i) => <p key={i} className="ft-tut-effect-p">{t}</p>);
+                    })()}
+                  </div>
+                    </>
+                  )}
+                </div>
+              ) : null}
+
+              {logLines.length > 0 ? (
+                <div className="ft-tut-log">
+                  {logLines.map((l, i) => <div key={i} className="ft-log-line">{l}</div>)}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          {phase === "lesson" ? (
+            <div className="ft-tut-panel">
+              <div className="ft-tut-step-title">本番で追加される要素</div>
+              <ul className="ft-rules-bullets">
+                <li><strong>帳消し</strong>：破産しそうな買いをCOIN10枚で強制キャンセル（COIN10枚ないときは破産・ゲームオーバー）</li>
+                <li><strong>COIN補充</strong>：枚数少のとき総資産の一部と交換（ラスト5TERNは不可）</li>
+                <li><strong>終盤ラスト5TERN</strong>：様子見禁止・売買は50%以上・突入時COIN+10</li>
+                <li><strong>不可</strong>：最初の3TERNは妨害・防衛・反射・AVANT-GARDE-妨害の使用不可、防衛と反射は連続で使用不可</li>
+                <li><strong>奥義：AVANT-GARDEの優先</strong>：複数奥義が競合したら総資産が少ない側が優先</li>
+              </ul>
+              <p className="ft-tut-note">ここまでの5TERNで、注文とHACKの中心メカニクスは一通り触れました。</p>
+            </div>
+          ) : null}
+
+          {phase === "summary" ? (
+            <div className="ft-tut-panel">
+              <div className="ft-tut-step-title">体験完了</div>
+              <p className="ft-tut-p">最終資産：現金 <b>{cash.toLocaleString()}円</b> ／ 株 <b>{holdings}</b> ／ COIN <b>{coins}</b></p>
+              {(tutorialTitleClaimed || (loadTitleSave().unlocked || {}).ichininmae) ? (
+                <p className="ft-tut-p" style={{ color: "var(--ft-accent)" }}>称号「一人前」を獲得しました（称号一覧から装備できます）。</p>
+              ) : null}
+              <p className="ft-tut-p">ここからはLOCALやONLINEで、相手との読み合いを楽しんでください。ルールや流れがわからなくなったときは、『ルール』で確認できます。</p>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="ft-tutorial-footer">
+          <div className="ft-tutorial-nav">
+            {phase === "intro" ? (
+              <>
+                <button type="button" className="ft-modal-cancel" onClick={onClose}>閉じる</button>
+                <button type="button" className="ft-modal-confirm" style={{ background: "var(--ft-accent)", color: "#041008", borderColor: "var(--ft-accent)" }} onClick={() => startTern(0)}>体験を始める</button>
+              </>
+            ) : null}
+            {phase === "market" ? (
+              <>
+                <button type="button" className="ft-modal-cancel" onClick={() => (ternIdx === 0 ? setPhase("intro") : startTern(ternIdx - 1))}>戻る</button>
+                <button type="button" className="ft-modal-confirm" style={{ background: "var(--ft-accent)", color: "#041008", borderColor: "var(--ft-accent)" }} onClick={() => setPhase("order")}>注文へ</button>
+              </>
+            ) : null}
+            {phase === "order" ? (
+              <button type="button" className="ft-modal-cancel" style={{ flex: 1 }} onClick={() => setPhase("market")}>開示に戻る</button>
+            ) : null}
+            {phase === "hack" ? (
+              <button type="button" className="ft-modal-cancel" style={{ flex: 1 }} onClick={() => setPhase("order")}>注文に戻る</button>
+            ) : null}
+            {phase === "reveal" ? (
+              <button type="button" className="ft-modal-confirm" style={{ flex: 1, background: "var(--ft-accent)", color: "#041008", borderColor: "var(--ft-accent)" }} onClick={nextAfterReveal}>
+                {ternIdx < TERNS.length - 1 ? "次のTERNへ" : "補足ルールへ"}
+              </button>
+            ) : null}
+            {phase === "lesson" ? (
+              <button type="button" className="ft-modal-confirm" style={{ flex: 1, background: "var(--ft-accent)", color: "#041008", borderColor: "var(--ft-accent)" }} onClick={() => {
+                const got = unlockTitleById("ichininmae");
+                setTutorialTitleClaimed(!!got || !!(loadTitleSave().unlocked || {}).ichininmae);
+                setPhase("summary");
+              }}>完了へ</button>
+            ) : null}
+            {phase === "summary" ? (
+              <>
+                <button type="button" className="ft-modal-cancel" onClick={() => { setCash(10000); setHoldings(0); setAvgPrice(0); setCoins(40); setOppCash(10000); setOppHoldings(0); setOppAvgPrice(0); setOppCoins(40); setConfirmedOrder(null); setAvantUsed(false); setLogLines([]); setPriceHistory([]); setPhase("intro"); }}>最初から</button>
+                <button type="button" className="ft-modal-confirm" style={{ background: "var(--ft-accent)", color: "#041008", borderColor: "var(--ft-accent)" }} onClick={onClose}>はじめる</button>
+              </>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+
 function SetupAccountMenu({ onProgressApplied }) {
   const [open, setOpen] = React.useState(false);
   const [view, setView] = React.useState("menu"); // menu | login | register | otp
@@ -5050,6 +6594,7 @@ function SetupScreen({ playerCount, setPlayerCount, humanCount, setHumanCount, h
   }
   const aiIq = getAiIqInfo();
   const [showSetupRulesFS, setShowSetupRulesFS] = React.useState(false);
+  const [showTutorial, setShowTutorial] = React.useState(false);
   const setupControlsRef = React.useRef(null);
   const setupRulesWrapRef = React.useRef(null);
   const setupRulesColRef = React.useRef(null);
@@ -5109,6 +6654,9 @@ function SetupScreen({ playerCount, setPlayerCount, humanCount, setHumanCount, h
           <div className="ft-setup-controls" ref={setupControlsRef}>
         <button type="button" className="ft-rules-btn ft-setup-mobile-rules-btn" onClick={() => setShowSetupRulesFS(true)}>
           ルール
+        </button>
+        <button type="button" className="ft-rules-btn ft-setup-mobile-rules-btn ft-tutorial-btn" onClick={() => setShowTutorial(true)}>
+          チュートリアル
         </button>
         <div className="ft-setup-section">
         <div className="ft-select-count">
@@ -5271,6 +6819,10 @@ function SetupScreen({ playerCount, setPlayerCount, humanCount, setHumanCount, h
           </div>
         </div>
       ) : null}
+
+        {showTutorial ? (
+          <TutorialModal onClose={() => setShowTutorial(false)} />
+        ) : null}
     </div>
   );
 }
@@ -6407,7 +7959,7 @@ function ActionPanel(props) {
         )}
 
         <div className="ft-card-banner">
-          <div className="ft-card-banner-title">このTERNのCOIN</div>
+          <div className="ft-card-banner-title">このTERNの結果</div>
           <div className="ft-card-banner-body">
             {myAvant && (
               <span className="ft-card-banner-chip" style={{ color: "var(--ft-purple)", background: "rgba(192,132,252,0.15)", border: "1px solid rgba(192,132,252,0.45)" }}>
@@ -6535,12 +8087,15 @@ function ActionPanel(props) {
           )}
           <div className="ft-reveal-row final">
             <span>あなたの N</span>
-            <b>{view.nFinal.toLocaleString()}</b>
+            <b>
+              {view.nFinal.toLocaleString()}
+              <span className="ft-factor-note">（{factorString(view.nFinal)}）</span>
+            </b>
           </div>
           <div className="ft-reveal-row price">
             <span>あなたの株価</span>
             <b>{yenNum(view.priceFinal)}円</b>
-            <span className="ft-factor-note">{factorString(view.nFinal)}</span>
+            <span className="ft-factor-note">{factorSumFormula(view.nFinal)}</span>
           </div>
         </div>
 
@@ -6720,7 +8275,7 @@ function TitlesModal({ titleSave, onClose, onEquip, canEquip }) {
     A: ["asset", "comeback"],
     B: ["bailout", "coin_rich", "coin_poor"],
     C: ["quick", "heavy", "defense", "reflect", "avant"],
-    D: ["play"],
+    D: ["play", "tutorial"],
     E: ["ultimate"],
   };
   const GROUP_LABELS = {
@@ -6735,6 +8290,7 @@ function TitlesModal({ titleSave, onClose, onEquip, canEquip }) {
     reflect: "反射",
     avant: "AVANT-GARDE",
     play: "通算プレイ",
+    tutorial: "チュートリアル",
     ultimate: "総合",
   };
 
@@ -7464,6 +9020,350 @@ const CSS = `
 .ft-setup-body.is-online .ft-setup-rules-wrap {
   display: none !important;
 }
+
+.ft-tut-coach {
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(57,255,156,0.35);
+  background: rgba(57,255,156,0.07);
+}
+.ft-tut-coach-title {
+  font-family: var(--ft-font-display);
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  color: var(--ft-accent);
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+.ft-tut-coach-text {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--ft-text);
+}
+.ft-tut-shake {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--ft-amber);
+  font-weight: 700;
+}
+.ft-tut-play {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.ft-tut-status {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.ft-tut-stat {
+  background: var(--ft-panel-alt);
+  border: 1px solid var(--ft-border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ft-tut-stat span {
+  font-size: 10px;
+  color: var(--ft-text-dim);
+  letter-spacing: 0.06em;
+}
+.ft-tut-stat b {
+  font-family: var(--ft-font-display);
+  font-size: 14px;
+  color: var(--ft-text);
+}
+.ft-tut-market {
+  background: var(--ft-panel-alt);
+  border: 1px solid var(--ft-border);
+  border-radius: 8px;
+  padding: 14px;
+  text-align: center;
+}
+.ft-tut-n {
+  font-family: var(--ft-font-display);
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--ft-text);
+  letter-spacing: 0.06em;
+}
+.ft-tut-factor-hint {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--ft-text-dim);
+  font-family: var(--ft-font-display);
+}
+.ft-tut-panel {
+  background: rgba(0,0,0,0.18);
+  border: 1px solid var(--ft-border);
+  border-radius: 8px;
+  padding: 14px;
+}
+.ft-tut-preview {
+  font-size: 13px;
+  margin: 8px 0 12px;
+  padding: 10px;
+  border-radius: 6px;
+  background: rgba(51,209,255,0.08);
+  border: 1px solid rgba(51,209,255,0.25);
+  line-height: 1.6;
+}
+
+.ft-tut-opp {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px dashed rgba(255,77,109,0.35);
+  background: rgba(255,77,109,0.06);
+  font-size: 12px;
+}
+.ft-tut-opp-label {
+  font-weight: 700;
+  color: var(--ft-red);
+  font-family: var(--ft-font-display);
+  letter-spacing: 0.04em;
+}
+.ft-tut-opp-plan { color: var(--ft-text-dim); }
+.ft-tut-traders {
+  margin: 0;
+  padding: 12px;
+}
+.ft-tut-traders .ft-players-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.ft-tut-traders .ft-player-card {
+  min-height: 88px;
+}
+.ft-tut-traders .ft-traders-notes {
+  margin-top: 10px;
+}
+.ft-tut-fixed-shares {
+  margin: 8px 0;
+  padding: 10px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(57,255,156,0.35);
+  background: rgba(57,255,156,0.08);
+  font-family: var(--ft-font-display);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ft-accent);
+  text-align: center;
+  letter-spacing: 0.04em;
+}
+.ft-tut-log {
+  max-height: 120px;
+  overflow-y: auto;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--ft-border);
+  background: rgba(0,0,0,0.25);
+  font-family: var(--ft-font-display);
+  font-size: 11px;
+  color: var(--ft-text-dim);
+  line-height: 1.7;
+}
+.ft-tut-avant-box {
+  margin: 8px 0 4px;
+  padding: 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(192,132,252,0.45);
+  background: rgba(192,132,252,0.08);
+}
+
+
+.ft-tut-feed-wrap {
+  margin: 0 0 4px;
+}
+.ft-tut-feed-wrap .ft-panel {
+  margin: 0;
+}
+.ft-tut-feed-wrap .ft-chart-svg {
+  height: 120px;
+}
+
+
+.ft-hack-row.is-tut-locked {
+  opacity: 0.38;
+  pointer-events: none;
+  filter: grayscale(0.35);
+}
+
+
+.ft-tut-effect {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(57,255,156,0.35);
+  background: rgba(57,255,156,0.07);
+}
+.ft-tut-effect-p {
+  margin: 0 0 8px;
+  font-size: 13px;
+  line-height: 1.75;
+  color: var(--ft-text);
+}
+.ft-tut-effect-p:last-child { margin-bottom: 0; }
+
+.ft-tutorial-btn {
+  margin-top: 0 !important;
+  border-color: rgba(255, 182, 72, 0.55) !important;
+  color: var(--ft-amber) !important;
+}
+.ft-tutorial-btn:hover {
+  background: rgba(255, 182, 72, 0.1) !important;
+  border-color: rgba(255, 182, 72, 0.85) !important;
+}
+.ft-tutorial-inner {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  max-height: 100dvh;
+}
+.ft-tutorial-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.ft-tut-progress {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ft-text-dim);
+  margin-left: 10px;
+  letter-spacing: 0.06em;
+}
+.ft-tut-step-title {
+  font-family: var(--ft-font-display);
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--ft-accent);
+  margin: 4px 0 14px;
+  letter-spacing: 0.04em;
+  line-height: 1.35;
+}
+.ft-tut-step-body {
+  font-size: 14px;
+  color: var(--ft-text);
+  line-height: 1.75;
+}
+.ft-tut-p {
+  margin: 0 0 12px;
+  color: var(--ft-text);
+  line-height: 1.75;
+  font-size: 14px;
+}
+.ft-tut-note {
+  margin: 14px 0 0;
+  padding: 10px 12px;
+  border-radius: 6px;
+  border: 1px dashed rgba(57,255,156,0.35);
+  background: rgba(57,255,156,0.06);
+  color: var(--ft-text-dim);
+  font-size: 13px;
+  line-height: 1.65;
+}
+.ft-tut-examples {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px 0;
+}
+.ft-tut-ex {
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: var(--ft-panel-alt);
+  border: 1px solid var(--ft-border);
+  font-size: 13px;
+  font-family: var(--ft-font-display);
+  line-height: 1.65;
+}
+.ft-tut-price-guide {
+  margin: 14px 0 4px;
+  padding: 14px 14px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(51,209,255,0.28);
+  background: rgba(51,209,255,0.05);
+}
+.ft-tut-price-guide-title {
+  font-family: var(--ft-font-display);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--ft-blue);
+  margin-bottom: 8px;
+}
+.ft-tut-ex-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--ft-text-dim);
+  margin-bottom: 4px;
+  font-family: var(--ft-font-body);
+}
+.ft-tut-ex-price {
+  margin-top: 4px;
+  color: var(--ft-accent);
+  font-weight: 700;
+}
+.ft-tut-ex.is-prime {
+  border-color: rgba(255,182,72,0.4);
+  background: rgba(255,182,72,0.06);
+}
+.ft-tut-ex.is-prime .ft-tut-ex-price { color: var(--ft-amber); }
+.ft-tut-ex.is-hack {
+  border-color: rgba(51,209,255,0.4);
+  background: rgba(51,209,255,0.07);
+}
+.ft-tutorial-footer {
+  flex-shrink: 0;
+  border-top: 1px solid var(--ft-border);
+  padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+  background: var(--ft-panel, #0a1018);
+}
+.ft-tut-dots {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.ft-tut-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.15);
+  transition: background .15s, transform .15s;
+}
+.ft-tut-dot.is-done { background: rgba(57,255,156,0.35); }
+.ft-tut-dot.is-on {
+  background: var(--ft-accent);
+  transform: scale(1.25);
+  box-shadow: 0 0 8px rgba(57,255,156,0.45);
+}
+.ft-tutorial-nav {
+  display: flex;
+  gap: 10px;
+}
+.ft-tutorial-nav button {
+  flex: 1;
+  padding: 12px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  border: 1px solid var(--ft-border);
+}
+@media (max-width: 640px) {
+  .ft-tut-step-title { font-size: 18px; }
+  .ft-tut-p, .ft-tut-step-body { font-size: 15px; }
+}
+
 .ft-setup-mobile-rules-btn {
   display: block;
   width: 100%;
