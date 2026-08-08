@@ -2554,15 +2554,19 @@ function previewPrice(nStart, quick, heavyCount) {
  */
 function personalExecPrice(nStart, ownQuick, incomingHeavy, action) {
   const h = Math.max(0, incomingHeavy || 0); // 他者分のみ
-  // 妨害を受けている間は操作を無効化
+  // 妨害を受けている間は操作を無効化。N は常に nStart+h へ移動する
   const q = h > 0 ? 0 : Math.max(0, ownQuick || 0);
-  const base = sopf(nStart + q);
-  if (h <= 0 || !action || action === "stay") return base;
-  // 操作は既に無効化済みのため、N は nStart+h のみ
-  const interfered = sopf(nStart + h);
-  if (action === "buy") return Math.max(base, interfered);
-  if (action === "sell") return Math.min(base, interfered);
-  return base;
+  // 被妨害時は必ず N+h を株価に反映（売りでも N+1 が無視されない）
+  // 買い: 高くなる方向を優先（不利側）／売り・様子見含む: 実際の N+h の株価
+  if (h > 0) {
+    const interfered = sopf(nStart + h);
+    if (action === "buy") {
+      const base = sopf(nStart); // 操作無効後の基準
+      return Math.max(base, interfered);
+    }
+    return interfered;
+  }
+  return sopf(nStart + q);
 }
 
 /** 1TERN分の清算（純粋関数）。破産判定付き */
@@ -3707,9 +3711,19 @@ function FactorTrader() {
   // TERN開始時から見えるようにして、変動の読み合いができるようにする。
   const refPrice = priceHistory.length > 0 ? priceHistory[priceHistory.length - 1].price : basePrice;
 
+  // ログ追記時のみ末尾へ（提出状況の同期ではスクロールしない）
+  const prevLogLenRef = useRef(0);
   useEffect(() => {
-    logEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [log]);
+    const len = Array.isArray(log) ? log.length : 0;
+    const grew = len > prevLogLenRef.current;
+    prevLogLenRef.current = len;
+    // 注文/介入の待機中は他プレイヤー提出の同期で log が再セットされても動かさない
+    if (!grew) return;
+    if (phase === "order" || phase === "hack") return;
+    try {
+      logEndRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    } catch (e) {}
+  }, [log, phase]);
 
   // 画面・フェーズ切替時にページ先頭へ（iframe 内でも確実に）
   const scrollToTop = useCallback(() => {
@@ -3727,8 +3741,14 @@ function FactorTrader() {
     } catch (e) {}
   }, []);
 
+  // phase/turn/screen が実際に変わったときだけ先頭へ（オンライン提出同期では動かさない）
+  const prevNavRef = useRef({ screen: null, phase: null, turn: null });
   useEffect(() => {
-    // 描画後にスクロール（レイアウト確定待ち）
+    const prev = prevNavRef.current;
+    const changed = prev.screen !== screen || prev.phase !== phase || prev.turn !== turn;
+    prevNavRef.current = { screen, phase, turn };
+    if (!changed) return;
+    // 同一ターン内の order→order（提出同期）は phase 不変のためここに来ない
     scrollToTop();
     const t1 = setTimeout(scrollToTop, 0);
     const t2 = setTimeout(scrollToTop, 50);
@@ -7341,19 +7361,37 @@ function SetupScreen({ playerCount, setPlayerCount, humanCount, setHumanCount, h
               value={joinCodeInput || ""}
               onChange={(e) => {
                 if (!setJoinCodeInput) return;
-                // 英字は即大文字化・英数字以外を除去
-                const cleaned = String(e.target.value || "")
-                  .toUpperCase()
-                  .replace(/[^A-Z0-9]/g, "")
-                  .slice(0, 6);
+                // IME 変換中は加工しない（二重入力防止）
+                if (e.nativeEvent && e.nativeEvent.isComposing) return;
+                const el = e.target;
+                const raw = String(el.value || "");
+                // 末尾に追加された文字だけ正規化（途中編集でも全体を安全に再構成）
+                let cleaned = "";
+                for (let i = 0; i < raw.length && cleaned.length < 6; i++) {
+                  const ch = raw.charAt(i).toUpperCase();
+                  if ((ch >= "A" && ch <= "Z") || (ch >= "0" && ch <= "9")) cleaned += ch;
+                }
+                if (cleaned === (joinCodeInput || "")) return;
+                setJoinCodeInput(cleaned);
+              }}
+              onCompositionEnd={(e) => {
+                if (!setJoinCodeInput) return;
+                const raw = String(e.target.value || "");
+                let cleaned = "";
+                for (let i = 0; i < raw.length && cleaned.length < 6; i++) {
+                  const ch = raw.charAt(i).toUpperCase();
+                  if ((ch >= "A" && ch <= "Z") || (ch >= "0" && ch <= "9")) cleaned += ch;
+                }
                 setJoinCodeInput(cleaned);
               }}
               onBlur={(e) => {
                 if (!setJoinCodeInput) return;
-                const cleaned = String(e.target.value || "")
-                  .toUpperCase()
-                  .replace(/[^A-Z0-9]/g, "")
-                  .slice(0, 6);
+                const raw = String(e.target.value || "");
+                let cleaned = "";
+                for (let i = 0; i < raw.length && cleaned.length < 6; i++) {
+                  const ch = raw.charAt(i).toUpperCase();
+                  if ((ch >= "A" && ch <= "Z") || (ch >= "0" && ch <= "9")) cleaned += ch;
+                }
                 setJoinCodeInput(cleaned);
               }}
               className="ft-setup-input ft-setup-input-code"
@@ -9549,7 +9587,6 @@ const CSS = `
   font-family: var(--ft-font-display);
   text-align: center;
   font-size: 16px;
-  text-transform: uppercase;
 }
 .ft-setup-input-otp {
   letter-spacing: 0.18em;
