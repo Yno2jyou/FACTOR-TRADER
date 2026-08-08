@@ -980,6 +980,8 @@ function serializePlayers(players) {
     isBankrupt: !!p.isBankrupt,
     isRemote: !!p.isRemote,
     peerConnId: p.peerConnId || null,
+    // オンライン表示用の装備称号（最大3）
+    equippedTitles: normalizeEquipped(p.equippedTitles),
   }));
 }
 
@@ -3406,6 +3408,7 @@ function FactorTrader() {
   const isHostRef = useRef(false);
   const myPlayerIdRef = useRef(null);
   const stateRef = useRef({});
+  const hostMessageHandlerRef = useRef(null);
   const [players, setPlayers] = useState([]);
   const [currentN, setCurrentN] = useState(0);
   const [turn, setTurn] = useState(1);
@@ -3605,7 +3608,12 @@ function FactorTrader() {
         return;
       }
       const playerId = "human-" + nextIdx;
-      conn.meta = { playerId, name: data.name || ("P" + (nextIdx + 1)), peerId: conn.peer };
+      conn.meta = {
+        playerId,
+        name: data.name || ("P" + (nextIdx + 1)),
+        peerId: conn.peer,
+        equippedTitles: normalizeEquipped(data.equippedTitles),
+      };
       connsRef.current[conn.peer] = conn;
       try {
         conn.send({
@@ -3633,6 +3641,7 @@ function FactorTrader() {
       return;
     }
   }
+  hostMessageHandlerRef.current = handleHostMessage;
 
   function hostReceiveOrder(playerId, order) {
     if (!playerId || !order) return;
@@ -3822,7 +3831,10 @@ function FactorTrader() {
     });
     peer.on("connection", (conn) => {
       conn.on("open", () => {
-        conn.on("data", (data) => handleHostMessage(conn, data));
+        conn.on("data", (data) => {
+          const fn = hostMessageHandlerRef.current;
+          if (fn) fn(conn, data);
+        });
       });
       conn.on("close", () => {
         if (connsRef.current[conn.peer]) delete connsRef.current[conn.peer];
@@ -3867,7 +3879,11 @@ function FactorTrader() {
       hostConnRef.current = conn;
       conn.on("open", () => {
         setNetStatus("ホストに接続しました");
-        conn.send({ type: "hello", name: myName || "GUEST" });
+        conn.send({
+          type: "hello",
+          name: myName || "GUEST",
+          equippedTitles: equippedTitleIds(loadTitleSave()),
+        });
       });
       conn.on("data", (data) => {
         if (!data || !data.type) return;
@@ -3914,12 +3930,20 @@ function FactorTrader() {
     });
     // 空き席はAI
     const pls = makePlayers(playerCount, humanTotal, names, seriousMode);
-    // リモート印
+    // ホスト自身の装備称号
+    if (pls[0] && !pls[0].isAI) {
+      pls[0].equippedTitles = equippedTitleIds(loadTitleSave());
+    }
+    // リモート印 + ゲストの装備称号
     for (let i = 1; i < humanTotal; i++) {
       if (pls[i]) {
         pls[i].isRemote = true;
         const peerId = connectedGuests[i - 1];
-        if (peerId) pls[i].peerConnId = peerId;
+        if (peerId) {
+          pls[i].peerConnId = peerId;
+          const c = connsRef.current[peerId];
+          pls[i].equippedTitles = normalizeEquipped(c && c.meta && c.meta.equippedTitles);
+        }
       }
     }
     const bp = sopf(randBase());
@@ -4354,15 +4378,21 @@ function FactorTrader() {
   }
 
   function finalizeHacksAndResolve(humanHacksSoFar, playersBase) {
-    const endgame = isLastFiveTurns(turn, totalTurns);
-    let rescuedPlayers = (playersBase || players).map((p) => ({ ...p, cards: { ...(p.cards || {}) }, history: [...(p.history || [])] }));
-    const ordersLocal = { ...(orders || {}) };
+    // Peer コールバック経由では React state の orders が古いまま（空）になり得るため stateRef を優先
+    const stNow = stateRef.current || {};
+    const turnNow = stNow.turn != null ? stNow.turn : turn;
+    const totalTurnsNow = stNow.totalTurns != null ? stNow.totalTurns : totalTurns;
+    const nStartNow = ensureBaseN(stNow.currentN != null ? stNow.currentN : currentN);
+    const priceBeforeNow = nStartNow >= 2 ? sopf(nStartNow) : priceBefore;
+    const endgame = isLastFiveTurns(turnNow, totalTurnsNow);
+    let rescuedPlayers = (playersBase || stNow.players || players).map((p) => ({ ...p, cards: { ...(p.cards || {}) }, history: [...(p.history || [])] }));
+    const ordersLocal = { ...(stNow.orders && Object.keys(stNow.orders).length ? stNow.orders : (orders || {})) };
     Object.keys(ordersLocal).forEach((k) => { ordersLocal[k] = { ...(ordersLocal[k] || {}) }; });
     // 防衛・反射の連続使用禁止を強制
     humanHacksSoFar = { ...(humanHacksSoFar || {}) };
     Object.keys(humanHacksSoFar).forEach((pid) => {
       const pl = rescuedPlayers.find((x) => String(x.id) === String(pid));
-      if (!pl || !isProtectOnCooldown(pl, turn)) return;
+      if (!pl || !isProtectOnCooldown(pl, turnNow)) return;
       const hk = humanHacksSoFar[pid] || {};
       if (hk.defense || hk.reflect) {
         humanHacksSoFar[pid] = { ...hk, defense: 0, reflect: 0 };
@@ -4382,7 +4412,7 @@ function FactorTrader() {
       if (choice === "zero10" && st !== 0) return p;
       if (choice === "half5" && st > 5) return p;
       if (st > 5) return p;
-      const next = applyCoinRescue(p, choice, priceBefore);
+      const next = applyCoinRescue(p, choice, priceBeforeNow);
       coinRescueMap[p.id] = choice;
       ordersLocal[p.id] = { action: "stay", shares: 0, coinRescue: choice };
       if (choice === "half5") pushLog("COIN " + p.name + " COIN補充: 総資産の50%と引き換えに COIN+5 → 様子見");
@@ -4398,7 +4428,7 @@ function FactorTrader() {
       const st0 = p.cards.stock != null ? p.cards.stock : 0;
       // フォールバック: 注文時未設定の旧セーブ互換。ただし売買注文は強制様子見にしない
       if (!choice && !endgame && st0 <= 5) {
-        const tentative = aiDecideCoinRescue(p, ord, nStart, priceBefore, rescuedPlayers, ordersLocal, turn, totalTurns);
+        const tentative = aiDecideCoinRescue(p, ord, nStartNow, priceBeforeNow, rescuedPlayers, ordersLocal, turnNow, totalTurnsNow);
         // 既に売買を公開済みなら補充しても注文は変えない（表示と清算の一致優先）
         if (tentative && ord.action === "stay") choice = tentative;
       }
@@ -4406,7 +4436,7 @@ function FactorTrader() {
       if (choice === "zero10" && st0 !== 0) return p;
       if (choice === "half5" && st0 > 5) return p;
       if (st0 > 5) return p;
-      const next = applyCoinRescue(p, choice, priceBefore);
+      const next = applyCoinRescue(p, choice, priceBeforeNow);
       coinRescueMap[p.id] = choice;
       ordersLocal[p.id] = { action: "stay", shares: 0, coinRescue: choice };
       pushLog("COIN " + (p.name || p.id) + " がCOIN補充（" + coinRescueLabel(choice) + "）→ 様子見");
@@ -4432,7 +4462,7 @@ function FactorTrader() {
       }
       newHacks[p.id] = {
         ...aiDecideCards(
-          p.cards, turn, totalTurns, ordersLocal[p.id], nStart, priceBefore, ordersLocal, p.id, rescuedPlayers
+          p.cards, turnNow, totalTurnsNow, ordersLocal[p.id], nStartNow, priceBeforeNow, ordersLocal, p.id, rescuedPlayers
         ),
         coinRescue: coinRescueMap[p.id] || "",
       };
@@ -4445,13 +4475,13 @@ function FactorTrader() {
       // 人間が売買中ならその妨害を優先
       const humTrading = rescuedPlayers.some((hp) => {
         if (!hp || hp.isAI || hp.isBankrupt) return false;
-        const o = orders[hp.id] || {};
+        const o = ordersLocal[hp.id] || {};
         return (o.action === "buy" || o.action === "sell") && (o.shares || 0) > 0;
       });
       aiHeavy.sort((a, b) => {
         // 様子見のCPUを優先（妨害専任）、その後ランダム味付け
-        const oa = (orders[a.id] || {}).action === "stay" ? 1 : 0;
-        const ob = (orders[b.id] || {}).action === "stay" ? 1 : 0;
+        const oa = (ordersLocal[a.id] || {}).action === "stay" ? 1 : 0;
+        const ob = (ordersLocal[b.id] || {}).action === "stay" ? 1 : 0;
         if (oa !== ob) return ob - oa;
         return Math.random() - 0.5;
       });
@@ -4504,9 +4534,9 @@ function FactorTrader() {
       const avantUsers = rescuedPlayers.filter((p) => !p.isBankrupt && newHacks[p.id] && newHacks[p.id].avant);
       if (avantUsers.length > 1) {
         let winner = avantUsers[0];
-        let winTv = totalValue(winner, priceBefore);
+        let winTv = totalValue(winner, priceBeforeNow);
         avantUsers.forEach((p) => {
-          const tv = totalValue(p, priceBefore);
+          const tv = totalValue(p, priceBeforeNow);
           if (tv < winTv || (tv === winTv && String(p.id) < String(winner.id))) {
             winner = p;
             winTv = tv;
@@ -4526,9 +4556,9 @@ function FactorTrader() {
       const sabUsers = rescuedPlayers.filter((p) => !p.isBankrupt && newHacks[p.id] && newHacks[p.id].avantSab);
       if (sabUsers.length > 1) {
         let winner = sabUsers[0];
-        let winTv = totalValue(winner, priceBefore);
+        let winTv = totalValue(winner, priceBeforeNow);
         sabUsers.forEach((p) => {
-          const tv = totalValue(p, priceBefore);
+          const tv = totalValue(p, priceBeforeNow);
           if (tv < winTv || (tv === winTv && String(p.id) < String(winner.id))) {
             winner = p;
             winTv = tv;
@@ -4589,7 +4619,10 @@ function FactorTrader() {
     const basePlayers = playersOverride || st.players || players;
     const nStartR = ensureBaseN(st.currentN != null ? st.currentN : currentN);
     const priceBeforeR = sopf(nStartR);
-    const ordersR = (st.orders && Object.keys(st.orders).length) ? st.orders : (orders || {});
+    // stateRef.orders を最優先（オンライン Peer 経路で React state が空のまま残るのを防ぐ）
+    const ordersR = (st.orders && Object.keys(st.orders).length)
+      ? st.orders
+      : ((orders && Object.keys(orders).length) ? orders : {});
     const turnR = st.turn != null ? st.turn : turn;
     // 清算直前に stateRef も同期
     stateRef.current = { ...st, currentN: nStartR, orders: ordersR };
@@ -7799,13 +7832,23 @@ function PlayersPanel({ players, orders, phase, currentPrice, revealData, equipp
               {p.isAI ? <Cpu size={13} /> : <User size={13} />}
               <span className="ft-pc-name-text">{p.name}</span>
             </div>
-            {(!p.isAI && (!myPlayerId || p.id === myPlayerId) && (Array.isArray(equippedTitleIds) ? equippedTitleIds : []).length) ? (
-              <div className="ft-pc-titles-row" title={(Array.isArray(equippedTitleIds) ? equippedTitleIds : []).map((id) => (TITLE_BY_ID[id] || {}).name).filter(Boolean).join(" / ")}>
-                {(Array.isArray(equippedTitleIds) ? equippedTitleIds : []).filter((id) => TITLE_BY_ID[id]).map((id) => (
-                  <TitleBadge key={id} titleId={id} size={13} />
-                ))}
-              </div>
-            ) : null}
+            {(() => {
+              if (p.isAI) return null;
+              // オンライン: 各プレイヤーに紐づく equippedTitles を表示。無ければ自分のみローカル装備を表示
+              let ids = normalizeEquipped(p.equippedTitles);
+              if (!ids.length && (!myPlayerId || p.id === myPlayerId)) {
+                ids = normalizeEquipped(equippedTitleIds);
+              }
+              if (!ids.length) return null;
+              const names = ids.map((id) => (TITLE_BY_ID[id] || {}).name).filter(Boolean).join(" / ");
+              return (
+                <div className="ft-pc-titles-row" title={names}>
+                  {ids.filter((id) => TITLE_BY_ID[id]).map((id) => (
+                    <TitleBadge key={id} titleId={id} size={13} />
+                  ))}
+                </div>
+              );
+            })()}
             <div className="ft-pc-cash">{p.isBankrupt ? "破産" : yen(totalValue(p, currentPrice))}</div>
             <div className="ft-pc-holdings">現金{yen(p.cash)} ／ {sharesFmt(p.holdings)}株{p.holdings > 0 ? `(@${p.avgPrice.toFixed(1)})` : ""}</div>
             <div className="ft-pc-cards"><Coin size={12} className="icon-coin" /> {p.cards.stock != null ? p.cards.stock : 0}</div>
