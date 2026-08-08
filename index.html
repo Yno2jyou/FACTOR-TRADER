@@ -962,7 +962,7 @@ function genRoomCode() {
   return s;
 }
 function roomPeerId(code) {
-  return PEER_PREFIX + String(code || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  return PEER_PREFIX + normalizeAlnumCode(code, 12);
 }
 
 function serializePlayers(players) {
@@ -1369,8 +1369,31 @@ function ftRandomOtp(len) {
   for (let i = 0; i < n; i++) s += chars[a[i] % chars.length];
   return s;
 }
+/** 全角英数字・記号を半角へ（モバイル日本語キーボード対策） */
+function toHalfWidth(s) {
+  return String(s || "")
+    .replace(/[！-～]/g, function (ch) {
+      return String.fromCharCode(ch.charCodeAt(0) - 0xFEE0);
+    })
+    .replace(/　/g, " ");
+}
+
+/** 部屋コード・OTP 用: 全角→半角、大文字化、英数字のみ */
+function normalizeAlnumCode(s, maxLen) {
+  let out = "";
+  const raw = toHalfWidth(s).toUpperCase();
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw.charAt(i);
+    if ((ch >= "A" && ch <= "Z") || (ch >= "0" && ch <= "9")) {
+      out += ch;
+      if (maxLen && out.length >= maxLen) break;
+    }
+  }
+  return out;
+}
+
 function ftNormalizeOtp(s) {
-  return String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  return normalizeAlnumCode(s, 12);
 }
 function loadOtpVault() {
   try {
@@ -3860,7 +3883,7 @@ function FactorTrader() {
       setNetStatus("PeerJSの読み込みに失敗しました。");
       return;
     }
-    const code = String(joinCodeInput || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+    const code = normalizeAlnumCode(joinCodeInput, 6);
     if (code.length < 4) {
       setNetStatus("部屋コードを入力してください");
       return;
@@ -7036,16 +7059,17 @@ function SetupAccountMenu({ onProgressApplied, equippedTitleIds }) {
   async function handleRegister(e) {
     e && e.preventDefault();
     setErr(""); setMsg("");
-    if (password !== password2) {
+    if (toHalfWidth(password) !== toHalfWidth(password2)) {
       setErr("パスワードが一致しません");
       return;
     }
     setBusy(true);
     try {
-      const pass = password;
-      await registerAccount(userId, password);
-      setLoggedId(String(userId).trim());
-      try { await startLiveSync(String(userId).trim(), pass); } catch (se) {}
+      const uid = toHalfWidth(userId).trim();
+      const pass = toHalfWidth(password);
+      await registerAccount(uid, pass);
+      setLoggedId(String(uid).trim());
+      try { await startLiveSync(uid, pass); } catch (se) {}
       setMsg("登録しました。他端末と進捗を常時同期します（双方でログイン中）。");
       if (onProgressApplied) onProgressApplied();
       setPassword(""); setPassword2("");
@@ -7063,10 +7087,11 @@ function SetupAccountMenu({ onProgressApplied, equippedTitleIds }) {
     try {
       const otpNorm = otpInput ? ftNormalizeOtp(otpInput) : "";
       if (otpNorm) setOtpInput(otpNorm);
-      const pass = password;
-      await loginAccount(userId, password, otpNorm);
-      setLoggedId(String(userId).trim());
-      try { await startLiveSync(String(userId).trim(), pass); } catch (se) {}
+      const uid = toHalfWidth(userId).trim();
+      const pass = toHalfWidth(password);
+      await loginAccount(uid, pass, otpNorm);
+      setLoggedId(uid);
+      try { await startLiveSync(uid, pass); } catch (se) {}
       setMsg("ログインしました。同じIDで開いている他端末と自動同期します（両方オンラインでログイン中）。");
       if (onProgressApplied) onProgressApplied();
       setPassword(""); setOtpInput("");
@@ -7173,11 +7198,11 @@ function SetupAccountMenu({ onProgressApplied, equippedTitleIds }) {
               <button type="button" className="ft-account-menu-back" onClick={() => setView("menu")}>← 戻る</button>
               <div className="ft-account-menu-title">ログイン</div>
               <div className="ft-label">ID</div>
-              <input className="ft-setup-input" value={userId} onChange={(e) => setUserId(e.target.value)} autoComplete="username" maxLength={24} autoCapitalize="off" autoCorrect="off" spellCheck={false} inputMode="text" enterKeyHint="next" />
+              <input className="ft-setup-input" value={userId} onChange={(e) => setUserId(toHalfWidth(e.target.value))} autoComplete="username" maxLength={24} autoCapitalize="off" autoCorrect="off" spellCheck={false} inputMode="text" enterKeyHint="next" />
               <div className="ft-label">パスワード</div>
-              <input className="ft-setup-input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" enterKeyHint="next" />
+              <input className="ft-setup-input" type="password" value={password} onChange={(e) => setPassword(toHalfWidth(e.target.value))} autoComplete="current-password" enterKeyHint="next" />
               <div className="ft-label">同期ワンタイムパスワード（任意・8桁）</div>
-              <input className="ft-setup-input ft-setup-input-otp" value={otpInput} onChange={(e) => setOtpInput(e.target.value)} onBlur={(e) => setOtpInput(ftNormalizeOtp(e.target.value))} placeholder="例: V6H3FUYT" autoComplete="one-time-code" maxLength={12} autoCapitalize="characters" autoCorrect="off" spellCheck={false} inputMode="text" enterKeyHint="done" />
+              <input className="ft-setup-input ft-setup-input-otp" value={otpInput} onChange={(e) => { if (e.nativeEvent && e.nativeEvent.isComposing) return; setOtpInput(normalizeAlnumCode(e.target.value, 12)); }} onCompositionEnd={(e) => setOtpInput(normalizeAlnumCode(e.target.value, 12))} onBlur={(e) => setOtpInput(ftNormalizeOtp(e.target.value))} placeholder="例: V6H3FUYT" autoComplete="one-time-code" maxLength={12} autoCapitalize="characters" autoCorrect="off" spellCheck={false} inputMode="text" enterKeyHint="done" />
               <button type="submit" className="ft-start-btn" disabled={busy}>{busy ? "処理中…" : "ログイン"}</button>
               {err ? <p className="ft-setup-status">{err}</p> : null}
               {msg ? <p className="ft-setup-status" style={{ color: "var(--ft-accent)" }}>{msg}</p> : null}
@@ -7191,11 +7216,11 @@ function SetupAccountMenu({ onProgressApplied, equippedTitleIds }) {
               <p className="ft-setup-hint">この端末の既存進捗をアカウントへ引き継ぎます</p>
               <div className="ft-label">ID</div>
               <p className="ft-setup-hint" style={{ marginTop: -2, marginBottom: 6 }}>任意の文字列でOKです。メールアドレス・電話番号など個人が特定できる情報はIDに使わないでください。</p>
-              <input className="ft-setup-input" value={userId} onChange={(e) => setUserId(e.target.value)} autoComplete="username" maxLength={24} autoCapitalize="off" autoCorrect="off" spellCheck={false} inputMode="text" enterKeyHint="next" />
+              <input className="ft-setup-input" value={userId} onChange={(e) => setUserId(toHalfWidth(e.target.value))} autoComplete="username" maxLength={24} autoCapitalize="off" autoCorrect="off" spellCheck={false} inputMode="text" enterKeyHint="next" />
               <div className="ft-label">パスワード</div>
-              <input className="ft-setup-input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" enterKeyHint="next" />
+              <input className="ft-setup-input" type="password" value={password} onChange={(e) => setPassword(toHalfWidth(e.target.value))} autoComplete="new-password" enterKeyHint="next" />
               <div className="ft-label">パスワード（確認）</div>
-              <input className="ft-setup-input" type="password" value={password2} onChange={(e) => setPassword2(e.target.value)} autoComplete="new-password" enterKeyHint="done" />
+              <input className="ft-setup-input" type="password" value={password2} onChange={(e) => setPassword2(toHalfWidth(e.target.value))} autoComplete="new-password" enterKeyHint="done" />
               <button type="submit" className="ft-start-btn" disabled={busy}>{busy ? "処理中…" : "登録する"}</button>
               {err ? <p className="ft-setup-status">{err}</p> : null}
               {msg ? <p className="ft-setup-status" style={{ color: "var(--ft-accent)" }}>{msg}</p> : null}
@@ -7208,7 +7233,7 @@ function SetupAccountMenu({ onProgressApplied, equippedTitleIds }) {
               <div className="ft-account-menu-title is-otp">同期ワンタイムパスワード</div>
               <p className="ft-setup-hint">有効5分・1回限り・8桁のみ。発行中はこのページを開いたまま、他端末でログイン時に入力してください。</p>
               <div className="ft-label">パスワード再入力</div>
-              <input className="ft-setup-input" type="password" value={issuePass} onChange={(e) => setIssuePass(e.target.value)} placeholder="アカウントのパスワード" autoComplete="current-password" enterKeyHint="done" />
+              <input className="ft-setup-input" type="password" value={issuePass} onChange={(e) => setIssuePass(toHalfWidth(e.target.value))} placeholder="アカウントのパスワード" autoComplete="current-password" enterKeyHint="done" />
               <button type="button" className="ft-start-btn" disabled={busy} onClick={handleIssueOtp}>{busy ? "発行中…" : "発行する"}</button>
               {issuedOtp ? (
                 <>
@@ -7347,7 +7372,7 @@ function SetupScreen({ playerCount, setPlayerCount, humanCount, setHumanCount, h
               autoComplete="nickname"
               spellCheck={false}
               value={myName || ""}
-              onChange={(e) => setMyName && setMyName(e.target.value)}
+              onChange={(e) => setMyName && setMyName(toHalfWidth(e.target.value))}
               className="ft-setup-input"
             />
             {onOpenTitles ? (
@@ -7396,36 +7421,17 @@ function SetupScreen({ playerCount, setPlayerCount, humanCount, setHumanCount, h
                 if (!setJoinCodeInput) return;
                 // IME 変換中は加工しない（二重入力防止）
                 if (e.nativeEvent && e.nativeEvent.isComposing) return;
-                const el = e.target;
-                const raw = String(el.value || "");
-                // 末尾に追加された文字だけ正規化（途中編集でも全体を安全に再構成）
-                let cleaned = "";
-                for (let i = 0; i < raw.length && cleaned.length < 6; i++) {
-                  const ch = raw.charAt(i).toUpperCase();
-                  if ((ch >= "A" && ch <= "Z") || (ch >= "0" && ch <= "9")) cleaned += ch;
-                }
+                const cleaned = normalizeAlnumCode(e.target.value, 6);
                 if (cleaned === (joinCodeInput || "")) return;
                 setJoinCodeInput(cleaned);
               }}
               onCompositionEnd={(e) => {
                 if (!setJoinCodeInput) return;
-                const raw = String(e.target.value || "");
-                let cleaned = "";
-                for (let i = 0; i < raw.length && cleaned.length < 6; i++) {
-                  const ch = raw.charAt(i).toUpperCase();
-                  if ((ch >= "A" && ch <= "Z") || (ch >= "0" && ch <= "9")) cleaned += ch;
-                }
-                setJoinCodeInput(cleaned);
+                setJoinCodeInput(normalizeAlnumCode(e.target.value, 6));
               }}
               onBlur={(e) => {
                 if (!setJoinCodeInput) return;
-                const raw = String(e.target.value || "");
-                let cleaned = "";
-                for (let i = 0; i < raw.length && cleaned.length < 6; i++) {
-                  const ch = raw.charAt(i).toUpperCase();
-                  if ((ch >= "A" && ch <= "Z") || (ch >= "0" && ch <= "9")) cleaned += ch;
-                }
-                setJoinCodeInput(cleaned);
+                setJoinCodeInput(normalizeAlnumCode(e.target.value, 6));
               }}
               className="ft-setup-input ft-setup-input-code"
             />
