@@ -3410,103 +3410,12 @@ const FT_FX = {
   _ctx: null,
   _unlocked: false,
   _shakeTimer: null,
-  ensureAudio() {
-    try {
-      if (!this._ctx) {
-        const AC = window.AudioContext || window.webkitAudioContext;
-        if (!AC) return null;
-        this._ctx = new AC();
-      }
-      if (this._ctx.state === "suspended") this._ctx.resume();
-      this._unlocked = true;
-      return this._ctx;
-    } catch (e) {
-      return null;
-    }
-  },
-  unlock() {
-    this.ensureAudio();
-  },
-  tone(freq, dur, type, gain, when) {
-    const ctx = this.ensureAudio();
-    if (!ctx) return;
-    const t0 = (when != null ? when : 0) + ctx.currentTime;
-    const o = ctx.createOscillator();
-    const g = ctx.createGain();
-    o.type = type || "sine";
-    o.frequency.setValueAtTime(freq, t0);
-    g.gain.setValueAtTime(0.0001, t0);
-    g.gain.exponentialRampToValueAtTime(Math.max(0.0001, gain || 0.08), t0 + 0.012);
-    g.gain.exponentialRampToValueAtTime(0.0001, t0 + Math.max(0.03, dur || 0.12));
-    o.connect(g);
-    g.connect(ctx.destination);
-    o.start(t0);
-    o.stop(t0 + Math.max(0.04, dur || 0.12) + 0.02);
-  },
-  noise(dur, gain) {
-    const ctx = this.ensureAudio();
-    if (!ctx) return;
-    const len = Math.floor(ctx.sampleRate * Math.max(0.02, dur || 0.08));
-    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
-    const data = buf.getChannelData(0);
-    for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / len);
-    const src = ctx.createBufferSource();
-    src.buffer = buf;
-    const g = ctx.createGain();
-    g.gain.value = gain || 0.05;
-    src.connect(g);
-    g.connect(ctx.destination);
-    src.start();
-  },
+  ensureAudio() { return null; },
+  unlock() {},
+  tone() {},
+  noise() {},
   play(kind) {
-    try {
-      if (kind === "click") {
-        this.tone(880, 0.05, "square", 0.035);
-      } else if (kind === "toggle") {
-        this.tone(520, 0.06, "triangle", 0.04);
-        this.tone(780, 0.05, "triangle", 0.03, 0.04);
-      } else if (kind === "order") {
-        this.tone(440, 0.08, "sine", 0.05);
-        this.tone(660, 0.1, "sine", 0.04, 0.07);
-      } else if (kind === "hack") {
-        this.tone(180, 0.1, "sawtooth", 0.04);
-        this.tone(90, 0.12, "square", 0.03, 0.05);
-      } else if (kind === "reveal") {
-        this.tone(330, 0.1, "sine", 0.05);
-        this.tone(495, 0.12, "sine", 0.045, 0.08);
-        this.tone(660, 0.16, "triangle", 0.04, 0.16);
-      } else if (kind === "up") {
-        this.tone(523, 0.08, "sine", 0.05);
-        this.tone(659, 0.1, "sine", 0.05, 0.07);
-        this.tone(784, 0.14, "triangle", 0.045, 0.15);
-      } else if (kind === "down") {
-        this.tone(392, 0.1, "triangle", 0.05);
-        this.tone(311, 0.12, "triangle", 0.045, 0.09);
-        this.tone(247, 0.16, "sine", 0.04, 0.18);
-      } else if (kind === "bankrupt") {
-        this.noise(0.18, 0.07);
-        this.tone(120, 0.25, "sawtooth", 0.06);
-        this.tone(80, 0.3, "square", 0.04, 0.1);
-      } else if (kind === "bailout") {
-        this.tone(440, 0.08, "sine", 0.05);
-        this.tone(554, 0.1, "sine", 0.05, 0.08);
-        this.tone(659, 0.12, "triangle", 0.05, 0.16);
-        this.tone(880, 0.18, "sine", 0.04, 0.26);
-      } else if (kind === "title") {
-        this.tone(523, 0.1, "sine", 0.06);
-        this.tone(659, 0.1, "sine", 0.05, 0.1);
-        this.tone(784, 0.12, "sine", 0.05, 0.2);
-        this.tone(1046, 0.22, "triangle", 0.055, 0.32);
-      } else if (kind === "market") {
-        this.tone(600, 0.06, "sine", 0.035);
-        this.tone(900, 0.08, "triangle", 0.03, 0.05);
-      } else if (kind === "coin") {
-        this.tone(980, 0.05, "square", 0.03);
-        this.tone(1320, 0.07, "square", 0.025, 0.04);
-      } else if (kind === "win") {
-        [523, 659, 784, 1046].forEach((f, i) => this.tone(f, 0.14, "triangle", 0.05, i * 0.09));
-      }
-    } catch (e) {}
+    /* 効果音は無効 */
   },
   shake(intensity) {
     try {
@@ -3538,17 +3447,6 @@ const FT_FX = {
   },
 };
 
-function useFtAudioUnlock() {
-  useEffect(() => {
-    const unlock = () => FT_FX.unlock();
-    window.addEventListener("pointerdown", unlock, { once: true, passive: true });
-    window.addEventListener("keydown", unlock, { once: true });
-    return () => {
-      window.removeEventListener("pointerdown", unlock);
-      window.removeEventListener("keydown", unlock);
-    };
-  }, []);
-}
 
 /** 数値カウントアップ */
 function AnimatedNumber({ value, duration = 700, format, className, style }) {
@@ -3626,11 +3524,40 @@ function ConfettiBurst({ active, variant }) {
 }
 
 /** フェーズ切替オーバーレイ文言 */
-function PhaseStamp({ text, accent }) {
+function PhaseStamp({ text, sub, accent, step }) {
   if (!text) return null;
   return (
-    <div className={"ft-phase-stamp" + (accent ? " is-" + accent : "")} key={text}>
-      <span>{text}</span>
+    <div className={"ft-phase-stamp" + (accent ? " is-" + accent : "")} key={text + String(step || "")}>
+      {step ? <span className="ft-phase-stamp-step">STEP {step}</span> : null}
+      <span className="ft-phase-stamp-main">{text}</span>
+      {sub ? <span className="ft-phase-stamp-sub">{sub}</span> : null}
+    </div>
+  );
+}
+
+/** プレイ中のフェーズ進行レール（開示→注文→介入→清算） */
+function PhaseRail({ phase }) {
+  const steps = [
+    { id: "market", label: "開示", no: 1 },
+    { id: "order", label: "注文", no: 2 },
+    { id: "hack", label: "介入", no: 3 },
+    { id: "reveal", label: "清算", no: 4 },
+  ];
+  const idx = Math.max(0, steps.findIndex((s) => s.id === phase));
+  return (
+    <div className={"ft-phase-rail is-" + (phase || "market")} aria-label="TERN進行">
+      {steps.map((s, i) => {
+        const state = i < idx ? "done" : i === idx ? "on" : "todo";
+        return (
+          <React.Fragment key={s.id}>
+            {i > 0 ? <div className={"ft-phase-rail-line" + (i <= idx ? " is-lit" : "")} /> : null}
+            <div className={"ft-phase-rail-step is-" + state + " is-" + s.id}>
+              <span className="ft-phase-rail-dot">{state === "done" ? "✓" : s.no}</span>
+              <span className="ft-phase-rail-label">{s.label}</span>
+            </div>
+          </React.Fragment>
+        );
+      })}
     </div>
   );
 }
@@ -3701,33 +3628,15 @@ function FactorTrader() {
   const [confettiOn, setConfettiOn] = useState(false);
   const [confettiVariant, setConfettiVariant] = useState("win");
   const prevPhaseFxRef = useRef(null);
-  useFtAudioUnlock();
-  useEffect(() => {
-    function onClick(e) {
-      const t = e.target && e.target.closest
-        ? e.target.closest(".ft-primary-btn, .ft-start-btn, .ft-order-btn, .ft-count-btn, .ft-heavy-toggle, .ft-defense-toggle, .ft-rules-btn, .ft-quit-btn, .ft-modal-confirm, .ft-modal-cancel")
-        : null;
-      if (!t) return;
-      if (t.classList.contains("ft-order-btn") || t.classList.contains("ft-count-btn") || t.classList.contains("ft-heavy-toggle") || t.classList.contains("ft-defense-toggle")) {
-        FT_FX.play("toggle");
-      } else if (t.classList.contains("ft-primary-btn") || t.classList.contains("ft-start-btn") || t.classList.contains("ft-modal-confirm")) {
-        FT_FX.play("click");
-      } else {
-        FT_FX.play("click");
-      }
-    }
-    document.addEventListener("click", onClick, true);
-    return () => document.removeEventListener("click", onClick, true);
-  }, []);
 
   function triggerConfetti(variant, ms) {
     setConfettiVariant(variant || "win");
     setConfettiOn(true);
     setTimeout(() => setConfettiOn(false), ms || 2200);
   }
-  function showPhaseStamp(text, accent) {
-    setPhaseStamp({ text: text, accent: accent || "", key: Date.now() });
-    setTimeout(() => setPhaseStamp(null), 900);
+  function showPhaseStamp(text, accent, sub, step) {
+    setPhaseStamp({ text: text, accent: accent || "", sub: sub || "", step: step || null, key: Date.now() });
+    setTimeout(() => setPhaseStamp(null), 1100);
   }
 
   // 最新 state を ref に保持（Peer コールバックから参照）
@@ -3764,16 +3673,16 @@ function FactorTrader() {
     if (prev == null || prev === phase) return;
     if (phase === "market") {
       FT_FX.play("market");
-      showPhaseStamp("MARKET OPEN", "accent");
+      showPhaseStamp("市場開示", "accent", "ベース数 N と仮株価を確認", 1);
     } else if (phase === "order") {
       FT_FX.play("order");
-      showPhaseStamp("PLACE ORDERS", "blue");
+      showPhaseStamp("注文", "blue", "買い / 売り / 様子見を決定", 2);
     } else if (phase === "hack") {
       FT_FX.play("hack");
-      showPhaseStamp("MARKET INTERVENTION", "red");
+      showPhaseStamp("市場介入", "red", "操作・妨害・防衛を投入", 3);
     } else if (phase === "reveal") {
       FT_FX.play("reveal");
-      showPhaseStamp("SETTLEMENT", "amber");
+      showPhaseStamp("清算", "amber", "個人株価と損益を確定", 4);
     }
   }, [phase, screen]);
 
@@ -5420,7 +5329,15 @@ function FactorTrader() {
     <div className="ft-root" ref={topRef}>
       <style>{CSS}</style>
       <ConfettiBurst active={confettiOn} variant={confettiVariant} />
-      {phaseStamp ? <PhaseStamp key={phaseStamp.key} text={phaseStamp.text} accent={phaseStamp.accent} /> : null}
+      {phaseStamp ? (
+        <PhaseStamp
+          key={phaseStamp.key}
+          text={phaseStamp.text}
+          sub={phaseStamp.sub}
+          accent={phaseStamp.accent}
+          step={phaseStamp.step}
+        />
+      ) : null}
       {screen === "setup" && (
         <>
         <SetupScreen
@@ -5554,6 +5471,7 @@ function FactorTrader() {
                 : null
             }
           />
+          <PhaseRail phase={phase} />
           <div className="ft-main">
             <div className="ft-col-left">
               <ChartPanel priceHistory={priceHistory} nStart={nStart} priceBefore={priceBefore} refPrice={refPrice} phase={phase} />
@@ -8287,7 +8205,8 @@ function ActionPanel(props) {
 
   if (phase === "market") {
     return (
-      <div className="ft-panel ft-action">
+      <div className="ft-panel ft-action ft-phase-enter is-market" key="phase-market">
+        <div className="ft-phase-enter-bar" aria-hidden="true" />
         <div className="ft-panel-head">STEP 1 — 市場開示</div>
         <p className="ft-action-desc">
           今TERNのベース数字 <b>{nStart.toLocaleString()}</b> が公開されました。
@@ -8365,7 +8284,8 @@ function ActionPanel(props) {
     }
 
     return (
-      <div className="ft-panel ft-action">
+      <div className="ft-panel ft-action ft-phase-enter is-order" key="phase-order">
+        <div className="ft-phase-enter-bar" aria-hidden="true" />
         <div className="ft-panel-head">STEP 2 — 投資注文</div>
         <p className="ft-action-desc">
           現仮株価 <b className="ft-highlight">{yenNum(priceBefore)}円</b> を目安に、何株「買う」か「売る」かを決めます。
@@ -8549,7 +8469,8 @@ function ActionPanel(props) {
 
   if (phase === "hack") {
     return (
-      <div className="ft-panel ft-action">
+      <div className="ft-panel ft-action ft-phase-enter is-hack" key="phase-hack">
+        <div className="ft-phase-enter-bar" aria-hidden="true" />
         <div className="ft-panel-head">STEP 3 — 市場介入（裏向き）</div>
         <p className="ft-action-desc">生涯COINを投入しますか？ 使えばもう戻りません。</p>
         <div className="ft-hack-controls">
@@ -8927,7 +8848,8 @@ function ActionPanel(props) {
       return 0;
     });
     return (
-      <div className="ft-panel ft-action">
+      <div className="ft-panel ft-action ft-phase-enter is-reveal" key="phase-reveal">
+        <div className="ft-phase-enter-bar" aria-hidden="true" />
         <div className="ft-panel-head">STEP 4 — 清算結果{view.name ? "（" + view.name + "）" : ""}</div>
         {humanNamesList.length > 0 ? (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
@@ -12188,6 +12110,222 @@ const CSS = `
   0% { transform: scale(0.85); opacity: 0.5; }
   60% { transform: scale(1.08); }
   100% { transform: scale(1); opacity: 1; }
+}
+
+/* ---------- フェーズ進行レール ---------- */
+.ft-phase-rail {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  background: var(--ft-panel);
+  border: 1px solid var(--ft-border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.ft-phase-rail-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 52px;
+  position: relative;
+  z-index: 1;
+}
+.ft-phase-rail-dot {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--ft-font-display);
+  font-size: 11px;
+  font-weight: 700;
+  border: 1.5px solid var(--ft-border);
+  background: var(--ft-panel-alt);
+  color: var(--ft-text-dim);
+  transition: background 0.35s, border-color 0.35s, color 0.35s, box-shadow 0.35s, transform 0.35s;
+}
+.ft-phase-rail-label {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--ft-text-dim);
+  font-family: var(--ft-font-display);
+  transition: color 0.3s;
+}
+.ft-phase-rail-line {
+  flex: 1 1 28px;
+  height: 2px;
+  max-width: 48px;
+  background: var(--ft-border);
+  margin: 0 4px 16px;
+  border-radius: 2px;
+  transition: background 0.4s, box-shadow 0.4s;
+}
+.ft-phase-rail-line.is-lit {
+  background: linear-gradient(90deg, rgba(57,255,156,0.55), rgba(51,209,255,0.55));
+  box-shadow: 0 0 8px rgba(57,255,156,0.25);
+}
+.ft-phase-rail-step.is-done .ft-phase-rail-dot {
+  background: rgba(57,255,156,0.15);
+  border-color: rgba(57,255,156,0.55);
+  color: var(--ft-accent);
+}
+.ft-phase-rail-step.is-done .ft-phase-rail-label {
+  color: var(--ft-accent-dim);
+}
+.ft-phase-rail-step.is-on .ft-phase-rail-dot {
+  transform: scale(1.12);
+  animation: ft-rail-pulse 1.4s ease-in-out infinite;
+}
+.ft-phase-rail-step.is-on.is-market .ft-phase-rail-dot {
+  background: rgba(57,255,156,0.2);
+  border-color: var(--ft-accent);
+  color: var(--ft-accent);
+  box-shadow: 0 0 14px rgba(57,255,156,0.4);
+}
+.ft-phase-rail-step.is-on.is-order .ft-phase-rail-dot {
+  background: rgba(51,209,255,0.2);
+  border-color: var(--ft-blue);
+  color: var(--ft-blue);
+  box-shadow: 0 0 14px rgba(51,209,255,0.4);
+}
+.ft-phase-rail-step.is-on.is-hack .ft-phase-rail-dot {
+  background: rgba(255,77,109,0.2);
+  border-color: var(--ft-red);
+  color: var(--ft-red);
+  box-shadow: 0 0 14px rgba(255,77,109,0.4);
+}
+.ft-phase-rail-step.is-on.is-reveal .ft-phase-rail-dot {
+  background: rgba(255,182,72,0.2);
+  border-color: var(--ft-amber);
+  color: var(--ft-amber);
+  box-shadow: 0 0 14px rgba(255,182,72,0.4);
+}
+.ft-phase-rail-step.is-on.is-market .ft-phase-rail-label { color: var(--ft-accent); }
+.ft-phase-rail-step.is-on.is-order .ft-phase-rail-label { color: var(--ft-blue); }
+.ft-phase-rail-step.is-on.is-hack .ft-phase-rail-label { color: var(--ft-red); }
+.ft-phase-rail-step.is-on.is-reveal .ft-phase-rail-label { color: var(--ft-amber); }
+@keyframes ft-rail-pulse {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(1.25); }
+}
+@media (max-width: 520px) {
+  .ft-phase-rail { padding: 8px 6px; }
+  .ft-phase-rail-step { min-width: 44px; }
+  .ft-phase-rail-label { font-size: 9px; }
+  .ft-phase-rail-line { max-width: 28px; margin-bottom: 14px; }
+}
+
+/* ---------- フェーズ切替パネル入場 ---------- */
+.ft-phase-enter {
+  position: relative;
+  overflow: hidden;
+  animation: ft-phase-slide-in 0.48s cubic-bezier(0.22, 0.9, 0.3, 1) both;
+}
+.ft-phase-enter.is-market {
+  animation-name: ft-phase-in-market;
+  border-color: rgba(57,255,156,0.35);
+  box-shadow: 0 0 0 1px rgba(57,255,156,0.08), 0 12px 32px rgba(0,0,0,0.25);
+}
+.ft-phase-enter.is-order {
+  animation-name: ft-phase-in-order;
+  border-color: rgba(51,209,255,0.35);
+  box-shadow: 0 0 0 1px rgba(51,209,255,0.08), 0 12px 32px rgba(0,0,0,0.25);
+}
+.ft-phase-enter.is-hack {
+  animation-name: ft-phase-in-hack;
+  border-color: rgba(255,77,109,0.35);
+  box-shadow: 0 0 0 1px rgba(255,77,109,0.08), 0 12px 32px rgba(0,0,0,0.25);
+}
+.ft-phase-enter.is-reveal {
+  animation-name: ft-phase-in-reveal;
+  border-color: rgba(255,182,72,0.4);
+  box-shadow: 0 0 0 1px rgba(255,182,72,0.1), 0 12px 32px rgba(0,0,0,0.25);
+}
+.ft-phase-enter-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  transform-origin: left center;
+  animation: ft-phase-bar 0.7s ease-out both;
+}
+.ft-phase-enter.is-market .ft-phase-enter-bar {
+  background: linear-gradient(90deg, transparent, var(--ft-accent), transparent);
+}
+.ft-phase-enter.is-order .ft-phase-enter-bar {
+  background: linear-gradient(90deg, transparent, var(--ft-blue), transparent);
+}
+.ft-phase-enter.is-hack .ft-phase-enter-bar {
+  background: linear-gradient(90deg, transparent, var(--ft-red), transparent);
+}
+.ft-phase-enter.is-reveal .ft-phase-enter-bar {
+  background: linear-gradient(90deg, transparent, var(--ft-amber), transparent);
+}
+@keyframes ft-phase-bar {
+  0% { transform: scaleX(0); opacity: 0.3; }
+  40% { transform: scaleX(1); opacity: 1; }
+  100% { transform: scaleX(1); opacity: 0.7; }
+}
+@keyframes ft-phase-in-market {
+  0% { opacity: 0; transform: translateX(-18px); filter: blur(2px); }
+  100% { opacity: 1; transform: translateX(0); filter: blur(0); }
+}
+@keyframes ft-phase-in-order {
+  0% { opacity: 0; transform: translateX(18px); filter: blur(2px); }
+  100% { opacity: 1; transform: translateX(0); filter: blur(0); }
+}
+@keyframes ft-phase-in-hack {
+  0% { opacity: 0; transform: translateY(16px) scale(0.98); filter: blur(2px); }
+  100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+}
+@keyframes ft-phase-in-reveal {
+  0% { opacity: 0; transform: scale(0.96); filter: blur(3px); }
+  100% { opacity: 1; transform: scale(1); filter: blur(0); }
+}
+
+/* スタンプ強化 */
+.ft-phase-stamp {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: min(86vw, 320px);
+  text-align: center;
+  top: 16%;
+  padding: 14px 22px 16px;
+}
+.ft-phase-stamp-step {
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  opacity: 0.85;
+  font-weight: 700;
+}
+.ft-phase-stamp-main {
+  font-size: clamp(20px, 4.5vw, 30px);
+  letter-spacing: 0.14em;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.ft-phase-stamp-sub {
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  opacity: 0.8;
+  font-weight: 500;
+  font-family: var(--ft-font-body);
+  max-width: 280px;
+  line-height: 1.4;
+}
+@keyframes ft-stamp-in {
+  0% { opacity: 0; transform: translateX(-50%) scale(1.2) translateY(-8px); filter: blur(5px); }
+  15% { opacity: 1; transform: translateX(-50%) scale(1) translateY(0); filter: blur(0); }
+  72% { opacity: 1; transform: translateX(-50%) scale(1) translateY(0); }
+  100% { opacity: 0; transform: translateX(-50%) scale(0.97) translateY(-4px); }
 }
 `;
 
