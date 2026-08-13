@@ -306,8 +306,10 @@ function Activity(props) {
      2. 投資注文  : 各プレイヤー(人間+AI)が 買い/売り/様子見 を秘密裏に決定
      3. 市場介入: 生涯COINから操作/妨害を裏向きで決定
      4. 清算（個人株価）:
-          - 操作: 自分の N にだけ +1 → 自分の株価だけ操作
-          - 妨害: 自分以外の N にだけ +1（重複可） → 相手の株価だけ妨害方向に作用
+          - 操作: 自分の N にだけ +操作数
+          - 妨害: 自分以外の N にだけ +1（重複可）
+          - 被妨害でも操作は無効化しない
+          - 最終 N = N_start + 操作数 + 被妨害数 → 株価 = sopf(最終N)
           - 各プレイヤーの株価は個別計算（共通の最終株価は持たない）
    ===================================================================================== */
 
@@ -2574,24 +2576,13 @@ function previewPrice(nStart, quick, heavyCount) {
 /** 個人株価。
  *  ownQuick: 自分の操作のみ（自分の妨害は含めない）
  *  incomingHeavy: 他者からの妨害のみ（自分の妨害は絶対に渡さない）
- *  妨害1回（COIN5枚）= 相手Nに+1。妨害方向にのみ効く。
- *  追加: 被妨害がある場合、操作は無効化され妨害のみ適用（防げるのは防衛のみ）。
+ *  妨害1回（COIN5枚）= 相手Nに+1。操作と妨害は同時に加算される（被妨害でも操作は無効化しない）。
+ *  最終 N = nStart + ownQuick + incomingHeavy → 株価 sopf(N)
  */
 function personalExecPrice(nStart, ownQuick, incomingHeavy, action) {
   const h = Math.max(0, incomingHeavy || 0); // 他者分のみ
-  // 妨害を受けている間は操作を無効化。N は常に nStart+h へ移動する
-  const q = h > 0 ? 0 : Math.max(0, ownQuick || 0);
-  // 被妨害時は必ず N+h を株価に反映（売りでも N+1 が無視されない）
-  // 買い: 高くなる方向を優先（不利側）／売り・様子見含む: 実際の N+h の株価
-  if (h > 0) {
-    const interfered = sopf(nStart + h);
-    if (action === "buy") {
-      const base = sopf(nStart); // 操作無効後の基準
-      return Math.max(base, interfered);
-    }
-    return interfered;
-  }
-  return sopf(nStart + q);
+  const q = Math.max(0, ownQuick || 0);
+  return sopf(nStart + q + h);
 }
 
 /** 1TERN分の清算（純粋関数）。破産判定付き */
@@ -2712,7 +2703,7 @@ function settleTurn(players, orders, hacks, nStart, priceBefore) {
     const ownQuick = hk.quick || 0;
     const incH = incomingHeavyMap[p.id] || 0;
     const order = orders[p.id] || { action: "stay", shares: 0 };
-    const effectiveQuick = incH > 0 ? 0 : ownQuick;
+    const effectiveQuick = ownQuick; // 被妨害でも操作は有効
     priceMap[p.id] = personalExecPrice(nStart, ownQuick, incH, order.action);
     nMap[p.id] = nStart + effectiveQuick + incH;
   });
@@ -2789,8 +2780,8 @@ function settleTurn(players, orders, hacks, nStart, priceBefore) {
       note,
       execPrice,
       ownQuick: hacks[p.id]?.quick || 0,
-      quickNullified: (incomingHeavyMap[p.id] || 0) > 0 && (hacks[p.id]?.quick || 0) > 0,
-      effectiveQuick: (incomingHeavyMap[p.id] || 0) > 0 ? 0 : (hacks[p.id]?.quick || 0),
+      quickNullified: false,
+      effectiveQuick: hacks[p.id]?.quick || 0,
       incomingHeavy: incomingHeavyMap[p.id] || 0,
       usedHeavy: hacks[p.id]?.heavy || 0,
       defense: !!defenseMap[p.id],
@@ -5657,7 +5648,7 @@ function RulesContent() {
             <ul>
               <li>1枚〜 / 自分のN+1ずつ</li>
               <li>自分の株価だけ操作</li>
-              <li>被妨害で無効</li>
+              <li>被妨害と同時に N へ加算</li>
             </ul>
           </div>
           <div className="ft-card-type sab">
@@ -6039,18 +6030,10 @@ function TutorialModal({ onClose }) {
       myPrice = myAvantPrice;
       myN = nStart;
     } else {
-      if (incoming > 0 && myQuick > 0) {
-        // 被妨害があると操作無効（ゲーム仕様に寄せる）
-        quickNull = true;
-        myN = nStart + incoming;
-      } else {
-        myN = nStart + myQuick + incoming;
-      }
+      // 操作と被妨害は同時加算（操作は無効化しない）
+      myN = nStart + myQuick + incoming;
       myPrice = sopf(myN);
-      if (quickNull) {
-        myN = nStart + incoming;
-        myPrice = sopf(myN);
-      }
+      quickNull = false;
     }
 
     // 相手の最終価格
@@ -6142,7 +6125,7 @@ function TutorialModal({ onClose }) {
       notes.push(OPP + "：様子見");
     }
 
-    if (myQuick > 0) notes.push(quickNull ? "操作 " + myQuick + " 枚 → 被妨害により無効" : "操作 " + myQuick + " 枚使用（N+" + myQuick + "）");
+    if (myQuick > 0) notes.push("操作 " + myQuick + " 枚使用（N+" + myQuick + "）");
     if (myHeavy) notes.push("妨害を使用（相手N+1）");
     if (myDef) notes.push("防衛で被妨害を無効化");
     if (myRef) notes.push("反射で妨害を返した（×" + reflected + "）");
@@ -6407,7 +6390,8 @@ function TutorialModal({ onClose }) {
                   const r = result;
                   // あなた側グロー
                   if (r.myAvant) meGlow = " glow-purple";
-                  else if (r.quickNull || (r.incoming > 0 && (r.myQuick || 0) <= 0)) meGlow = " glow-red";
+                  else if (r.incoming > 0 && (r.myQuick || 0) <= 0) meGlow = " glow-red";
+                  else if (r.incoming > 0 && (r.myQuick || 0) > 0) meGlow = " glow-red glow-blue";
                   else if ((r.myQuick || 0) > 0) meGlow = " glow-blue";
                   else if (r.myDef) meGlow = " glow-amber";
                   else if (r.myRef) meGlow = " glow-white";
@@ -6423,9 +6407,9 @@ function TutorialModal({ onClose }) {
 
                   if ((r.myQuick || 0) > 0) {
                     traderNotes.push({
-                      cls: r.quickNull ? "note-heavy" : "note-quick",
+                      cls: "note-quick",
                       icon: "quick",
-                      text: "YOUが操作を " + r.myQuick + " 枚使用" + (r.quickNull ? " → 被妨害により無効化" : "（N+" + r.myQuick + "）"),
+                      text: "YOUが操作を " + r.myQuick + " 枚使用（N+" + r.myQuick + "）",
                     });
                   }
                   if (r.myHeavy) {
@@ -6778,9 +6762,9 @@ function TutorialModal({ onClose }) {
                         </span>
                       ) : null}
                       {(result.myQuick || 0) > 0 ? (
-                        <span className={"ft-card-banner-chip " + (result.quickNull ? "heavy" : "quick")}>
+                        <span className="ft-card-banner-chip quick">
                           <Zap size={14} style={{ marginRight: 4, verticalAlign: "middle" }} />
-                          操作 ×{result.myQuick}{result.quickNull ? " → 被妨害で無効" : ""}
+                          操作 ×{result.myQuick}
                         </span>
                       ) : null}
                       {(result.incoming || 0) > 0 ? (
@@ -6821,11 +6805,11 @@ function TutorialModal({ onClose }) {
                       <b>{nStart.toLocaleString()}</b>
                     </div>
                     {(result.myQuick || 0) > 0 ? (
-                      <div className={"ft-reveal-row " + (result.quickNull ? "heavy" : "quick")}>
+                      <div className="ft-reveal-row quick">
                         <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
                           <Zap size={14} className="icon-quick" /> 操作
                         </span>
-                        <b>+{result.myQuick}{result.quickNull ? "（被妨害で無効）" : ""}</b>
+                        <b>+{result.myQuick}</b>
                       </div>
                     ) : null}
                     {(result.incoming || 0) > 0 ? (
@@ -6923,7 +6907,7 @@ function TutorialModal({ onClose }) {
                       const lines = [];
                       if ((result.myQuick || 0) > 0) {
                         if (result.quickNull) {
-                          lines.push("操作を" + result.myQuick + "枚使用しましたが、被妨害により無効化されました。操作は自分のNだけを動かしますが、妨害を受けている間は効果がありません。");
+                          lines.push("操作を" + result.myQuick + "枚使用しました。被妨害があっても操作は有効で、最終Nは N_start + 操作 + 被妨害 です。");
                         } else if (result.action === "buy" && result.filled > 0) {
                           const diff = result.basePrice - result.myPrice;
                           if (diff > 0) {
@@ -8027,7 +8011,7 @@ function PlayersPanel({ players, orders, phase, currentPrice, revealData, equipp
         notes.push({
           cls: nullified ? "note-heavy" : "note-quick",
           icon: "quick",
-          text: who + "が操作を " + oq + " 枚使用" + (nullified ? " → 被妨害により無効化" : "しました"),
+          text: who + "が操作を " + oq + " 枚使用しました",
         });
         return;
       }
@@ -8052,7 +8036,7 @@ function PlayersPanel({ players, orders, phase, currentPrice, revealData, equipp
       notes.push({
         cls: nullified ? "note-heavy" : "note-quick",
         icon: "quick",
-        text: who + "が操作を " + oq + " 枚使用" + (nullified ? " → 被妨害により無効化" : deltaText),
+        text: who + "が操作を " + oq + " 枚使用" + deltaText,
       });
     });
     // --- 4. 帳消し ---
@@ -8086,16 +8070,15 @@ function PlayersPanel({ players, orders, phase, currentPrice, revealData, equipp
             const df = !!ex.defense;
             const rf = !!ex.reflect;
             const av = !!ex.avant || !!ex.avantSab;
-            // 優先: 奥義(紫) > 操作無効化/被妨害(赤) > 操作有効(青) > 防衛(黄) > 反射(白)
+            // 優先: 奥義(紫) > 被妨害(赤) > 操作(青) > 防衛(黄) > 反射(白)
+            // ※被妨害でも操作は無効化されない（最終N = N_start + 操作 + 被妨害）
             const hit = ex.incomingHeavy || 0;
             const forcedSab = !!ex.forcedBySab;
-            const nullified = !!ex.quickNullified || (oq > 0 && hit > 0);
             if (av) glow = " glow-purple";
-            else if (nullified || ((hit > 0 || forcedSab) && oq <= 0)) glow = " glow-red";
+            else if (hit > 0 || forcedSab) glow = " glow-red";
             else if (oq > 0) glow = " glow-blue";
             else if (df) glow = " glow-amber";
             else if (rf) glow = " glow-white";
-            else if (hit > 0 || forcedSab) glow = " glow-red";
           }
           return (
           <div key={p.id} className={"ft-player-card" + (p.isAI ? " ai" : " human") + glow + (p.isBankrupt ? " bankrupt" : "")}>
@@ -8482,7 +8465,7 @@ function ActionPanel(props) {
           <div className="ft-hack-row">
             <div className="ft-hack-label">
               <Zap size={16} className="icon-quick" /> 操作
-              <span style={{fontSize:"11px", opacity:0.7, marginLeft:8}}>自分の株価だけを操作（被妨害時は無効）</span>
+              <span style={{fontSize:"11px", opacity:0.7, marginLeft:8}}>自分の N に +操作数（被妨害と同時に加算）</span>
             </div>
             <div className="ft-hack-stepper">
               <button
@@ -8750,7 +8733,7 @@ function ActionPanel(props) {
                 })() : null}
                 {!humanHackDraft.avant && !humanHackDraft.avantSab && humanHackDraft.quick > 0 ? (
                   <span style={{ display: "block", marginBottom: 8 }}>
-                    <b style={{ color: "var(--ft-blue)" }}>操作</b>：自分の株価を操作（被妨害時は無効）<br />
+                    <b style={{ color: "var(--ft-blue)" }}>操作</b>：自分の N に +操作数（被妨害と同時に加算）<br />
                     YOUの株価目安 <b>{yenNum(selfPrice)}円</b>
                     {baseP !== selfPrice ? `（操作前 ${yenNum(baseP)}円）` : ""}
                     <br />
@@ -8914,14 +8897,11 @@ function ActionPanel(props) {
               </span>
             )}
             {myQuick > 0 && (() => {
-              const nullified = !!hex.quickNullified;
-              // 反射で被妨害を防いだ場合は操作有効を明記
-              const reflectedAway = !!hex.reflect && (hex.reflectedOut || 0) > 0 && !nullified;
+              const reflectedAway = !!hex.reflect && (hex.reflectedOut || 0) > 0;
               let label = `操作 ×${myQuick}`;
-              if (nullified) label = `操作 ×${myQuick} → 被妨害で無効`;
-              else if (reflectedAway) label = `操作 ×${myQuick}（有効・反射で被妨害を回避）`;
+              if (reflectedAway) label = `操作 ×${myQuick}（有効・反射で被妨害を回避）`;
               return (
-                <span className={"ft-card-banner-chip " + (nullified ? "heavy" : "quick")}>
+                <span className="ft-card-banner-chip quick">
                   <Zap size={15} style={{ marginRight: 6, verticalAlign: "middle", flexShrink: 0 }} />
                   {label}
                 </span>
@@ -8980,17 +8960,15 @@ function ActionPanel(props) {
             <b>{revealData.nStart.toLocaleString()}</b>
           </div>
           {myQuick > 0 && (() => {
-            const nullified = !!hex.quickNullified;
-            const reflectedAway = !!hex.reflect && (hex.reflectedOut || 0) > 0 && !nullified;
+            const reflectedAway = !!hex.reflect && (hex.reflectedOut || 0) > 0;
             let detail = "";
-            if (nullified) detail = "（被妨害で無効）";
-            else if (reflectedAway) detail = "（有効・反射で被妨害を回避）";
+            if (reflectedAway) detail = "（有効・反射で被妨害を回避）";
             return (
-              <div className={"ft-reveal-row " + (nullified ? "heavy" : "quick")}>
+              <div className="ft-reveal-row quick">
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
                   <Zap size={14} className="icon-quick" /> 操作
                 </span>
-                <b>{nullified ? `+${myQuick}${detail}` : `+${myQuick}${detail}`}</b>
+                <b>{`+${myQuick}${detail}`}</b>
               </div>
             );
           })()}
@@ -9020,14 +8998,19 @@ function ActionPanel(props) {
             </div>
           )}
           <div className="ft-reveal-row final">
-            <span>YOUの N</span>
+            <span>最終 N</span>
             <b>
               {view.nFinal.toLocaleString()}
-              <span className="ft-factor-note">（{factorString(view.nFinal)}）</span>
+              <span className="ft-factor-note">
+                （{revealData.nStart.toLocaleString()}
+                {myQuick > 0 ? ` + 操作${myQuick}` : ""}
+                {hitHeavy > 0 ? ` + 被妨害${hitHeavy}` : ""}
+                {myQuick <= 0 && hitHeavy <= 0 ? " + 0" : ""}）
+              </span>
             </b>
           </div>
           <div className="ft-reveal-row price">
-            <span>YOUの株価</span>
+            <span>最終株価</span>
             <b>{yenNum(view.priceFinal)}円</b>
             <span className="ft-factor-note">{factorSumFormula(view.nFinal)}</span>
           </div>
