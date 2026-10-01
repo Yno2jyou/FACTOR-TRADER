@@ -102,6 +102,54 @@
   .a-breathe-scale-3 { animation: aBreatheScale 6s ease-in-out infinite; }
   @keyframes aSpinIn { from { opacity: 0; transform: scale(0) rotate(-30deg); } to { opacity: 1; transform: scale(1) rotate(0); } }
   .a-spin-in { animation: aSpinIn .45s cubic-bezier(.22,1.4,.36,1) both; }
+
+  /* ===== STEP切り替え演出 ===== */
+  @keyframes ftStepVeil { 0% { opacity: 1; } 82% { opacity: 1; } 100% { opacity: 0; } }
+  @keyframes ftStepWipe {
+    0%   { transform: translateX(-125%) skewX(-14deg); }
+    28%  { transform: translateX(0) skewX(-14deg); }
+    72%  { transform: translateX(0) skewX(-14deg); }
+    100% { transform: translateX(125%) skewX(-14deg); }
+  }
+  @keyframes ftStepFlash { 0% { opacity: 0; } 14% { opacity: .5; } 34% { opacity: 0; } 100% { opacity: 0; } }
+  @keyframes ftStepNum {
+    0%   { opacity: 0; transform: scale(3.4) rotate(-7deg); filter: blur(16px); }
+    30%  { opacity: 1; transform: scale(1) rotate(0); filter: blur(0); }
+    38%  { transform: scale(1.07); }
+    46%  { transform: scale(1); }
+    74%  { opacity: 1; transform: scale(1.03); filter: blur(0); }
+    100% { opacity: 0; transform: scale(.7) translateX(60px); filter: blur(8px); }
+  }
+  @keyframes ftStepText {
+    0%   { opacity: 0; letter-spacing: 1.1em; transform: translateY(14px); }
+    34%  { opacity: 1; letter-spacing: .35em; transform: none; }
+    74%  { opacity: 1; }
+    100% { opacity: 0; transform: translateY(-10px); }
+  }
+  @keyframes ftStepBar { 0%, 14% { width: 0; opacity: 1; } 44% { width: min(72vw, 380px); opacity: 1; } 76% { width: min(72vw, 380px); opacity: 1; } 100% { width: min(72vw, 380px); opacity: 0; } }
+  @keyframes ftStepIn {
+    0%   { opacity: 0; transform: perspective(900px) translateY(70px) rotateX(14deg) scale(.9); filter: blur(8px); }
+    60%  { opacity: 1; transform: perspective(900px) translateY(-6px) rotateX(0) scale(1.015); filter: blur(0); }
+    100% { opacity: 1; transform: none; filter: none; }
+  }
+  @keyframes ftIntentIn { 0% { opacity: 0; transform: scale(.6) translateY(6px); } 60% { transform: scale(1.08); } 100% { opacity: 1; transform: none; } }
+  .a-step-in { animation: ftStepIn .7s cubic-bezier(.2,1.1,.3,1) both; }
+  .ft-step-overlay { position: fixed; inset: 0; z-index: 70; pointer-events: none; overflow: hidden; display: flex; align-items: center; justify-content: center; animation: ftStepVeil 1.25s ease both; }
+  .ft-step-flash { position: absolute; inset: 0; background: var(--sc); mix-blend-mode: screen; animation: ftStepFlash 1.25s ease both; }
+  .ft-step-wipe { position: absolute; top: -10%; bottom: -10%; left: -30%; width: 160%; transform: translateX(-125%) skewX(-14deg); animation: ftStepWipe 1.25s cubic-bezier(.7,0,.2,1) both; }
+  .ft-step-wipe-b { background: var(--sc); }
+  .ft-step-wipe-a { background: #050506; animation-delay: .09s; }
+  .ft-step-inner { position: relative; z-index: 2; text-align: center; padding: 0 16px; font-family: 'JetBrains Mono', ui-monospace, monospace; }
+  .ft-step-kicker { font-size: 12px; font-weight: 700; letter-spacing: .6em; color: var(--sc); animation: ftStepText 1.25s ease both; }
+  .ft-step-num { font-weight: 800; line-height: .95; font-size: clamp(100px, 36vw, 230px); color: var(--sc); text-shadow: 0 0 28px var(--sc), 0 0 90px var(--sc); animation: ftStepNum 1.25s cubic-bezier(.2,.9,.2,1) both; }
+  .ft-step-en { font-weight: 800; font-size: clamp(20px, 6.2vw, 42px); letter-spacing: .35em; color: #fff; animation: ftStepText 1.25s ease .04s both; }
+  .ft-step-ja { margin-top: 8px; font-size: 14px; letter-spacing: .3em; color: #a3a3a3; animation: ftStepText 1.25s ease .08s both; }
+  .ft-step-bar { margin: 16px auto 0; height: 3px; width: 0; background: var(--sc); box-shadow: 0 0 14px var(--sc); animation: ftStepBar 1.25s ease both; }
+  .ft-intent { animation: ftIntentIn .45s cubic-bezier(.2,1.2,.3,1) both; }
+  @media (prefers-reduced-motion: reduce) {
+    .ft-step-overlay { display: none; }
+    .a-step-in, .ft-intent { animation: none !important; }
+  }
   .hover-pop { transition: transform .18s ease; }
   .hover-pop:hover { transform: scale(1.18); }
 </style>
@@ -3679,7 +3727,86 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
   }
 
 
-  function PlayerStrip({ players, humanId, basePrice }) {
+  /* ---- 市場介入時に各トレーダーの枠へ出す行動表示 ---- */
+  function ftBuildCpuIntents(players, decs, turn, totalTurns) {
+    const out = {};
+    const last5 = isLastFiveTurns(turn, totalTurns);
+    (players || []).forEach(function (p) {
+      if (!p || !p.isAI || p.isBankrupt) return;
+      const d = (decs || {})[p.id];
+      if (!d) return;
+      const ah = d.hack || {};
+      const o = d.order || { action: "stay", shares: 0 };
+      const rescue = !last5 && ah.coinRescue ? ah.coinRescue : "";
+      out[p.id] = rescue
+        ? { a: "stay", n: 0, r: rescue }
+        : { a: o.action || "stay", n: Math.max(0, Math.floor(Number(o.shares) || 0)), r: "" };
+    });
+    return out;
+  }
+  function ftHumanIntent(order, hack, player, basePrice, turn, totalTurns) {
+    const last5 = isLastFiveTurns(turn, totalTurns);
+    const rescue = !last5 && hack && hack.coinRescue ? hack.coinRescue : "";
+    if (rescue) return { a: "stay", n: 0, r: rescue };
+    const o = clampOrder(order || { action: "stay", shares: 0 }, player.cash, player.holdings, basePrice, turn, totalTurns);
+    return { a: o.action, n: o.shares, r: "" };
+  }
+  function ftIntentBadge(it) {
+    let text, color;
+    if (it.r) {
+      text = "COIN補充" + (it.r === "zero10" ? "+10" : "+5") + " · 様子見";
+      color = "#ffb648";
+    } else if (it.a === "buy" && it.n > 0) {
+      text = "▲ 買い " + fmt(it.n) + "株";
+      color = "#00ff41";
+    } else if (it.a === "sell" && it.n > 0) {
+      text = "▼ 売り " + fmt(it.n) + "株";
+      color = "#ff2d6f";
+    } else {
+      text = "― 様子見";
+      color = "#33d1ff";
+    }
+    return React.createElement("div", {
+      key: "intent-" + text,
+      className: "ft-intent mt-2 rounded-md border px-2 py-1 font-mono text-[11px] font-bold leading-tight break-all",
+      style: { color: color, borderColor: color + "66", background: color + "14" }
+    }, text);
+  }
+
+  /* ---- STEP切り替えバナー（全画面ワイプ＋巨大ナンバー） ---- */
+  const FT_STEP_META = {
+    market: { no: null, en: "MARKET OPEN", ja: "市場開示", color: "#33d1ff" },
+    order: { no: "01", en: "ORDER", ja: "投資注文", color: "#00ff41" },
+    coin: { no: "02", en: "INTERVENTION", ja: "市場介入 / COIN", color: "#ff2d6f" },
+    resolve: { no: "03", en: "SETTLEMENT", ja: "清算", color: "#ffd400" }
+  };
+  function StepBanner({ phase, turn, totalTurns }) {
+    const [show, setShow] = useState(null);
+    useEffect(() => {
+      if (!FT_STEP_META[phase]) { setShow(null); return; }
+      setShow({ k: phase + "-" + turn + "-" + Date.now(), phase: phase, turn: turn });
+      const t = setTimeout(() => setShow(null), 1300);
+      return () => clearTimeout(t);
+    }, [phase, turn]);
+    if (!show) return null;
+    const meta = FT_STEP_META[show.phase];
+    const isMarket = show.phase === "market";
+    const h = React.createElement;
+    return h("div", { key: show.k, "aria-hidden": "true", className: "ft-step-overlay", style: { "--sc": meta.color } },
+      h("div", { className: "ft-step-flash" }),
+      h("div", { className: "ft-step-wipe ft-step-wipe-b" }),
+      h("div", { className: "ft-step-wipe ft-step-wipe-a" }),
+      h("div", { className: "ft-step-inner" },
+        h("div", { className: "ft-step-kicker" }, isMarket ? "TERN " + show.turn + " / " + totalTurns : "STEP"),
+        h("div", { className: "ft-step-num" }, isMarket ? String(show.turn).padStart(2, "0") : meta.no),
+        h("div", { className: "ft-step-en" }, meta.en),
+        h("div", { className: "ft-step-ja" }, meta.ja),
+        h("div", { className: "ft-step-bar" })
+      )
+    );
+  }
+
+  function PlayerStrip({ players, humanId, basePrice, intents }) {
     const ranked = [...players].map((p, idx) => ({
       p,
       idx,
@@ -3706,7 +3833,8 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
         /* @__PURE__ */ React.createElement("div", { className: "absolute top-2 right-2 font-mono text-[10px] font-bold tracking-wider", style: { color: rank === 1 ? "#00ff41" : rank === 2 ? "#00e5ff" : rank === 3 ? "#ffd400" : "#737373" } }, "#", rank),
         /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-2 mb-2.5 pr-7" }, /* @__PURE__ */ React.createElement("div", { className: "w-2.5 h-2.5 rounded-full", style: { background: color, boxShadow: "0 0 8px " + color } }), /* @__PURE__ */ React.createElement("div", { className: "font-mono text-sm font-bold truncate flex-1" }, p.name), p.isBankrupt && /* @__PURE__ */ React.createElement("span", { className: "text-[9px] text-red-400 font-mono" }, "BUST")),
         /* @__PURE__ */ React.createElement("div", { className: "font-mono font-extrabold text-neutral-100 leading-tight min-w-0 max-w-full break-all " + ftAmtSizeClass(fmt(tv)) }, fmt(tv), /* @__PURE__ */ React.createElement("span", { className: "text-[10px] text-neutral-600 ml-1" }, "TV")),
-        /* @__PURE__ */ React.createElement("div", { className: "flex flex-wrap justify-between gap-x-2 gap-y-0.5 mt-2.5 text-[11px] font-mono text-neutral-500 min-w-0" }, /* @__PURE__ */ React.createElement("span", { className: "min-w-0 break-all" }, "\xA5", fmt(p.cash)), /* @__PURE__ */ React.createElement("span", null, p.holdings, "\u682A"), /* @__PURE__ */ React.createElement("span", { className: "text-[#00ff41]/80" }, p.cards && p.cards.stock || 0, "C"))
+        /* @__PURE__ */ React.createElement("div", { className: "flex flex-wrap justify-between gap-x-2 gap-y-0.5 mt-2.5 text-[11px] font-mono text-neutral-500 min-w-0" }, /* @__PURE__ */ React.createElement("span", { className: "min-w-0 break-all" }, "\xA5", fmt(p.cash)), /* @__PURE__ */ React.createElement("span", null, p.holdings, "\u682A"), /* @__PURE__ */ React.createElement("span", { className: "text-[#00ff41]/80" }, p.cards && p.cards.stock || 0, "C")),
+        (intents && intents[p.id] && !p.isBankrupt) ? ftIntentBadge(intents[p.id]) : null
       );
     }));
   }
@@ -4829,6 +4957,7 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
     const [online, setOnline] = useState(ONLINE_INIT);
     const [turnSeq, setTurnSeq] = useState(0);
     const [submittedIds, setSubmittedIds] = useState([]);
+    const [guestIntents, setGuestIntents] = useState({});
     const peerRef = useRef(null);
     const connsRef = useRef({});
     const hostConnRef = useRef(null);
@@ -5271,7 +5400,8 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
           v: 1, myId: c.meta.playerId, phase: cur.phase, turn: cur.turn, totalTurns: cur.totalTurns,
           nStart: cur.nStart, basePrice: cur.basePrice, priceHistory: cur.priceHistory, stage: cur.stage,
           result: cur.stage === "resolve" ? cur.result : null,
-          txLog: (cur.txLog || []).slice(-60), players: cur.players, turnSeq: cur.turnSeq, submittedIds: cur.submittedIds
+          txLog: (cur.txLog || []).slice(-60), players: cur.players, turnSeq: cur.turnSeq, submittedIds: cur.submittedIds,
+          intents: ftBuildCpuIntents(cur.players, cur.aiDecisions, cur.turn, cur.totalTurns)
         };
         try { c.send({ type: "snapshot", snapshot: JSON.parse(JSON.stringify(snap)) }); } catch (e) {}
       });
@@ -5285,6 +5415,7 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
       setPriceHistory(s.priceHistory || []);
       setTxLog(s.txLog || []);
       setSubmittedIds(s.submittedIds || []);
+      setGuestIntents(s.intents || {});
       setOnl({ myId: s.myId });
       if (s.phase === "gameover") { setResult(null); setPhase("gameover"); return; }
       setPhase("play");
@@ -5324,7 +5455,7 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
     useEffect(function () {
       if (roleRef.current !== "host" || phase === "setup") return;
       broadcastSnapshot();
-    }, [players, turn, totalTurns, nStart, basePrice, priceHistory, stage, result, phase, txLog, submittedIds, turnSeq]);
+    }, [players, turn, totalTurns, nStart, basePrice, priceHistory, stage, result, phase, txLog, submittedIds, turnSeq, aiDecisions]);
     useEffect(function () { return function () { roleRef.current = null; netDestroy(); }; }, []);
     L.current = {
       phase: phase, players: players, turn: turn, totalTurns: totalTurns, nStart: nStart, basePrice: basePrice,
@@ -5332,6 +5463,23 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
       online: online, aiDecisions: aiDecisions, resolve: resolve, tryResolveOnline: tryResolveOnline,
       hostOnMessage: hostOnMessage, hostOnClose: hostOnClose, guestOnMessage: guestOnMessage, guestOnClose: guestOnClose
     };
+    // 市場介入(COIN)以降は、各トレーダーの枠に「買い/売り/様子見/COIN補充」を表示
+    let stripIntents = null;
+    if (turnPhase === "coin" || turnPhase === "wait" || turnPhase === "spectate" || turnPhase === "resolve") {
+      if (turnPhase === "resolve" && result && result.execResults) {
+        stripIntents = {};
+        Object.keys(result.execResults).forEach(function (k) {
+          const r = result.execResults[k] || {};
+          stripIntents[k] = { a: r.action || "stay", n: Number(r.sharesFilled) || 0, r: r.coinRescue || "" };
+        });
+      } else {
+        stripIntents = online.role === "guest" ? Object.assign({}, guestIntents) : ftBuildCpuIntents(players, aiDecisions, turn, totalTurns);
+        const meP = (players || []).find(function (p) { return p && p.id === humanId; });
+        if (meP && !meP.isBankrupt && turnPhase !== "spectate") {
+          stripIntents[meP.id] = ftHumanIntent(humanOrder, humanHack, meP, basePrice, turn, totalTurns);
+        }
+      }
+    }
     const net = { online: online, create: netCreateRoom, join: netJoinRoom, leave: netLeave };
     function waitList() {
       const React_ = React;
@@ -5375,7 +5523,7 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
         className: "px-3 py-1.5 rounded-lg border border-neutral-800 text-[11px] font-mono text-neutral-400 hover:border-[#ff2d6f]/40 hover:text-[#ff2d6f]"
       },
       "TOP"
-    ))), /* @__PURE__ */ React.createElement(MarketPanel, { nStart, basePrice, turn, totalTurns, priceHistory }), /* @__PURE__ */ React.createElement(PlayerStrip, { players, humanId, basePrice }), /* @__PURE__ */ React.createElement("div", { key: turnPhase }, turnPhase === "market" && (function () {
+    ))), /* @__PURE__ */ React.createElement(MarketPanel, { nStart, basePrice, turn, totalTurns, priceHistory }), /* @__PURE__ */ React.createElement("div", { className: "hidden sm:block" }, /* @__PURE__ */ React.createElement(PlayerStrip, { players, humanId, basePrice, intents: stripIntents })), /* @__PURE__ */ React.createElement("div", { key: turnPhase, className: "a-step-in", style: { animationDelay: FT_STEP_META[turnPhase] ? ".8s" : "0s" } }, turnPhase === "market" && (function () {
       const factors = factorize(nStart || 0);
       const factorStr = factors.length ? factors.join(" × ") : String(nStart || 0);
       const hist = priceHistory || [];
@@ -5449,6 +5597,8 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
         nStart
       }
     )),
+      React.createElement("div", { className: "sm:hidden" }, React.createElement(PlayerStrip, { players, humanId, basePrice, intents: stripIntents })),
+      React.createElement(StepBanner, { phase: turnPhase, turn, totalTurns }),
       React.createElement("div", {
         className: "rounded-2xl border border-neutral-800 bg-black/50 backdrop-blur p-4 mt-2"
       },
