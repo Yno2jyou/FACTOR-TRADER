@@ -5831,7 +5831,7 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
     );
   }
   function SetupScreen({ onStart, net }) {
-    const [count, setCount] = useState(2);
+    const [count, setCount] = useState(4);
     const [name, setName] = useState(() => getLoggedInAccountId() || "YOU");
     const [serious, setSerious] = useState(false);
     const [tab, setTab] = useState(function () { try { return new URLSearchParams(window.location.search).get("room") ? "online" : "local"; } catch (e) { return "local"; } });
