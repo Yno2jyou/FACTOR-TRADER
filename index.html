@@ -553,9 +553,221 @@
 
 .ft-title-slotbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 10px 0;padding:8px 10px;border:1px dashed var(--ft-border);border-radius:6px;font-size:11px;color:var(--ft-text-dim)}
 </style>
+<style id="ft-launch-css">
+/* ===== 起動オープニング演出(合成数 → 素因数分解 → 総和=株価 → タイトル衝突) ===== */
+.ftl { position: fixed; inset: 0; z-index: 2147483000; overflow: hidden; cursor: pointer; touch-action: none; -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none; }
+.ftl-half { position: absolute; left: 0; right: 0; height: 50.2%; background-color: #050506; background-image: linear-gradient(rgba(0,255,65,.06) 1px, transparent 1px), linear-gradient(90deg, rgba(0,255,65,.06) 1px, transparent 1px); background-size: 46px 46px; transition: transform .7s cubic-bezier(.77,0,.18,1); will-change: transform; }
+.ftl-top { top: 0; }
+.ftl-bot { bottom: 0; background-position: 0 -49.8vh; }
+.ftl-stage { position: absolute; inset: 0; transition: opacity .22s ease; }
+.ftl-layer { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; }
+.ftl-glow { position: absolute; inset: 0; background: radial-gradient(circle at 50% 50%, rgba(57,255,156,.18), transparent 58%); animation: ftlGlow 3.2s ease-out both; }
+.ftl-scan { position: absolute; inset: 0; pointer-events: none; background: repeating-linear-gradient(0deg, rgba(255,255,255,.03) 0, rgba(255,255,255,.03) 1px, transparent 1px, transparent 3px); }
+.ftl-mono { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; }
+
+/* A: ルーレット数字 */
+.ftl-a { gap: .6em; }
+.ftl-cap { font: 500 clamp(10px, 2.8vw, 13px)/1 "JetBrains Mono", ui-monospace, monospace; letter-spacing: .5em; padding-left: .5em; color: rgba(57,255,156,.75); opacity: 0; animation: ftlFade .3s .1s forwards; }
+.ftl-num { font: 800 clamp(80px, min(30vw, 34vh), 260px)/1 "JetBrains Mono", ui-monospace, Menlo, monospace; color: #39ff9c; letter-spacing: .02em; text-shadow: 0 0 18px rgba(57,255,156,.65), 0 0 60px rgba(57,255,156,.35); animation: ftlNumIn .35s cubic-bezier(.2,1.2,.3,1) both, ftlJit .08s steps(2) .35s infinite; }
+.ftl.is-lock .ftl-num { animation: ftlLock .28s ease-out both; }
+.ftl.is-crack .ftl-num { animation: ftlCrack .4s ease-in forwards; }
+.ftl.is-crack .ftl-cap { animation: ftlOut .2s forwards; }
+
+/* 斬撃 + フラッシュ */
+.ftl-slash { position: absolute; left: 50%; top: 50%; width: 160vmax; height: 4px; margin: -2px 0 0 -80vmax; background: linear-gradient(90deg, transparent, #ff2d6f 18%, #fff 50%, #ff2d6f 82%, transparent); box-shadow: 0 0 24px #ff2d6f, 0 0 60px rgba(255,45,111,.6); opacity: 0; transform: rotate(-16deg) scaleX(0); }
+.ftl.is-crack .ftl-slash { animation: ftlSlash .5s cubic-bezier(.2,.9,.2,1) forwards; }
+.ftl-flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; }
+.ftl.is-crack .ftl-flash { animation: ftlFlash1 .35s ease-out; }
+.ftl.is-slam .ftl-flash { animation: ftlFlash2 .5s .2s ease-out both; }
+
+/* B: 素因数タイル */
+.ftl-b { gap: clamp(10px, 3vh, 26px); }
+.ftl-row { display: flex; align-items: center; justify-content: center; gap: clamp(3px, 1.4vw, 12px); font: 800 clamp(24px, min(7.8vw, 14vh), 96px)/1 "JetBrains Mono", ui-monospace, Menlo, monospace; }
+.ftl-t { position: relative; padding: .1em .2em; border: 1px solid currentColor; border-radius: .18em; background: rgba(255,255,255,.03); text-shadow: 0 0 14px currentColor; box-shadow: 0 0 18px -4px currentColor, inset 0 0 14px -8px currentColor; opacity: 0; }
+.ftl.is-crack .ftl-t { animation: ftlTile .5s cubic-bezier(.2,1.25,.3,1) both; animation-delay: calc(var(--i) * 55ms + 120ms); }
+.ftl-op { position: relative; display: inline-block; width: .62em; height: 1em; opacity: 0; }
+.ftl-op b { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-weight: 700; }
+.ftl-op .x { color: rgba(255,255,255,.55); }
+.ftl-op .p { color: #33d1ff; text-shadow: 0 0 14px #33d1ff; opacity: 0; }
+.ftl.is-crack .ftl-op { animation: ftlFade .3s .55s forwards; }
+.ftl.is-sum .ftl-op .x { animation: ftlOpOut .25s forwards; }
+.ftl.is-sum .ftl-op .p { animation: ftlOpIn .3s .05s both; }
+.ftl-sum { display: flex; flex-direction: column; align-items: center; gap: .5em; opacity: 0; }
+.ftl-sum-n { font: 800 clamp(40px, min(14vw, 18vh), 130px)/1 "JetBrains Mono", ui-monospace, Menlo, monospace; color: #33d1ff; text-shadow: 0 0 20px rgba(51,209,255,.7), 0 0 70px rgba(51,209,255,.35); }
+.ftl-sum-n::before { content: "= "; color: rgba(255,255,255,.5); }
+.ftl-sum-c { font: 500 clamp(10px, 2.8vw, 13px)/1 "JetBrains Mono", ui-monospace, monospace, system-ui; letter-spacing: .3em; padding-left: .3em; color: rgba(51,209,255,.85); }
+.ftl.is-sum .ftl-sum { animation: ftlSumIn .45s cubic-bezier(.2,1.3,.3,1) both; }
+.ftl.is-slam .ftl-b { animation: ftlBlast .35s cubic-bezier(.5,0,.9,.4) forwards; }
+
+/* C: タイトル衝突 */
+.ftl-c { opacity: 0; }
+.ftl.is-slam .ftl-c { opacity: 1; }
+.ftl-ttl { display: flex; flex-direction: column; align-items: center; font: 700 clamp(48px, min(17vw, 22vh), 150px)/1 "Space Grotesk", system-ui, sans-serif; letter-spacing: -.02em; }
+.ftl.is-slam .ftl-ttl { animation: ftlHit .55s .5s both; }
+.ftl-l1, .ftl-l2 { display: block; opacity: 0; }
+.ftl-l1 { color: transparent; -webkit-text-stroke: 1.5px rgba(255,255,255,.6); }
+.ftl-l2 { color: #39ff9c; text-shadow: 0 0 18px rgba(57,255,156,.7), 0 0 60px rgba(57,255,156,.4); }
+.ftl.is-slam .ftl-l1 { animation: ftlL1 .55s cubic-bezier(.15,.9,.25,1) both; }
+.ftl.is-slam .ftl-l2 { animation: ftlL2 .55s .08s cubic-bezier(.15,.9,.25,1) both; }
+.ftl-sub { margin-top: clamp(12px, 2.8vh, 24px); font: 500 clamp(10px, 2.9vw, 14px)/1 "JetBrains Mono", ui-monospace, monospace; color: rgba(255,255,255,.65); letter-spacing: .5em; padding-left: .5em; opacity: 0; }
+.ftl.is-slam .ftl-sub { animation: ftlSub .8s .5s cubic-bezier(.2,.8,.2,1) both; }
+.ftl-ring { position: absolute; left: 50%; top: 50%; width: 40vmin; height: 40vmin; margin: -20vmin 0 0 -20vmin; border-radius: 50%; border: 2px solid #39ff9c; box-shadow: 0 0 30px #39ff9c, inset 0 0 30px rgba(57,255,156,.4); opacity: 0; pointer-events: none; }
+.ftl-ring.r2 { border-color: #33d1ff; box-shadow: 0 0 30px #33d1ff, inset 0 0 30px rgba(51,209,255,.4); }
+.ftl.is-slam .ftl-ring { animation: ftlRing .8s .22s cubic-bezier(.1,.7,.3,1) both; }
+.ftl.is-slam .ftl-ring.r2 { animation-delay: .34s; }
+.ftl.is-slam .ftl-stage { animation: ftlShake .4s .22s both; }
+
+/* 幕開き */
+.ftl-skip { position: absolute; left: 0; right: 0; bottom: max(18px, env(safe-area-inset-bottom)); text-align: center; font: 500 10px/1 "JetBrains Mono", ui-monospace, monospace; letter-spacing: .4em; color: rgba(255,255,255,.3); opacity: 0; animation: ftlFade .4s 1s forwards; pointer-events: none; }
+.ftl-seam { position: absolute; left: 0; right: 0; top: 50%; height: 2px; margin-top: -1px; background: #39ff9c; box-shadow: 0 0 20px #39ff9c, 0 0 50px #39ff9c; opacity: 0; transform: scaleX(0); pointer-events: none; }
+.ftl.is-open { pointer-events: none; }
+.ftl.is-open .ftl-stage { opacity: 0; }
+.ftl.is-open .ftl-seam { animation: ftlSeam .85s ease both; }
+.ftl.is-open .ftl-top { transform: translateY(-101%); transition-delay: .22s; }
+.ftl.is-open .ftl-bot { transform: translateY(101%); transition-delay: .22s; }
+
+/* トップ画面本体は幕が開くまで待機 → 開幕と同時に飛び出す */
+body.ft-booting .a-fade-up-big { animation-play-state: paused; }
+body.ft-reveal .a-fade-up-big h1 { animation: ftlTitlePunch .8s .12s cubic-bezier(.2,1.2,.3,1) both; }
+
+@keyframes ftlFade { to { opacity: 1; } }
+@keyframes ftlOut { to { opacity: 0; } }
+@keyframes ftlGlow { 0% { opacity: 0; transform: scale(.6); } 30% { opacity: 1; } 100% { opacity: .8; transform: scale(1.15); } }
+@keyframes ftlNumIn { from { opacity: 0; transform: scale(2.2); filter: blur(10px); } to { opacity: 1; transform: none; filter: blur(0); } }
+@keyframes ftlJit { 0% { transform: translate(0,0); } 50% { transform: translate(-3px,2px); } 100% { transform: translate(3px,-2px); } }
+@keyframes ftlLock { 0% { transform: scale(1.35); color: #fff; text-shadow: -8px 0 #33d1ff, 8px 0 #ff2d6f, 0 0 50px #ff2d6f; } 60% { transform: scale(.96); } 100% { transform: scale(1); } }
+@keyframes ftlCrack { 0% { opacity: 1; transform: scale(1); letter-spacing: .02em; filter: blur(0); } 100% { opacity: 0; transform: scale(1.5); letter-spacing: .35em; filter: blur(8px); } }
+@keyframes ftlSlash { 0% { opacity: 1; transform: rotate(-16deg) scaleX(0); } 35% { opacity: 1; transform: rotate(-16deg) scaleX(1); } 100% { opacity: 0; transform: rotate(-16deg) scaleX(1) scaleY(.2); } }
+@keyframes ftlFlash1 { 0% { opacity: .5; } 100% { opacity: 0; } }
+@keyframes ftlFlash2 { 0% { opacity: .75; } 100% { opacity: 0; } }
+@keyframes ftlTile { from { opacity: 0; transform: translate(var(--sx), var(--sy)) rotate(var(--sr)) scale(2.4); filter: blur(10px); } 70% { opacity: 1; filter: blur(0); } to { opacity: 1; transform: none; filter: blur(0); } }
+@keyframes ftlOpOut { to { opacity: 0; transform: rotate(90deg) scale(0); } }
+@keyframes ftlOpIn { from { opacity: 0; transform: rotate(-90deg) scale(0); } to { opacity: 1; transform: none; } }
+@keyframes ftlSumIn { from { opacity: 0; transform: translateY(20px) scale(1.6); } to { opacity: 1; transform: none; } }
+@keyframes ftlBlast { to { opacity: 0; transform: scale(1.8); filter: blur(10px); } }
+@keyframes ftlL1 { 0% { opacity: 0; transform: translateX(-80vw) skewX(-24deg); } 55% { opacity: 1; transform: translateX(3vw) skewX(6deg); } 75% { transform: translateX(-1.2vw) skewX(-2deg); } 100% { opacity: 1; transform: none; } }
+@keyframes ftlL2 { 0% { opacity: 0; transform: translateX(80vw) skewX(24deg); } 55% { opacity: 1; transform: translateX(-3vw) skewX(-6deg); } 75% { transform: translateX(1.2vw) skewX(2deg); } 100% { opacity: 1; transform: none; } }
+@keyframes ftlHit { 0% { filter: drop-shadow(-8px 0 rgba(51,209,255,.9)) drop-shadow(8px 0 rgba(255,45,111,.9)); } 40% { filter: drop-shadow(5px 0 rgba(51,209,255,.8)) drop-shadow(-5px 0 rgba(255,45,111,.8)); } 100% { filter: none; } }
+@keyframes ftlSub { from { opacity: 0; letter-spacing: 1.2em; } to { opacity: 1; letter-spacing: .5em; } }
+@keyframes ftlRing { from { opacity: .9; transform: scale(.1); } to { opacity: 0; transform: scale(3.6); } }
+@keyframes ftlShake { 0% { transform: none; } 15% { transform: translate(-9px, 4px); } 30% { transform: translate(8px, -5px); } 45% { transform: translate(-5px, -3px); } 60% { transform: translate(4px, 3px); } 80%, 100% { transform: none; } }
+@keyframes ftlSeam { 0% { opacity: 1; transform: scaleX(0); } 30%, 70% { opacity: 1; transform: scaleX(1); } 100% { opacity: 0; transform: scaleX(1); } }
+@keyframes ftlTitlePunch { 0% { opacity: 0; transform: scale(1.25); filter: blur(6px); } 100% { opacity: 1; transform: none; filter: blur(0); } }
+@media (prefers-reduced-motion: reduce) { .ftl { display: none !important; } body.ft-booting .a-fade-up-big { animation-play-state: running; } }
+</style>
 </head>
 <body>
 <div id="root"></div>
+<script id="ft-launch-js">
+/* 起動オープニング演出: ページ読込ごとに1回。タップ/キーでスキップ可。招待リンク(?room=)・視差軽減設定では出さない */
+(function () {
+  try {
+    var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    var room = "";
+    try { room = new URLSearchParams(location.search).get("room") || ""; } catch (e) {}
+    if (reduce || room || window.__ftLaunchShown) return;
+    window.__ftLaunchShown = true;
+
+    var body = document.body;
+    /* 毎回ちがう合成数: 3〜5個の素数の積(1000〜9999)。タイルがはみ出さないよう桁数合計は7まで */
+    var PR = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43];
+    function pickPrimes() {
+      for (var n = 0; n < 400; n++) {
+        var k = 3 + Math.floor(Math.random() * 3), a = [], prod = 1, dg = 0;
+        for (var q = 0; q < k; q++) {
+          var pr = PR[Math.floor(Math.random() * PR.length)];
+          a.push(pr); prod *= pr; dg += String(pr).length;
+        }
+        if (prod >= 1000 && prod <= 9999 && dg <= 7) { a.sort(function (x, y) { return x - y; }); return a; }
+      }
+      return [2, 3, 5, 7, 11];
+    }
+    var P = pickPrimes(), PROD = 1, SUM = 0;
+    for (var m = 0; m < P.length; m++) { PROD *= P[m]; SUM += P[m]; }
+    var COL = ["#39ff9c", "#33d1ff", "#ff2d6f", "#39ff9c", "#33d1ff"];
+    var SX = ["-48vw", "-30vw", "0vw", "32vw", "48vw"];
+    var SY = ["-30vh", "26vh", "-38vh", "30vh", "-22vh"];
+    var SR = ["-50deg", "40deg", "-20deg", "60deg", "-35deg"];
+    var row = "";
+    for (var i = 0; i < P.length; i++) {
+      if (i) row += '<span class="ftl-op"><b class="x">\u00d7</b><b class="p">+</b></span>';
+      row += '<span class="ftl-t" style="--i:' + i + ";--sx:" + SX[i] + ";--sy:" + SY[i] + ";--sr:" + SR[i] + ";color:" + COL[i] + '">' + P[i] + "</span>";
+    }
+
+    var el = document.createElement("div");
+    el.className = "ftl";
+    el.setAttribute("aria-hidden", "true");
+    el.innerHTML =
+      '<div class="ftl-half ftl-top"></div><div class="ftl-half ftl-bot"></div>' +
+      '<div class="ftl-stage">' +
+        '<div class="ftl-glow"></div>' +
+        '<div class="ftl-layer ftl-a"><div class="ftl-cap">FACTORIZING</div><div class="ftl-num">0000</div></div>' +
+        '<div class="ftl-slash"></div>' +
+        '<div class="ftl-layer ftl-b"><div class="ftl-row">' + row + '</div>' +
+          '<div class="ftl-sum"><div class="ftl-sum-n">0</div><div class="ftl-sum-c">\u7d20\u56e0\u6570\u306e\u7dcf\u548c \uff1d \u682a\u4fa1</div></div></div>' +
+        '<div class="ftl-layer ftl-c"><div class="ftl-ttl"><span class="ftl-l1">FACTOR</span><span class="ftl-l2">TRADER</span></div><div class="ftl-sub">PRIME FACTOR TRADING</div></div>' +
+        '<div class="ftl-ring"></div><div class="ftl-ring r2"></div>' +
+        '<div class="ftl-flash"></div><div class="ftl-scan"></div>' +
+        '<div class="ftl-skip">TAP TO SKIP</div>' +
+      "</div>" +
+      '<div class="ftl-seam"></div>';
+
+    body.classList.add("ft-booting");
+    body.appendChild(el);
+
+    var numEl = el.querySelector(".ftl-num");
+    var sumEl = el.querySelector(".ftl-sum-n");
+    var timers = [];
+    var opened = false;
+    var iv = setInterval(function () { numEl.textContent = String(1000 + Math.floor(Math.random() * 9000)); }, 55);
+
+    function at(ms, fn) { timers.push(setTimeout(fn, ms)); }
+    function add(c) { el.classList.add(c); }
+
+    function countUp() {
+      var t0 = performance.now();
+      (function step() {
+        var k = Math.min(1, (performance.now() - t0) / 450);
+        sumEl.textContent = Math.round(SUM * (1 - Math.pow(1 - k, 3)));
+        if (k < 1) requestAnimationFrame(step);
+      })();
+    }
+
+    function cleanup() {
+      clearInterval(iv);
+      for (var j = 0; j < timers.length; j++) clearTimeout(timers[j]);
+      body.classList.remove("ft-booting");
+      body.classList.remove("ft-reveal");
+      if (el.parentNode) el.parentNode.removeChild(el);
+    }
+
+    function open() {
+      if (opened) return;
+      opened = true;
+      clearInterval(iv);
+      for (var j = 0; j < timers.length; j++) clearTimeout(timers[j]);
+      timers = [];
+      add("is-open");
+      at(200, function () { body.classList.remove("ft-booting"); body.classList.add("ft-reveal"); });
+      at(1000, function () { if (el.parentNode) el.parentNode.removeChild(el); });
+      at(1600, cleanup);
+    }
+
+    at(750, function () { clearInterval(iv); numEl.textContent = String(PROD); add("is-lock"); });
+    at(1000, function () { add("is-crack"); });
+    at(1600, function () { add("is-sum"); countUp(); });
+    at(2150, function () { add("is-slam"); });
+    at(3050, open);
+    setTimeout(cleanup, 7000); /* 保険 */
+
+    el.addEventListener("pointerdown", open);
+    window.addEventListener("keydown", open, { once: true });
+  } catch (e) {
+    try { document.body.classList.remove("ft-booting"); } catch (e2) {}
+  }
+})();
+</script>
+
 <div id="ft-boot-error" style="display:none;color:#d7ede2;font-family:ui-monospace,Menlo,monospace;padding:24px;white-space:pre-wrap;background:#050506;min-height:40vh;line-height:1.5;font-size:13px;"></div>
 <noscript>FACTOR/TRADER を遊ぶには JavaScript を有効にしてください。</noscript>
 
