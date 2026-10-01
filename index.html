@@ -5663,10 +5663,28 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
     const tipBox = (txt) => h("div", { className: "rounded-xl border border-[#ffb648]/40 bg-[#ffb648]/5 p-3 text-sm font-mono text-[#ffb648]" }, "▶ " + txt);
     let body;
     if (i === -1) {
+      const exCard = (cls, label, lines, price) => h("div", { className: "rounded-xl border p-3 space-y-1 text-sm font-mono text-neutral-300 " + cls },
+        h("div", { className: "text-[10px] tracking-widest text-neutral-500" }, label),
+        lines.map((ln, k) => h("div", { key: k }, ln)),
+        h("div", { className: "pt-1 text-[#39ff9c]" }, price));
       body = h("div", { className: panel },
         h("div", { className: eyebrow }, "Tutorial"),
         h("div", { className: "font-display font-bold text-2xl text-[#39ff9c]" }, "本番と同じ画面で5TERN体験"),
-        h("p", { className: "text-sm text-neutral-300 leading-relaxed" }, "素因数の総和が株価になるトレーディングゲームです。1TERNは 市場開示 → 投資注文 → 市場介入(COIN) → 清算。相手は練習用CPUで、各TERNの指示どおりに操作してください。"),
+        h("p", { className: "text-sm text-neutral-300 leading-relaxed" }, "本番に近いUIで、5TERNに分けて主要アクションを体験します。1TERNは 市場開示 → 投資注文 → 市場介入(COIN) → 清算。"),
+        h("div", { className: "rounded-xl border border-[#33d1ff]/30 bg-[#33d1ff]/5 p-4 space-y-3" },
+          h("div", { className: "text-[11px] tracking-[0.3em] text-[#33d1ff] font-mono font-bold" }, "株価の仕組み（最重要）"),
+          h("p", { className: "text-sm text-neutral-200 leading-relaxed" }, "毎TERN、市場に数字 N が公開されます。", h("br"), h("b", { className: "text-[#39ff9c]" }, "株価 = N を素因数分解したときの「素因数の合計」"), "です。"),
+          h("div", { className: "grid grid-cols-1 sm:grid-cols-2 gap-2" },
+            exCard("border-neutral-800 bg-black/40", "例1：合成数（安い）", ["N = 12 = 2 × 2 × 3"], "株価 = 2 + 2 + 3 = 7円"),
+            exCard("border-neutral-800 bg-black/40", "例2：2の累乗（底値寄り）", ["N = 64 = 2 × 2 × 2 × 2 × 2 × 2"], "株価 = 2+2+2+2+2+2 = 12円"),
+            exCard("border-[#ff2d6f]/40 bg-[#ff2d6f]/5", "例3：素数（高騰）", ["N = 53（これ以上割れない）"], "株価 = 53円"),
+            exCard("border-[#33d1ff]/40 bg-[#33d1ff]/5", "例4：操作でNを動かす", ["N = 35（5×7）→ 仮株価 12円", "操作1枚で N→36（2²×3²）"], "株価 = 2+2+3+3 = 10円（安く買える）")),
+          h("p", { className: "text-xs text-neutral-400 leading-relaxed" }, "ポイント：", h("b", null, "買い"), "は安いほど有利、", h("b", null, "売り"), "は高いほど有利。操作は自分のNだけ、妨害は相手のNだけを動かします。")),
+        h("div", { className: "space-y-2" },
+          h("div", { className: "text-[11px] tracking-[0.3em] text-[#ffb648] font-mono font-bold" }, "体験する5TERN"),
+          h("ol", { className: "rounded-xl border border-neutral-800 bg-black/40 p-3 pl-8 text-sm font-mono text-neutral-300 space-y-1", style: { listStyle: "decimal" } },
+            ["買い × 操作", "様子見 × 妨害", "買い × 防衛", "買い × 反射", "奥義 AVANT-GARDE（売り×99999）"].map((x, k) => h("li", { key: k }, x)))),
+        h("p", { className: "text-xs text-neutral-500 leading-relaxed" }, "開始資産 10,000円・COIN 40枚。相手は「CPU-練習」が自動で動きます。ガイドに沿って操作してください。"),
         h(Button, { onClick: () => startTern(0), className: "w-full h-12 bg-[#39ff9c] text-black font-extrabold rounded-xl", style: { fontWeight: 800 } }, "開始 ▶"));
     } else if (i === 5) {
       body = h("div", { className: panel },
