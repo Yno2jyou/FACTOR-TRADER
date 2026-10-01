@@ -550,6 +550,8 @@
 .ft-setup-title-badges .ft-title-equipped-row{margin:0;gap:14px}
 .ft-setup-title-badges .ft-title-badge{margin:0 6px}
 .ft-setup-title-badges .ft-title-badge-icon{width:30px !important;height:30px !important}
+/* mobile: hide equipped title badges on setup(top) and play screens */
+@media (max-width:767px){.ft-setup-title-badges,.ft-play-title-badges{display:none !important}}
 
 .ft-title-slotbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 10px 0;padding:8px 10px;border:1px dashed var(--ft-border);border-radius:6px;font-size:11px;color:var(--ft-text-dim)}
 </style>
