@@ -655,6 +655,33 @@ body.ft-reveal .a-fade-up-big h1 { animation: ftlTitlePunch .8s .12s cubic-bezie
 @keyframes ftlTitlePunch { 0% { opacity: 0; transform: scale(1.25); filter: blur(6px); } 100% { opacity: 1; transform: none; filter: blur(0); } }
 @media (prefers-reduced-motion: reduce) { .ftl { display: none !important; } body.ft-booting .a-fade-up-big { animation-play-state: running; } }
 </style>
+<style id="ft-top-css">
+/* ===== トップ画面の常時演出 ===== */
+.ft-top { overflow: hidden; }
+.ft-bg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; animation: ftBgIn 1.4s .1s both; }
+body.ft-booting .ft-bg { animation-play-state: paused; }
+@keyframes ftBgIn { from { opacity: 0; } to { opacity: 1; } }
+
+/* タイトル: 数秒おきにRGBずれのグリッチ */
+.ft-top h1 { animation: ftTopGlitch 6.5s 3s infinite; }
+@keyframes ftTopGlitch {
+  0%, 90%, 100% { filter: none; transform: none; }
+  91% { filter: drop-shadow(-6px 0 rgba(51,209,255,.85)) drop-shadow(6px 0 rgba(255,45,111,.85)); transform: translateX(-3px) skewX(-4deg); }
+  93% { filter: drop-shadow(5px 0 rgba(51,209,255,.8)) drop-shadow(-5px 0 rgba(255,45,111,.8)); transform: translateX(4px) skewX(3deg); }
+  95% { filter: drop-shadow(-3px 0 rgba(51,209,255,.6)) drop-shadow(3px 0 rgba(255,45,111,.6)); transform: translateX(-1px); }
+  97% { filter: none; transform: none; }
+}
+
+/* ENTER THE ARENA: 呼吸する発光 + 光が走る */
+.ft-cta { position: relative; overflow: hidden; animation: ftCtaPulse 2.2s ease-in-out infinite; }
+.ft-cta::after { content: ""; position: absolute; top: 0; bottom: 0; left: -60%; width: 40%; background: linear-gradient(100deg, transparent, rgba(255,255,255,.6), transparent); transform: skewX(-20deg); animation: ftShine 3.4s 1.6s ease-in-out infinite; pointer-events: none; }
+@keyframes ftCtaPulse {
+  0%, 100% { box-shadow: 0 0 22px rgba(0,255,65,.22), 0 0 0 0 rgba(57,255,156,.45); }
+  50% { box-shadow: 0 0 34px rgba(57,255,156,.55), 0 0 0 10px rgba(57,255,156,0); }
+}
+@keyframes ftShine { 0% { left: -60%; } 40%, 100% { left: 130%; } }
+@media (prefers-reduced-motion: reduce) { .ft-bg { display: none; } .ft-top h1, .ft-cta, .ft-cta::after { animation: none; } }
+</style>
 </head>
 <body>
 <div id="root"></div>
@@ -6060,6 +6087,160 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
       h(Button, { onClick: function () { net.leave(); }, className: "w-full h-11 border border-neutral-700 text-neutral-300 rounded-xl" }, isHost ? "部屋を閉じる" : "退出")
     );
   }
+  /* ===== トップ画面の常時演出: 素因数ストリーム(漂う数字 / 分解バースト / スキャンビーム) ===== */
+  function TopBackdrop() {
+    const ref = useRef(null);
+    useEffect(() => {
+      const cv = ref.current;
+      if (!cv) return;
+      const reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      if (reduce) return;
+      const ctx = cv.getContext("2d");
+      if (!ctx) return;
+      const MONO = '"JetBrains Mono", ui-monospace, Menlo, monospace';
+      const COLS = ["#39ff9c", "#33d1ff", "#ff2d6f"];
+      let W = 1, H = 1, raf = 0, last = 0, clock = 0, nextEv = 0.9;
+      const rnd = (a, b) => a + Math.random() * (b - a);
+      const factorize = (n) => { const a = []; let d = 2; while (d * d <= n) { while (n % d === 0) { a.push(d); n = n / d; } d++; } if (n > 1) a.push(n); return a; };
+      const COMP = [];
+      for (let n = 6; n <= 99; n++) if (factorize(n).length >= 2) COMP.push(n);
+      const randN = () => 2 + Math.floor(Math.random() * 98);
+      const mk = (init) => {
+        const size = 11 + Math.pow(Math.random(), 2.2) * 46;
+        const n = randN();
+        return { x: rnd(0, W), y: init ? rnd(0, H) : H + size + rnd(0, 80), n, size, vy: -(7 + size * 0.85), amp: rnd(4, 22), ph: rnd(0, 6.28), fr: rnd(.3, .9), a: .05 + (size / 57) * .17, prime: factorize(n).length === 1 };
+      };
+      let ps = [];
+      let evs = [];
+      const resize = () => {
+        const p = cv.parentNode; if (!p) return;
+        const r = p.getBoundingClientRect();
+        W = Math.max(1, r.width); H = Math.max(1, r.height);
+        const dpr = Math.min(2, window.devicePixelRatio || 1);
+        cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        const want = Math.max(16, Math.min(46, Math.round(W * H / 22000)));
+        while (ps.length < want) ps.push(mk(true));
+        if (ps.length > want) ps.length = want;
+      };
+      const spawn = (x, y) => {
+        if (evs.length >= 3) return;
+        const n = COMP[Math.floor(Math.random() * COMP.length)];
+        const f = factorize(n);
+        const size = Math.min(88, Math.max(48, W * 0.2));
+        evs.push({ x, y, n, f, size, t: 0, sum: f.reduce((s, v) => s + v, 0), parts: null });
+      };
+      const burst = (e) => {
+        e.parts = e.f.map((v, i) => {
+          const ang = (-Math.PI / 2) + (i - (e.f.length - 1) / 2) * 0.9 + rnd(-.25, .25);
+          const sp = rnd(160, 300);
+          return { v, x: e.x, y: e.y, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp - 40, c: COLS[i % 3], r: rnd(-.6, .6) };
+        });
+      };
+      const draw = (dt) => {
+        clock += dt;
+        ctx.clearRect(0, 0, W, H);
+        /* スキャンビーム */
+        const by = ((clock / 7) % 1) * (H + 260) - 130;
+        const g = ctx.createLinearGradient(0, by - 90, 0, by + 90);
+        g.addColorStop(0, "rgba(57,255,156,0)"); g.addColorStop(.5, "rgba(57,255,156,.075)"); g.addColorStop(1, "rgba(57,255,156,0)");
+        ctx.fillStyle = g; ctx.fillRect(0, by - 90, W, 180);
+        ctx.fillStyle = "rgba(57,255,156,.28)"; ctx.fillRect(0, by - 1, W, 1.5);
+        /* 漂う数字 */
+        ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        for (let i = 0; i < ps.length; i++) {
+          const p = ps[i];
+          p.y += p.vy * dt;
+          if (p.y < -p.size * 1.5) { ps[i] = mk(false); continue; }
+          const x = p.x + Math.sin(clock * p.fr + p.ph) * p.amp;
+          ctx.font = "700 " + p.size.toFixed(1) + "px " + MONO;
+          ctx.globalAlpha = p.a;
+          ctx.fillStyle = p.prime ? "#33d1ff" : "#39ff9c";
+          ctx.fillText(String(p.n), x, p.y);
+        }
+        ctx.globalAlpha = 1;
+        /* 分解バースト */
+        nextEv -= dt;
+        if (nextEv <= 0) { spawn(rnd(W * .14, W * .86), rnd(H * .14, H * .86)); nextEv = rnd(1.3, 2.4); }
+        for (let i = evs.length - 1; i >= 0; i--) {
+          const e = evs[i];
+          e.t += dt;
+          const t = e.t;
+          if (t > 2.7) { evs.splice(i, 1); continue; }
+          if (t < 0.55) {
+            const k = Math.min(1, t / 0.3);
+            const sc = 1.9 - 0.9 * (1 - Math.pow(1 - k, 3));
+            ctx.save(); ctx.translate(e.x, e.y); ctx.scale(sc, sc);
+            ctx.font = "800 " + e.size + "px " + MONO;
+            ctx.globalAlpha = Math.min(1, k * 1.4);
+            ctx.shadowColor = "#39ff9c"; ctx.shadowBlur = 24; ctx.fillStyle = "#e9fff5";
+            ctx.fillText(String(e.n), 0, 0);
+            ctx.restore();
+          } else {
+            if (!e.parts) burst(e);
+            /* 斬撃 */
+            const st = t - 0.55;
+            if (st < 0.28) {
+              const k = Math.min(1, st / 0.1), fade = 1 - st / 0.28, L = e.size * 1.7;
+              ctx.save(); ctx.translate(e.x, e.y); ctx.rotate(-0.28);
+              ctx.globalAlpha = fade; ctx.shadowColor = "#ff2d6f"; ctx.shadowBlur = 18; ctx.fillStyle = "#fff";
+              ctx.fillRect(-L * k, -1.5, L * 2 * k, 3);
+              ctx.restore();
+            }
+            /* 素因数が飛び散る */
+            const life = Math.max(0, 1 - st / 1.6);
+            for (let j = 0; j < e.parts.length; j++) {
+              const q = e.parts[j];
+              q.x += q.vx * dt; q.y += q.vy * dt;
+              const dr = Math.max(0, 1 - 2.4 * dt); q.vx *= dr; q.vy = q.vy * dr + 22 * dt;
+              ctx.save(); ctx.translate(q.x, q.y); ctx.rotate(q.r * (1 - life));
+              ctx.font = "800 " + Math.round(e.size * .5) + "px " + MONO;
+              ctx.globalAlpha = life; ctx.shadowColor = q.c; ctx.shadowBlur = 14; ctx.fillStyle = q.c;
+              ctx.fillText(String(q.v), 0, 0);
+              ctx.restore();
+            }
+            /* 総和 = 株価 */
+            if (st > 0.5) {
+              const sk = Math.min(1, (st - 0.5) / 0.25), sf = Math.max(0, 1 - Math.max(0, st - 1.4) / 0.7);
+              ctx.save(); ctx.translate(e.x, e.y + e.size * .55);
+              ctx.scale(.7 + sk * .3, .7 + sk * .3);
+              ctx.font = "800 " + Math.round(e.size * .42) + "px " + MONO;
+              ctx.globalAlpha = sk * sf; ctx.shadowColor = "#33d1ff"; ctx.shadowBlur = 16; ctx.fillStyle = "#33d1ff";
+              ctx.fillText("= " + e.sum, 0, 0);
+              ctx.restore();
+            }
+          }
+        }
+        ctx.globalAlpha = 1; ctx.shadowBlur = 0;
+      };
+      const loop = (ts) => {
+        raf = requestAnimationFrame(loop);
+        if (document.hidden) { last = ts; return; }
+        const dt = Math.min(0.05, last ? (ts - last) / 1000 : 0.016);
+        last = ts;
+        draw(dt);
+      };
+      const onDown = (ev) => {
+        if (document.body.classList.contains("ft-booting")) return;
+        const r = cv.getBoundingClientRect();
+        spawn(ev.clientX - r.left, ev.clientY - r.top);
+      };
+      resize();
+      let ro = null;
+      if (window.ResizeObserver && cv.parentNode) { ro = new ResizeObserver(resize); ro.observe(cv.parentNode); }
+      else window.addEventListener("resize", resize);
+      window.addEventListener("pointerdown", onDown);
+      raf = requestAnimationFrame(loop);
+      return () => {
+        cancelAnimationFrame(raf);
+        window.removeEventListener("pointerdown", onDown);
+        window.removeEventListener("resize", resize);
+        if (ro) ro.disconnect();
+      };
+    }, []);
+    return React.createElement("canvas", { ref, className: "ft-bg", "aria-hidden": "true" });
+  }
+
   function SetupScreen({ onStart, net }) {
     const [count, setCount] = useState(4);
     const [name, setName] = useState(() => getLoggedInAccountId() || "YOU");
@@ -6088,8 +6269,9 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
       const inRoom = !!(net && net.online && net.online.role);
       const lbl = "text-[10px] tracking-[0.3em] text-neutral-500 uppercase mb-2 font-mono";
       const optBtn = (on, key, onClick, big, small) => h("button", { key, type: "button", onClick, className: "py-3 rounded-xl font-mono font-bold border transition-all " + (on ? "border-[#33d1ff] text-[#33d1ff] bg-[#33d1ff]/10" : "border-neutral-800 text-neutral-500 hover:border-neutral-600") }, h("span", { className: "text-lg" }, big), h("div", { className: "text-[10px] tracking-widest opacity-70" }, small));
-      return h("div", { className: "min-h-screen bg-[#050506] text-neutral-100 grid-bg scanlines flex items-center justify-center p-6" },
-        h("div", { className: "w-full max-w-2xl space-y-4" },
+      return h("div", { className: "min-h-screen bg-[#050506] text-neutral-100 grid-bg scanlines flex items-center justify-center p-6 ft-top" },
+        h(TopBackdrop, null),
+        h("div", { className: "relative z-10 w-full max-w-2xl space-y-4" },
           !inRoom ? h("div", { className: "rounded-2xl border border-[#33d1ff]/20 bg-black/50 p-6 space-y-4" },
             h("div", null, h("div", { className: lbl }, "トレーダー名（ホスト・ゲスト共通）"),
               h("input", { value: sess || name, disabled: !!sess, maxLength: 12, onChange: (e) => setName(e.target.value.slice(0, 12)), className: "w-full h-12 rounded-xl bg-black/60 border border-neutral-800 px-3 font-mono text-lg outline-none focus:border-[#33d1ff]/60", style: { color: "#d7ede2", WebkitTextFillColor: "#d7ede2" } })),
@@ -6100,7 +6282,7 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
           ) : null,
           h(OnlineLobby, { cfg: { count, humanName: (sess || name || "YOU"), seriousMode: serious }, onBack: () => setTab("local"), onStart, net })));
     }
-    return /* @__PURE__ */ React.createElement("div", { className: "min-h-screen bg-[#050506] text-neutral-100 grid-bg scanlines flex items-center justify-center p-6 relative overflow-hidden" }, /* @__PURE__ */ React.createElement("div", { className: "absolute -top-40 -right-40 w-[36rem] h-[36rem] rounded-full a-breathe-scale", style: { background: "radial-gradient(circle, rgba(57,255,156,0.10), transparent 70%)" } }), /* @__PURE__ */ React.createElement("div", { className: "relative z-10 w-full max-w-2xl a-fade-up-big" }, /* @__PURE__ */ React.createElement("div", { className: "flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-6" }, /* @__PURE__ */ React.createElement("div", { className: "text-center md:text-left" }, /* @__PURE__ */ React.createElement("div", { className: "text-[11px] tracking-[0.5em] text-[#39ff9c]/70 mb-2 font-mono" }, "PRIME FACTOR"), /* @__PURE__ */ React.createElement("h1", { className: "font-display font-bold text-[2.6rem] sm:text-5xl md:text-6xl leading-[0.95] tracking-tight" }, /* @__PURE__ */ React.createElement("span", { className: "text-stroke" }, "FACTOR"), /* @__PURE__ */ React.createElement("span", { className: "text-[#39ff9c] glow" }, " / "), /* @__PURE__ */ React.createElement("span", { className: "text-stroke" }, "TRADER"))), /* @__PURE__ */ React.createElement("div", { className: "flex flex-col gap-2 items-stretch min-w-[200px]" }, /* @__PURE__ */ React.createElement("button", { type: "button", onClick: () => setShowAccount(true), className: "px-3 py-2 rounded-xl border border-neutral-800 text-[11px] font-mono text-neutral-400 hover:border-[#39ff9c]/40 hover:text-[#39ff9c] text-left" }, sess ? "ACC \xB7 " + sess : "ACCOUNT \xB7 \u30ED\u30B0\u30A4\u30F3"), /* @__PURE__ */ React.createElement("div", { className: "rounded-xl border border-neutral-800 bg-black/40 px-3 py-2" }, /* @__PURE__ */ React.createElement("div", { className: "text-[9px] tracking-widest text-neutral-500 font-mono" }, "CPU \u77E5\u80FD\u6307\u6570"), /* @__PURE__ */ React.createElement("div", { className: "font-mono text-lg text-[#39ff9c]" }, "IQ ", /* @__PURE__ */ React.createElement("b", null, aiIq.iq), " ", /* @__PURE__ */ React.createElement("span", { className: "text-xs text-neutral-500" }, aiIq.rank))), /* @__PURE__ */ React.createElement("div", { className: "flex justify-center py-1.5 ft-setup-title-badges" }, ftEquippedBadgeRow(32)))), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-2 gap-2 mb-4" }, /* @__PURE__ */ React.createElement("button", { type: "button", onClick: () => setTab("local"), className: "py-3 rounded-xl font-mono text-sm border " + (tab === "local" ? "border-[#39ff9c] text-[#39ff9c] bg-[#39ff9c]/10" : "border-neutral-800 text-neutral-500") }, "LOCAL"), /* @__PURE__ */ React.createElement("button", { type: "button", onClick: () => setTab("online"), className: "py-3 rounded-xl font-mono text-sm border " + (tab === "online" ? "border-[#33d1ff] text-[#33d1ff] bg-[#33d1ff]/10" : "border-neutral-800 text-neutral-500") }, "ONLINE")), /* @__PURE__ */ React.createElement("div", { className: "rounded-2xl border border-[#39ff9c]/15 bg-black/50 backdrop-blur p-6 space-y-5 glow-box" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] tracking-[0.3em] text-neutral-500 uppercase mb-2 font-mono" }, "\u5BFE\u6226\u4EBA\u6570"), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-2 gap-2" }, COUNTS.map((c) => /* @__PURE__ */ React.createElement(
+    return /* @__PURE__ */ React.createElement("div", { className: "min-h-screen bg-[#050506] text-neutral-100 grid-bg scanlines flex items-center justify-center p-6 relative overflow-hidden ft-top" }, /* @__PURE__ */ React.createElement(TopBackdrop, null), /* @__PURE__ */ React.createElement("div", { className: "absolute -top-40 -right-40 w-[36rem] h-[36rem] rounded-full a-breathe-scale", style: { background: "radial-gradient(circle, rgba(57,255,156,0.10), transparent 70%)" } }), /* @__PURE__ */ React.createElement("div", { className: "relative z-10 w-full max-w-2xl a-fade-up-big" }, /* @__PURE__ */ React.createElement("div", { className: "flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-6" }, /* @__PURE__ */ React.createElement("div", { className: "text-center md:text-left" }, /* @__PURE__ */ React.createElement("div", { className: "text-[11px] tracking-[0.5em] text-[#39ff9c]/70 mb-2 font-mono" }, "PRIME FACTOR"), /* @__PURE__ */ React.createElement("h1", { className: "font-display font-bold text-[2.6rem] sm:text-5xl md:text-6xl leading-[0.95] tracking-tight" }, /* @__PURE__ */ React.createElement("span", { className: "text-stroke" }, "FACTOR"), /* @__PURE__ */ React.createElement("span", { className: "text-[#39ff9c] glow" }, " / "), /* @__PURE__ */ React.createElement("span", { className: "text-stroke" }, "TRADER"))), /* @__PURE__ */ React.createElement("div", { className: "flex flex-col gap-2 items-stretch min-w-[200px]" }, /* @__PURE__ */ React.createElement("button", { type: "button", onClick: () => setShowAccount(true), className: "px-3 py-2 rounded-xl border border-neutral-800 text-[11px] font-mono text-neutral-400 hover:border-[#39ff9c]/40 hover:text-[#39ff9c] text-left" }, sess ? "ACC \xB7 " + sess : "ACCOUNT \xB7 \u30ED\u30B0\u30A4\u30F3"), /* @__PURE__ */ React.createElement("div", { className: "rounded-xl border border-neutral-800 bg-black/40 px-3 py-2" }, /* @__PURE__ */ React.createElement("div", { className: "text-[9px] tracking-widest text-neutral-500 font-mono" }, "CPU \u77E5\u80FD\u6307\u6570"), /* @__PURE__ */ React.createElement("div", { className: "font-mono text-lg text-[#39ff9c]" }, "IQ ", /* @__PURE__ */ React.createElement("b", null, aiIq.iq), " ", /* @__PURE__ */ React.createElement("span", { className: "text-xs text-neutral-500" }, aiIq.rank))), /* @__PURE__ */ React.createElement("div", { className: "flex justify-center py-1.5 ft-setup-title-badges" }, ftEquippedBadgeRow(32)))), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-2 gap-2 mb-4" }, /* @__PURE__ */ React.createElement("button", { type: "button", onClick: () => setTab("local"), className: "py-3 rounded-xl font-mono text-sm border " + (tab === "local" ? "border-[#39ff9c] text-[#39ff9c] bg-[#39ff9c]/10" : "border-neutral-800 text-neutral-500") }, "LOCAL"), /* @__PURE__ */ React.createElement("button", { type: "button", onClick: () => setTab("online"), className: "py-3 rounded-xl font-mono text-sm border " + (tab === "online" ? "border-[#33d1ff] text-[#33d1ff] bg-[#33d1ff]/10" : "border-neutral-800 text-neutral-500") }, "ONLINE")), /* @__PURE__ */ React.createElement("div", { className: "rounded-2xl border border-[#39ff9c]/15 bg-black/50 backdrop-blur p-6 space-y-5 glow-box" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] tracking-[0.3em] text-neutral-500 uppercase mb-2 font-mono" }, "\u5BFE\u6226\u4EBA\u6570"), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-2 gap-2" }, COUNTS.map((c) => /* @__PURE__ */ React.createElement(
       "button",
       {
         key: c,
@@ -6121,7 +6303,7 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
       Button,
       {
         onClick: () => onStart({ count, humanName: (sess || name || "YOU"), seriousMode: serious, online: false }),
-        className: "w-full h-14 text-lg font-extrabold tracking-widest bg-[#39ff9c] text-black hover:bg-[#5dffb0] rounded-xl glow-box", style: { fontWeight: 800 }
+        className: "w-full h-14 text-lg font-extrabold tracking-widest bg-[#39ff9c] text-black hover:bg-[#5dffb0] rounded-xl glow-box ft-cta", style: { fontWeight: 800 }
       },
       "ENTER THE ARENA \u2192"
     ), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-3 gap-2 pt-1" }, /* @__PURE__ */ React.createElement("button", { type: "button", onClick: () => setShowTutorial(true), className: "py-2.5 rounded-xl border border-neutral-800 text-[11px] font-mono text-neutral-400 hover:border-[#39ff9c]/40 hover:text-[#39ff9c]" }, "TUTORIAL"), /* @__PURE__ */ React.createElement("button", { type: "button", onClick: () => setShowRules(true), className: "py-2.5 rounded-xl border border-neutral-800 text-[11px] font-mono text-neutral-400 hover:border-[#39ff9c]/40 hover:text-[#39ff9c]" }, "RULES"), /* @__PURE__ */ React.createElement("button", { type: "button", onClick: () => setShowTitles(true), className: "py-2.5 rounded-xl border border-neutral-800 text-[11px] font-mono text-neutral-400 hover:border-[#39ff9c]/40 hover:text-[#39ff9c]" }, "TITLES ", unlockedN, "/", TITLE_DEFS.length)))), showAccount && /* @__PURE__ */ React.createElement(AccountPanel, { onClose: () => setShowAccount(false), onAuthed: () => {
