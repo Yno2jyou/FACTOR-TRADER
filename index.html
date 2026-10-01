@@ -1978,23 +1978,264 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
     };
   }
 
+  const AI_IQ_RANK_DEFS = [
+    { min: 160, id: "extreme", name: "Extreme" },
+    { min: 145, id: "expert", name: "Expert" },
+    { min: 130, id: "hard", name: "Hard" },
+    { min: 115, id: "moderate", name: "Moderate" },
+    { min: 100, id: "easy", name: "Easy" },
+    { min: 80, id: "trivial", name: "Trivial" },
+  ];
+
+  function clampAiIq(n) {
+    return Math.round(Math.max(80, Math.min(180, Number(n) || 80)));
+  }
+
+  function rankFromIq(iq) {
+    const v = clampAiIq(iq);
+    for (let i = 0; i < AI_IQ_RANK_DEFS.length; i++) {
+      if (v >= AI_IQ_RANK_DEFS[i].min) return AI_IQ_RANK_DEFS[i];
+    }
+    return AI_IQ_RANK_DEFS[AI_IQ_RANK_DEFS.length - 1];
+  }
+
   function defaultAiLearn() {
     return {
-      games: 0, iq: 125, aiBeatsHuman: 0, humanBeatsAi: 0,
-      w: { value: 0.35, momentum: 0.2, contrarian: 0.15, noise: 0.2, protect: 0.25 },
-      human: { buyRate: 0.4, sellRate: 0.3, stayRate: 0.3 },
-      s: { lastResults: [] }
+      games: 0,
+      iq: 125,
+      aiBeatsHuman: 0,
+      humanBeatsAi: 0,
+      w: {
+        aggression: 0.82,
+        protect: 0.94,
+        heavy: 0.78,
+        stayTrap: 0.28,
+        primeBuy: 0.72,
+        highSell: 0.72,
+        endgame: 0.78,
+        noise: 0.28,
+      },
+      s: {
+        aiBankrupts: 0,
+        humanBankrupts: 0,
+        heavyHits: 0,
+        heavyTries: 0,
+        protectUsed: 0,
+        buyPrimeOk: 0,
+        buyPrimeN: 0,
+        sellHighOk: 0,
+        sellHighN: 0,
+      },
+      human: {
+        buyRate: 0.4,
+        heavyRate: 0.22,
+        protectRate: 0.28,
+      },
     };
   }
+
   function loadAiLearn() {
     try {
       const raw = localStorage.getItem(FT_AI_LEARN_KEY);
       if (!raw) return defaultAiLearn();
-      return { ...defaultAiLearn(), ...JSON.parse(raw) };
+      const o = JSON.parse(raw);
+      const d = defaultAiLearn();
+      if (o && typeof o === "object") {
+        d.games = Math.max(0, Number(o.games) || 0);
+        d.aiBeatsHuman = Math.max(0, Number(o.aiBeatsHuman) || 0);
+        d.humanBeatsAi = Math.max(0, Number(o.humanBeatsAi) || 0);
+        // 旧セーブに iq が無い場合は勝敗・対局から推定
+        if (o.iq != null && !isNaN(Number(o.iq))) {
+          d.iq = clampAiIq(o.iq);
+        } else {
+          const g = d.games;
+          const totalMatch = Math.max(0, d.aiBeatsHuman + d.humanBeatsAi);
+          let est = 80;
+          if (g > 0) {
+            est = 80 + Math.min(40, g * 1.2);
+            if (totalMatch > 0) {
+              // 人間優勢が多いほどIQ高め（CPUが強くなる）
+              const humRate = d.humanBeatsAi / totalMatch;
+              est += humRate * 35 - (1 - humRate) * 15;
+            }
+          }
+          d.iq = clampAiIq(est);
+        }
+        // 旧形式セーブ（value/momentum 系の重み）は同名キー(protect/noise)の意味が異なるため引き継がず、参照サイトの既定重みから開始
+        const legacyWeights = !!(o.w && typeof o.w === "object" && o.w.aggression == null);
+        if (o.w && typeof o.w === "object" && !legacyWeights) {
+          Object.keys(d.w).forEach((k) => {
+            if (o.w[k] != null) d.w[k] = Math.max(0.05, Math.min(0.98, Number(o.w[k]) || d.w[k]));
+          });
+        }
+        if (o.s && typeof o.s === "object") {
+          Object.keys(d.s).forEach((k) => {
+            if (o.s[k] != null) d.s[k] = Math.max(0, Number(o.s[k]) || 0);
+          });
+        }
+        if (o.human && typeof o.human === "object") {
+          Object.keys(d.human).forEach((k) => {
+            if (o.human[k] != null) d.human[k] = Math.max(0.05, Math.min(0.95, Number(o.human[k]) || d.human[k]));
+          });
+        }
+      }
+      return d;
     } catch (e) {
       return defaultAiLearn();
     }
   }
+
+  /** CPU知能指数（LOCAL）人間の勝敗で上下。ONLINEは内部Hard固定 */
+  function getAiIqInfo() {
+    const d = loadAiLearn();
+    const g = Math.max(0, d.games || 0);
+    const iq = clampAiIq(d.iq != null ? d.iq : 80);
+    const rk = rankFromIq(iq);
+    const skill = iqToSkill(iq);
+    const totalMatch = Math.max(0, (d.aiBeatsHuman || 0) + (d.humanBeatsAi || 0));
+    const winRate = totalMatch > 0 ? (d.humanBeatsAi || 0) / totalMatch : 0;
+    const pct = Math.round(((iq - 80) / (180 - 80)) * 100);
+    return {
+      iq,
+      rank: rk.name,
+      rankId: rk.id,
+      games: g,
+      skill,
+      winRate,
+      aiBeatsHuman: d.aiBeatsHuman || 0,
+      humanBeatsAi: d.humanBeatsAi || 0,
+      pct,
+    };
+  }
+
+  function clampW(v) {
+    return Math.max(0.08, Math.min(0.97, v));
+  }
+
+  /** 1TERN終了時の学習（注文・COIN・結果から傾向を更新） */
+  function recordAiTurnLearn(basePlayers, orders, hacks, execResults, nStart, priceBefore) {
+    try {
+      const d = loadAiLearn();
+      const prime = isPrime(nStart);
+      const isHigh = priceBefore >= 1100;
+      let humBuy = 0, humN = 0, humHeavy = 0, humProt = 0, humAct = 0;
+      (basePlayers || []).forEach((p) => {
+        if (!p || p.isBankrupt) return;
+        const ord = (orders && orders[p.id]) || { action: "stay", shares: 0 };
+        const hk = (hacks && hacks[p.id]) || {};
+        const ex = (execResults && execResults[p.id]) || {};
+        if (!p.isAI) {
+          humAct += 1;
+          if (ord.action === "buy" && (ord.shares || 0) > 0) humBuy += 1;
+          if ((hk.heavy || 0) > 0) humHeavy += 1;
+          if (hk.defense || hk.reflect) humProt += 1;
+        } else {
+          if ((hk.heavy || 0) > 0) {
+            d.s.heavyTries += 1;
+            let hit = false;
+            (basePlayers || []).forEach((op) => {
+              if (!op || String(op.id) === String(p.id)) return;
+              const oex = execResults[op.id];
+              if (oex && oex.bankrupt) hit = true;
+            });
+            if (hit) d.s.heavyHits += 1;
+          }
+          if (hk.defense || hk.reflect) d.s.protectUsed += 1;
+          if (ex.bankrupt) d.s.aiBankrupts += 1;
+          if (ord.action === "buy" && (ord.shares || 0) > 0 && prime) {
+            d.s.buyPrimeN += 1;
+            if (!ex.bankrupt && (ex.sharesFilled || 0) > 0) d.s.buyPrimeOk += 1;
+          }
+          if (ord.action === "sell" && (ord.shares || 0) > 0 && isHigh) {
+            d.s.sellHighN += 1;
+            if ((ex.sharesFilled || 0) > 0) d.s.sellHighOk += 1;
+          }
+        }
+        if (!p.isAI && ex.bankrupt) d.s.humanBankrupts += 1;
+      });
+      if (humAct > 0) {
+        const a = 0.12;
+        d.human.buyRate = d.human.buyRate * (1 - a) + (humBuy / humAct) * a;
+        d.human.heavyRate = d.human.heavyRate * (1 - a) + (humHeavy / humAct) * a;
+        d.human.protectRate = d.human.protectRate * (1 - a) + (humProt / humAct) * a;
+      }
+      // 軽量な重み微調整（毎ターン）
+      if (d.s.heavyTries >= 5) {
+        const rate = d.s.heavyHits / d.s.heavyTries;
+        d.w.heavy = clampW(d.w.heavy + (rate > 0.25 ? 0.01 : -0.008));
+      }
+      if (d.s.buyPrimeN >= 5) {
+        const rate = d.s.buyPrimeOk / d.s.buyPrimeN;
+        d.w.primeBuy = clampW(d.w.primeBuy + (rate > 0.55 ? 0.01 : -0.008));
+      }
+      if (d.s.sellHighN >= 5) {
+        const rate = d.s.sellHighOk / d.s.sellHighN;
+        d.w.highSell = clampW(d.w.highSell + (rate > 0.55 ? 0.01 : -0.008));
+      }
+      if (d.s.aiBankrupts > 0 && d.games > 0) {
+        d.w.protect = clampW(d.w.protect + 0.004);
+        d.w.aggression = clampW(d.w.aggression - 0.003);
+      }
+      saveAiLearn(d);
+    } catch (e) {}
+  }
+
+  /** ゲーム終了時の学習（人間が勝てばIQ上昇・負ければ低下。プレイヤーに合わせた難度） */
+  function recordAiGameLearn(ranked, price) {
+    try {
+      const d = loadAiLearn();
+      d.games = (d.games || 0) + 1;
+      let iq = clampAiIq(d.iq != null ? d.iq : 80);
+      const list = ranked || [];
+      // 人間プレイヤー全員について、最強CPUとの比較で勝敗を集計（一人一人に反映）
+      const humans = list.filter((p) => p && !p.isAI);
+      const ais = list.filter((p) => p && p.isAI);
+      const bestAiTV = ais.length
+        ? Math.max.apply(null, ais.map((p) => totalValue(p, price)))
+        : 0;
+      let anyHumanWin = false;
+      let anyHumanLose = false;
+      humans.forEach((hum) => {
+        const humTV = totalValue(hum, price);
+        if (!ais.length) return;
+        if (humTV >= bestAiTV) {
+          anyHumanWin = true;
+          d.humanBeatsAi = (d.humanBeatsAi || 0) + 1;
+        } else {
+          anyHumanLose = true;
+          d.aiBeatsHuman = (d.aiBeatsHuman || 0) + 1;
+        }
+      });
+      if (anyHumanWin && !anyHumanLose) {
+        // 人間側がCPUを上回った → IQ上昇（次の対局でCPUが強くなる）
+        const delta = 5 + Math.floor(Math.random() * 5); // +5〜9
+        iq = clampAiIq(iq + delta);
+        d.w.protect = clampW(d.w.protect + 0.02);
+        d.w.stayTrap = clampW(d.w.stayTrap + 0.015);
+        d.w.heavy = clampW(d.w.heavy + (d.human.buyRate > 0.45 ? 0.02 : 0.008));
+        d.w.aggression = clampW(d.w.aggression - 0.008);
+        d.w.endgame = clampW(d.w.endgame + 0.012);
+        d.w.noise = clampW(d.w.noise - 0.015);
+      } else if (anyHumanLose && !anyHumanWin) {
+        // CPUが人間を上回った → IQ低下
+        const delta = 3 + Math.floor(Math.random() * 5); // -3〜7
+        iq = clampAiIq(iq - delta);
+        d.w.aggression = clampW(d.w.aggression + 0.01);
+        d.w.heavy = clampW(d.w.heavy + 0.008);
+        d.w.noise = clampW(d.w.noise + 0.01);
+      } else if (anyHumanWin && anyHumanLose) {
+        // 混在（複数人間）: わずかに上昇寄り
+        iq = clampAiIq(iq + 2);
+        d.w.noise = clampW(d.w.noise - 0.005);
+      }
+      d.iq = iq;
+      if (d.games >= 10) d.w.noise = clampW(d.w.noise - 0.008);
+      if (d.games >= 30) d.w.noise = clampW(Math.min(d.w.noise, 0.32));
+      saveAiLearn(d);
+    } catch (e) {}
+  }
+
+
   function saveAiLearn(data) {
     try {
       localStorage.setItem(FT_AI_LEARN_KEY, JSON.stringify(data));
@@ -2010,47 +2251,6 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
       saveAuthAccounts(map);
     } catch (e) {}
     try { scheduleLiveSyncPush(); } catch (e) {}
-  }
-  function clampAiIq(n) {
-    return Math.max(60, Math.min(160, Math.round(Number(n) || 125)));
-  }
-  function getAiIqInfo() {
-    const d = loadAiLearn();
-    const iq = clampAiIq(d.iq);
-    let rank = "Average";
-    if (iq >= 145) rank = "Genius";
-    else if (iq >= 130) rank = "Superior";
-    else if (iq >= 115) rank = "Above";
-    else if (iq < 90) rank = "Developing";
-    const pct = Math.max(0, Math.min(100, (iq - 60) / 100 * 100));
-    return { iq, rank, games: d.games || 0, pct, humanBeatsAi: d.humanBeatsAi || 0, aiBeatsHuman: d.aiBeatsHuman || 0 };
-  }
-  function recordAiGameLearn(ranked, price) {
-    try {
-      const d = loadAiLearn();
-      d.games = (d.games || 0) + 1;
-      const humans = (ranked || []).filter((p) => p && !p.isAI);
-      const ais = (ranked || []).filter((p) => p && p.isAI);
-      const bestAi = ais.length ? Math.max.apply(null, ais.map((p) => totalValue(p, price))) : 0;
-      let win = false, lose = false;
-      humans.forEach((h) => {
-        const tv = totalValue(h, price);
-        if (!ais.length) return;
-        if (tv >= bestAi) {
-          win = true;
-          d.humanBeatsAi = (d.humanBeatsAi || 0) + 1;
-        } else {
-          lose = true;
-          d.aiBeatsHuman = (d.aiBeatsHuman || 0) + 1;
-        }
-      });
-      let iq = clampAiIq(d.iq);
-      if (win && !lose) iq = clampAiIq(iq + 5);
-      else if (lose && !win) iq = clampAiIq(iq - 4);
-      d.iq = iq;
-      saveAiLearn(d);
-    } catch (e) {
-    }
   }
   function sopf(n) {
     let num = Math.floor(n);
@@ -2571,8 +2771,12 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
     return best || { id: -1, isBankrupt: true, cash: 0, holdings: 0 };
   }
   
-  const FT_AI_FORCE_HARD = false;
-  const FT_ONLINE_AI_IQ = 125;
+  /** ONLINE対戦のCPUは常に Hard 相当（表示・学習には出さない） */
+  const FT_ONLINE_AI_IQ = 137;
+  let FT_AI_FORCE_HARD = false;
+  function setAiForceHard(v) {
+    FT_AI_FORCE_HARD = !!v;
+  }
   function iqToSkill(iq) {
   // 80→0.18 / 137(Hard)→約0.57 / 180→1.0
   return Math.min(1, Math.max(0.15, (clampAiIq(iq) - 80) / 100));
@@ -3442,13 +3646,88 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
   return { quick: bestQuick, heavy: bestHeavy, defense: useDefense, reflect: useReflect, avant: avant, avantSab: avantSab, avantPrice: avantPrice, cancelBuyToAvoidBankruptcy: !!cancelBuyToAvoidBankruptcy, mustProtectBankruptcy: !!mustProtectBankruptcy };
 }
 
+  /** aiDecideCards の戻り値を hack 形式へ（早期TERN・奥義使用済み・ラスト5・COIN超過の補正込み） */
+  function ftCpuHackFromCards(cards, coinRescue, player, turn, totalTurns) {
+    const c = cards || {};
+    const stock = (player.cards && player.cards.stock) || 0;
+    const hack = emptyHack();
+    hack.quick = Math.max(0, Math.floor(Number(c.quick) || 0));
+    hack.heavy = (Number(c.heavy) || 0) > 0 ? 1 : 0;
+    hack.defense = !!(Number(c.defense) || c.defense);
+    hack.reflect = !!(Number(c.reflect) || c.reflect);
+    hack.avant = !!(Number(c.avant) || c.avant);
+    hack.avantSab = !!(Number(c.avantSab) || c.avantSab);
+    hack.avantPrice = Math.max(1, Math.min(99999, Math.floor(Number(c.avantPrice) || 1000)));
+    hack.coinRescue = coinRescue || "";
+    if (isEarlyTurns(turn)) {
+      hack.heavy = 0;
+      hack.defense = false;
+      hack.reflect = false;
+      hack.avantSab = false;
+    }
+    if (player.avantUsed) {
+      hack.avant = false;
+      hack.avantSab = false;
+    }
+    if (isLastFiveTurns(turn, totalTurns)) hack.coinRescue = "";
+    let cost = hackCost(hack);
+    while (cost > stock && hack.quick > 0) {
+      hack.quick -= 1;
+      cost = hackCost(hack);
+    }
+    if (cost > stock) {
+      hack.heavy = 0; hack.defense = false; hack.reflect = false;
+      hack.avant = false; hack.avantSab = false;
+    }
+    return hack;
+  }
+  /** CPU同士の妨害重複は1枠まで（様子見CPU優先）／CPU同士の奥義重複回避（参照サイト準拠） */
+  function ftLimitCpuHeavyAndAvant(players, hacks, orders) {
+    const alive = (players || []).filter(function (p) { return p && p.isAI && !p.isBankrupt && hacks[p.id]; });
+    const aiHeavy = alive.filter(function (p) { return (Number(hacks[p.id].heavy) || 0) > 0; });
+    const heavySlots = 1;
+    if (aiHeavy.length > heavySlots) {
+      aiHeavy.sort(function (a, b) {
+        const oa = ((orders[a.id] || {}).action === "stay") ? 1 : 0;
+        const ob = ((orders[b.id] || {}).action === "stay") ? 1 : 0;
+        if (oa !== ob) return ob - oa;
+        return Math.random() - 0.5;
+      });
+      const keep = {};
+      aiHeavy.slice(0, heavySlots).forEach(function (p) { keep[p.id] = true; });
+      aiHeavy.forEach(function (p) {
+        if (!keep[p.id]) hacks[p.id] = { ...hacks[p.id], heavy: 0 };
+      });
+    }
+    [["avant", "avantSab"], ["avantSab", "avant"]].forEach(function (pair) {
+      const key = pair[0], other = pair[1];
+      const ops = alive.filter(function (p) { return hacks[p.id][key]; });
+      if (ops.length > 1) {
+        for (let i = ops.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          const tmp = ops[i]; ops[i] = ops[j]; ops[j] = tmp;
+        }
+        const keepId = ops[0].id;
+        ops.forEach(function (p) {
+          if (p.id === keepId) return;
+          const hk = hacks[p.id];
+          const nh = { ...hk };
+          nh[key] = false;
+          nh.avantPrice = hk[other] ? hk.avantPrice : 0;
+          hacks[p.id] = nh;
+        });
+      }
+    });
+  }
   function aiDecideTurn(player, nStart, basePrice, turn, totalTurns, players) {
     const stock = (player.cards && player.cards.stock) || 0;
     const last5 = isLastFiveTurns(turn, totalTurns);
     const early = isEarlyTurns(turn);
     const priceBefore = basePrice;
     const refPrice = basePrice;
-    const human = (players || []).find(function (p) { return p && !p.isAI && !p.isBankrupt; }) || null;
+    const human = (players || [])
+      .filter(function (p) { return p && !p.isAI && !p.isBankrupt; })
+      .sort(function (a, b) { return totalValue(b, priceBefore) - totalValue(a, priceBefore); })[0] || null;
 
     // 1) 注文（参照サイト aiDecideTrade）
     let order = { action: "stay", shares: 0 };
@@ -5015,6 +5294,7 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
       setResult(null);
     }
     function startGame(cfg) {
+      setAiForceHard(!!(cfg && cfg.online));
       if (cfg && cfg.online) { startOnlineGame(cfg); return; }
       const hCount = cfg.humanCount || 1;
       const hNames = cfg.humanNames || [cfg.humanName || "YOU"];
@@ -5085,7 +5365,23 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
         orders[p.id] = { action: "stay", shares: 0 };
         return rescued;
       });
+      // CPUの市場介入は「全員の注文・COIN補充が確定した後」に決定（参照サイトの流れ）
+      working.forEach((wp) => {
+        if (!wp || !wp.isAI || wp.isBankrupt) return;
+        const resc = (hacks[wp.id] && hacks[wp.id].coinRescue) || "";
+        let cards = null;
+        try {
+          cards = aiDecideCards(wp.cards, turn, totalTurns, orders[wp.id], nStart, basePrice, orders, wp.id, working);
+        } catch (e) {
+          cards = null;
+        }
+        hacks[wp.id] = ftCpuHackFromCards(cards, resc, wp, turn, totalTurns);
+      });
+      ftLimitCpuHeavyAndAvant(working, hacks, orders);
       const res = settleTurn(working, orders, hacks, nStart, basePrice);
+      try {
+        if (!roleRef.current) recordAiTurnLearn(working, orders, hacks, res.execResults, nStart, basePrice);
+      } catch (e) {}
       setResult(res);
       setPlayers(res.updated);
       setTitleStats((prev) => {
@@ -5369,6 +5665,7 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
       }
     }
     function startOnlineGame(cfg) {
+      setAiForceHard(true);
       if (roleRef.current !== "host") return;
       const gs = hostGuests();
       const humanTotal = Math.min(cfg.count, 1 + gs.length);
