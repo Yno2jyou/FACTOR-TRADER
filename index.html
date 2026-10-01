@@ -905,8 +905,8 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
   function emptyGameTitleStats() {
     return { quickUsed: 0, heavyBankruptIds: {}, defenseBlocked: 0, reflectOut: 0, bailouts: 0, wasLast: false, avantThisGame: 0, coinRescueUsed: false };
   }
-  const TURN_TABLE = { 2: 22, 3: 22, 6: 32, 9: 32 };
-  const CARDS_TABLE = { 2: 30, 3: 30, 6: 40, 9: 40 };
+  const TURN_TABLE = { 2: 12, 4: 22, 8: 32, 10: 32 };
+  const CARDS_TABLE = { 2: 30, 4: 30, 8: 20, 10: 20 };
   const SERIOUS_COIN_BONUS = 10;
 
   const CPU_NAMES = [
@@ -917,7 +917,7 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
   ];
   const AI_NAMES = CPU_NAMES; // alias
 
-  const COUNTS = [2, 3, 6, 9];
+  const COUNTS = [2, 4, 8, 10];
   const AVATAR_COLORS = ["#00ff41", "#00e5ff", "#ff2d6f", "#ffd400", "#b388ff", "#7c4dff", "#ff6e40", "#69f0ae"];
   const FT_TITLE_KEY = "factor_trader_titles_v1";
   const FT_AUTH_KEY = "factor_trader_auth_v1";
@@ -5831,7 +5831,7 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
     );
   }
   function SetupScreen({ onStart, net }) {
-    const [count, setCount] = useState(3);
+    const [count, setCount] = useState(2);
     const [name, setName] = useState(() => getLoggedInAccountId() || "YOU");
     const [serious, setSerious] = useState(false);
     const [tab, setTab] = useState(function () { try { return new URLSearchParams(window.location.search).get("room") ? "online" : "local"; } catch (e) { return "local"; } });
