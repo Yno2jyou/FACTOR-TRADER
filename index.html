@@ -694,7 +694,6 @@ body.ft-booting .ft-bg { animation-play-state: paused; }
 </style>
 <style id="ft-derive-css">
 /* ===== プレイ画面: N → 素因数 → 総和=株価 の導出演出(株価ブロック内に重ねる・暗転なし) ===== */
-@property --ftdv { syntax: "<integer>"; inherits: false; initial-value: 0; }
 /* 本物の株価ブロックは演出中だけ透明(CSSアニメで演出と同じ時計・演出後は自動で元に戻る) */
 .ft-pricewrap > :not(.ftd) { animation: ftdHideReal var(--ftdT, 0s) var(--ftdD, 0s) linear; }
 .ft-pricewrap.ft-derive-off > :not(.ftd) { animation: none; }
@@ -704,9 +703,12 @@ body.ft-booting .ft-bg { animation-play-state: paused; }
 @keyframes ftdRoot { to { opacity: 0; visibility: hidden; } }
 .ftd-lab, .ftd-ns { opacity: 0; animation: ftdFade .25s calc(var(--d) + var(--cr)) both; }
 .ftd-price { opacity: 0; animation: ftdPricePop .45s cubic-bezier(.2,1.3,.3,1) calc(var(--d) + var(--sumT)) both; }
-.ftd-v { counter-reset: ftdv var(--ftdv); animation: ftdCount var(--cu) ease-out calc(var(--d) + var(--sumT)) both; }
-.ftd-v::after { content: counter(ftdv); }
+.ftd-v { position: relative; display: inline-block; }
+.ftd-vs { visibility: hidden; }
+.ftd-vc { position: absolute; top: 0; right: 0; }
 .ftd-t { opacity: 0; animation: ftdTile .45s cubic-bezier(.2,1.25,.3,1) calc(var(--d) + var(--cr) + .05s + var(--i) * var(--st)) both, ftdPulse .3s ease-out calc(var(--d) + var(--sumT) + var(--i) * var(--ps)); }
+.ftd-t { position: relative; }
+.ftd-t::after { content: ""; position: absolute; inset: 0; border-radius: inherit; background: currentColor; opacity: 0; pointer-events: none; animation: ftdPulseGlow .3s ease-out calc(var(--d) + var(--sumT) + var(--i) * var(--ps)); }
 .ftd-op { opacity: 0; animation: ftdFade .3s calc(var(--d) + var(--cr) + .45s) both; }
 /* 大きなN(中央)・斬撃・フラッシュ */
 .ftd-nwrap { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
@@ -718,15 +720,18 @@ body.ft-booting .ft-bg { animation-play-state: paused; }
 .ftd-sc { position: absolute; left: 0; top: 0; font: 800 28px/1 "JetBrains Mono", ui-monospace, Menlo, monospace; text-shadow: 0 0 14px currentColor, 0 0 30px currentColor; opacity: 0; transform: translate(-50%, -50%); animation: ftdScatter .95s cubic-bezier(.12,.7,.3,1) calc(var(--d) + var(--cr) + .12s) both; }
 @keyframes ftdScatter { 0% { opacity: 0; transform: translate(-50%, -50%) scale(.5); } 12% { opacity: 1; transform: translate(-50%, -50%) scale(1.25); } 100% { opacity: 0; transform: translate(calc(-50% + var(--bx)), calc(-50% + var(--by))) rotate(var(--br)) scale(.55); } }
 @keyframes ftdFade { from { opacity: 0; } to { opacity: 1; } }
-@keyframes ftdNIn { from { opacity: 0; transform: scale(1.9); filter: blur(8px); } to { opacity: 1; transform: none; filter: blur(0); } }
-@keyframes ftdNCrack { 0% { opacity: 1; transform: scale(1); letter-spacing: 0; filter: blur(0); } 100% { opacity: 0; transform: scale(1.4); letter-spacing: .3em; filter: blur(8px); } }
-@keyframes ftdTile { from { opacity: 0; transform: translate(var(--sx), var(--sy)) rotate(var(--sr)) scale(2.2); filter: blur(8px); } 70% { opacity: 1; filter: blur(0); } to { opacity: 1; transform: none; filter: blur(0); } }
-@keyframes ftdPulse { 0% { transform: none; filter: none; } 40% { transform: scale(1.22); filter: brightness(1.6); } 100% { transform: none; filter: none; } }
+@keyframes ftdNIn { from { opacity: 0; transform: scale(1.9); } to { opacity: 1; transform: none; } }
+@keyframes ftdNCrack { 0% { opacity: 1; transform: scale(1); } 100% { opacity: 0; transform: scale(1.5) scaleX(1.25); } }
+@keyframes ftdTile { from { opacity: 0; transform: translate(var(--sx), var(--sy)) rotate(var(--sr)) scale(2.2); } 70% { opacity: 1; } to { opacity: 1; transform: none; } }
+@keyframes ftdPulse { 0% { transform: none; } 40% { transform: scale(1.22); } 100% { transform: none; } }
+@keyframes ftdPulseGlow { 0% { opacity: 0; } 40% { opacity: .35; } 100% { opacity: 0; } }
 @keyframes ftdPricePop { from { opacity: 0; transform: scale(1.35); } to { opacity: 1; transform: none; } }
-@keyframes ftdCount { from { --ftdv: 0; } to { --ftdv: var(--sv); } }
 @keyframes ftdSlash { 0% { opacity: 1; transform: rotate(-12deg) scaleX(0); } 35% { opacity: 1; transform: rotate(-12deg) scaleX(1); } 100% { opacity: 0; transform: rotate(-12deg) scaleX(1) scaleY(.2); } }
 @keyframes ftdFlash { 0% { opacity: 1; } 100% { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .ftd { display: none; } .ft-pricewrap > :not(.ftd) { animation: none; } }
+/* モバイル向け: アニメ要素を専用レイヤーに */
+.ftd, .ftd-n, .ftd-t, .ftd-op, .ftd-price, .ftd-lab, .ftd-ns, .ftd-slash, .ftd-flash, .ftd-sc { will-change: transform, opacity; }
+.ftd-t, .ftd-n, .ftd-sc, .ftd-price { backface-visibility: hidden; -webkit-backface-visibility: hidden; }
 </style>
 </head>
 <body>
@@ -4788,6 +4793,7 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
   function PriceDerive({ n, basePrice }) {
     const [gone, setGone] = useState(false);
     const rootRef = useRef(null);
+    const cntRef = useRef(null);
     const tm = ftdTiming(n);
     const reduce = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
     const finish = () => {
@@ -4795,9 +4801,22 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
       if (host) host.classList.add("ft-derive-off");
       setGone(true);
     };
+    const finalPrice = basePrice != null ? basePrice : sopf(n);
     useEffect(() => {
       const t = setTimeout(() => setGone(true), (tm.D + tm.T) * 1000 + 300);
-      return () => clearTimeout(t);
+      /* 株価のカウントアップ: 幅は固定済みなのでレイアウトは動かない(CSSの@property補間はモバイルで重いためJSで) */
+      let raf = 0, tS = 0;
+      const t0 = setTimeout(() => {
+        const el = cntRef.current; if (!el) return;
+        tS = performance.now();
+        const step = () => {
+          const k = Math.min(1, (performance.now() - tS) / (tm.cu * 1000));
+          el.textContent = String(Math.round(finalPrice * (1 - Math.pow(1 - k, 3))));
+          if (k < 1) raf = requestAnimationFrame(step);
+        };
+        step();
+      }, (tm.D + tm.sumT) * 1000);
+      return () => { clearTimeout(t); clearTimeout(t0); cancelAnimationFrame(raf); };
     }, []);
     if (gone || reduce || tm.cnt < 1) return null;
     const h = React.createElement;
@@ -4821,7 +4840,7 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
     },
       h("div", { className: "ftd-lab text-[10px] tracking-[0.4em] text-neutral-500 font-mono uppercase" }, "\u682A\u4FA1"),
       h("div", { className: "ftd-price font-mono font-extrabold text-6xl md:text-7xl text-[#00ff41] glow leading-none tracking-tight" },
-        h("span", { className: "ftd-v" }),
+        h("span", { className: "ftd-v" }, h("span", { className: "ftd-vs" }, String(finalPrice)), h("span", { className: "ftd-vc", ref: cntRef }, "0")),
         h("span", { className: "text-lg md:text-xl text-[#00ff41]/60 ml-1 font-bold" }, "\u5186")),
       h("div", { className: "mt-1 mb-1" },
         h("div", { className: "flex flex-wrap items-center justify-center gap-x-1 gap-y-1.5 max-w-xl" }, tiles)),
