@@ -682,6 +682,38 @@ body.ft-booting .ft-bg { animation-play-state: paused; }
 @keyframes ftShine { 0% { left: -60%; } 40%, 100% { left: 130%; } }
 @media (prefers-reduced-motion: reduce) { .ft-bg { display: none; } .ft-top h1, .ft-cta, .ft-cta::after { animation: none; } }
 </style>
+<style id="ft-derive-css">
+/* ===== プレイ画面: N → 素因数 → 総和=株価 の導出演出(株価ブロック内に重ねる・暗転なし) ===== */
+@property --ftdv { syntax: "<integer>"; inherits: false; initial-value: 0; }
+/* 本物の株価ブロックは演出中だけ透明(CSSアニメで演出と同じ時計・演出後は自動で元に戻る) */
+.ft-pricewrap > :not(.ftd) { animation: ftdHideReal var(--ftdT, 0s) var(--ftdD, 0s) linear; }
+.ft-pricewrap.ft-derive-off > :not(.ftd) { animation: none; }
+@keyframes ftdHideReal { 0%, 100% { opacity: 0; } }
+/* 演出レイヤー: 株価ブロックと同じ箱・同じ並び(Tailwindのクラスは本体と共通) */
+.ftd { position: absolute; inset: 0; z-index: 30; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: .75rem; padding: .5rem 0; animation: ftdRoot .01s calc(var(--d) + var(--T)) forwards; }
+@keyframes ftdRoot { to { opacity: 0; visibility: hidden; } }
+.ftd-lab, .ftd-ns { opacity: 0; animation: ftdFade .25s calc(var(--d) + var(--cr)) both; }
+.ftd-price { opacity: 0; animation: ftdPricePop .3s cubic-bezier(.2,1.3,.3,1) calc(var(--d) + var(--sumT)) both; }
+.ftd-v { counter-reset: ftdv var(--ftdv); animation: ftdCount var(--cu) ease-out calc(var(--d) + var(--sumT)) both; }
+.ftd-v::after { content: counter(ftdv); }
+.ftd-t { opacity: 0; animation: ftdTile .32s cubic-bezier(.2,1.25,.3,1) calc(var(--d) + var(--cr) + .05s + var(--i) * var(--st)) both, ftdPulse .26s ease-out calc(var(--d) + var(--sumT) + var(--i) * var(--ps)); }
+.ftd-op { opacity: 0; animation: ftdFade .2s calc(var(--d) + var(--cr) + .25s) both; }
+/* 大きなN(中央)・斬撃・フラッシュ */
+.ftd-nwrap { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+.ftd-n { font: 800 clamp(40px, 13vw, 72px)/1 "JetBrains Mono", ui-monospace, Menlo, monospace; color: #e9fff5; text-shadow: 0 0 18px rgba(57,255,156,.8), 0 0 50px rgba(57,255,156,.4); opacity: 0; animation: ftdNIn .25s cubic-bezier(.2,1.2,.3,1) calc(var(--d) + .04s) both, ftdNCrack .25s calc(var(--d) + var(--cr)) forwards; }
+.ftd-slash { position: absolute; left: 50%; top: 50%; width: 160%; height: 3px; margin: -1.5px 0 0 -80%; background: linear-gradient(90deg, transparent, #ff2d6f 18%, #fff 50%, #ff2d6f 82%, transparent); box-shadow: 0 0 20px #ff2d6f; opacity: 0; transform: rotate(-12deg) scaleX(0); pointer-events: none; animation: ftdSlash .32s cubic-bezier(.2,.9,.2,1) calc(var(--d) + var(--cr)) forwards; }
+.ftd-flash { position: absolute; inset: -20px; background: radial-gradient(circle, rgba(255,255,255,.3), transparent 62%); opacity: 0; pointer-events: none; animation: ftdFlash .3s calc(var(--d) + var(--cr)) ease-out both, ftdFlash .35s calc(var(--d) + var(--sumT)) ease-out both; }
+@keyframes ftdFade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ftdNIn { from { opacity: 0; transform: scale(1.9); filter: blur(8px); } to { opacity: 1; transform: none; filter: blur(0); } }
+@keyframes ftdNCrack { 0% { opacity: 1; transform: scale(1); letter-spacing: 0; filter: blur(0); } 100% { opacity: 0; transform: scale(1.4); letter-spacing: .3em; filter: blur(8px); } }
+@keyframes ftdTile { from { opacity: 0; transform: translate(var(--sx), var(--sy)) rotate(var(--sr)) scale(2.2); filter: blur(8px); } 70% { opacity: 1; filter: blur(0); } to { opacity: 1; transform: none; filter: blur(0); } }
+@keyframes ftdPulse { 0% { transform: none; filter: none; } 40% { transform: scale(1.22); filter: brightness(1.6); } 100% { transform: none; filter: none; } }
+@keyframes ftdPricePop { from { opacity: 0; transform: scale(1.35); } to { opacity: 1; transform: none; } }
+@keyframes ftdCount { from { --ftdv: 0; } to { --ftdv: var(--sv); } }
+@keyframes ftdSlash { 0% { opacity: 1; transform: rotate(-12deg) scaleX(0); } 35% { opacity: 1; transform: rotate(-12deg) scaleX(1); } 100% { opacity: 0; transform: rotate(-12deg) scaleX(1) scaleY(.2); } }
+@keyframes ftdFlash { 0% { opacity: 1; } 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .ftd { display: none; } .ft-pricewrap > :not(.ftd) { animation: none; } }
+</style>
 </head>
 <body>
 <div id="root"></div>
@@ -4726,6 +4758,70 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
       f
     ))));
   }
+  /* ===== プレイ画面: Nが開示されたとき、素因数分解 → 総和 = 株価 を見せる演出 =====
+     演出の最終フレームは MarketPanel の株価ブロック(株価 / 株価の数字 / 素因数 / N_START)と同じ並び・同じクラス。
+     株価ブロックの内側に重ねて描くので、演出終了時に数字は動かず、そのまま本物の表示に引き継がれる。 */
+  function ftdTiming(n) {
+    const cnt = n >= 2 ? factorize(n).length : 0;
+    const D = 1.1;   /* STEPバナーの終わり際から開始 */
+    const CR = 0.65; /* Nが割れる時刻 */
+    const st = cnt ? Math.min(0.04, 0.35 / cnt) : 0.04;
+    const sumT = CR + 0.05 + st * cnt + 0.32;
+    const cu = 0.45; /* 株価のカウントアップ時間 */
+    const T = sumT + cu + 0.4;
+    return { cnt: cnt, D: D, CR: CR, st: st, sumT: sumT, cu: cu, T: T };
+  }
+  function PriceDerive({ n, basePrice }) {
+    const [gone, setGone] = useState(false);
+    const rootRef = useRef(null);
+    const tm = ftdTiming(n);
+    const reduce = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+    const finish = () => {
+      const host = rootRef.current && rootRef.current.parentNode;
+      if (host) host.classList.add("ft-derive-off");
+      setGone(true);
+    };
+    useEffect(() => {
+      const t = setTimeout(() => setGone(true), (tm.D + tm.T) * 1000 + 300);
+      return () => clearTimeout(t);
+    }, []);
+    if (gone || reduce || tm.cnt < 1) return null;
+    const h = React.createElement;
+    const f = factorize(n);
+    const tiles = [];
+    for (let i = 0; i < f.length; i++) {
+      if (i > 0) tiles.push(h("span", { key: "o" + i, className: "ftd-op font-mono text-neutral-600 font-bold px-0.5", style: { fontSize: "1rem" } }, "\xD7"));
+      tiles.push(h("span", {
+        key: "t" + i,
+        className: "ftd-t font-mono font-bold rounded-md border inline-block",
+        style: {
+          color: colorFor(f[i]), borderColor: colorFor(f[i]) + "66", background: colorFor(f[i]) + "12",
+          boxShadow: "0 0 12px " + colorFor(f[i]) + "44", fontSize: "0.95rem", padding: "4px 11px",
+          "--i": i, "--sx": (((i * 5) % 7) - 3) * 18 + "px", "--sy": (((i * 3) % 5) - 2) * 16 + "px", "--sr": (((i * 7) % 9) - 4) * 14 + "deg"
+        }
+      }, f[i]));
+    }
+    return h("div", {
+      ref: rootRef, className: "ftd flex flex-col items-center gap-3 py-2", "aria-hidden": "true", onClick: finish,
+      style: { "--d": tm.D + "s", "--T": tm.T + "s", "--cr": tm.CR + "s", "--st": tm.st + "s", "--sumT": tm.sumT + "s", "--cu": tm.cu + "s", "--ps": Math.min(0.09, tm.cu / tm.cnt) + "s", "--sv": (basePrice != null ? basePrice : sopf(n)) }
+    },
+      h("div", { className: "ftd-lab text-[10px] tracking-[0.4em] text-neutral-500 font-mono uppercase" }, "\u682A\u4FA1"),
+      h("div", { className: "ftd-price font-mono font-extrabold text-6xl md:text-7xl text-[#00ff41] glow leading-none tracking-tight" },
+        h("span", { className: "ftd-v" }),
+        h("span", { className: "text-lg md:text-xl text-[#00ff41]/60 ml-1 font-bold" }, "\u5186")),
+      h("div", { className: "mt-1 mb-1" },
+        h("div", { className: "flex flex-wrap items-center justify-center gap-x-1 gap-y-1.5 max-w-xl" }, tiles)),
+      h("div", { className: "ftd-ns flex items-center gap-2 mt-2 pt-2 border-t border-neutral-900/80" },
+        h("span", { className: "text-[10px] tracking-[0.3em] text-neutral-600 font-mono" }, "N_START"),
+        h("span", { className: "font-mono text-sm text-neutral-300" }, n),
+        h("span", { className: "text-neutral-700 text-xs" }, "="),
+        h("span", { className: "font-mono text-xs text-neutral-500" }, f.join("\xD7"))),
+      h("div", { className: "ftd-nwrap" }, h("div", { className: "ftd-n" }, String(n))),
+      h("div", { className: "ftd-slash" }),
+      h("div", { className: "ftd-flash" })
+    );
+  }
+
   function MarketPanel({ nStart, basePrice, turn, totalTurns, priceHistory }) {
     const progress = turn / totalTurns * 100;
     const factors = factorize(nStart);
@@ -4816,7 +4912,7 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
           style: { color: "#ff2d6f", textShadow: "0 0 8px rgba(255,45,111,0.6)" }
         }, "推移 " + hist.length + " TERN") : React.createElement("div", null)
       ),
-      React.createElement("div", { className: "relative z-10 flex flex-col items-center gap-3 py-2" },
+      React.createElement("div", { key: turn + "-" + nStart, className: "relative z-10 flex flex-col items-center gap-3 py-2 ft-pricewrap", style: (function () { const tm = ftdTiming(nStart); return tm.cnt ? { "--ftdD": tm.D + "s", "--ftdT": tm.T + "s" } : {}; })() },
         React.createElement("div", { className: "text-[10px] tracking-[0.4em] text-neutral-500 font-mono uppercase" }, "株価"),
         React.createElement("div", {
           key: basePrice,
@@ -4830,7 +4926,8 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
           React.createElement("span", { className: "font-mono text-sm text-neutral-300" }, nStart),
           React.createElement("span", { className: "text-neutral-700 text-xs" }, "="),
           React.createElement("span", { className: "font-mono text-xs text-neutral-500" }, (factors || []).join("×"))
-        )
+        ),
+        React.createElement(PriceDerive, { n: nStart, basePrice })
       ),
       /* ターン進捗バー（グラフより前面・下端専用） */
       React.createElement("div", {
@@ -6099,6 +6196,7 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
       if (!ctx) return;
       const MONO = '"JetBrains Mono", ui-monospace, Menlo, monospace';
       const COLS = ["#39ff9c", "#33d1ff", "#ff2d6f"];
+      const EVA = 0.3; /* 分解バーストの全体濃度 */
       let W = 1, H = 1, raf = 0, last = 0, clock = 0, nextEv = 0.9;
       const rnd = (a, b) => a + Math.random() * (b - a);
       const factorize = (n) => { const a = []; let d = 2; while (d * d <= n) { while (n % d === 0) { a.push(d); n = n / d; } d++; } if (n > 1) a.push(n); return a; };
@@ -6108,7 +6206,7 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
       const mk = (init) => {
         const size = 11 + Math.pow(Math.random(), 2.2) * 46;
         const n = randN();
-        return { x: rnd(0, W), y: init ? rnd(0, H) : H + size + rnd(0, 80), n, size, vy: -(7 + size * 0.85), amp: rnd(4, 22), ph: rnd(0, 6.28), fr: rnd(.3, .9), a: .05 + (size / 57) * .17, prime: factorize(n).length === 1 };
+        return { x: rnd(0, W), y: init ? rnd(0, H) : H + size + rnd(0, 80), n, size, vy: -(7 + size * 0.85), amp: rnd(4, 22), ph: rnd(0, 6.28), fr: rnd(.3, .9), a: .03 + (size / 57) * .11, prime: factorize(n).length === 1 };
       };
       let ps = [];
       let evs = [];
@@ -6172,8 +6270,8 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
             const sc = 1.9 - 0.9 * (1 - Math.pow(1 - k, 3));
             ctx.save(); ctx.translate(e.x, e.y); ctx.scale(sc, sc);
             ctx.font = "800 " + e.size + "px " + MONO;
-            ctx.globalAlpha = Math.min(1, k * 1.4);
-            ctx.shadowColor = "#39ff9c"; ctx.shadowBlur = 24; ctx.fillStyle = "#e9fff5";
+            ctx.globalAlpha = Math.min(1, k * 1.4) * EVA;
+            ctx.shadowColor = "#39ff9c"; ctx.shadowBlur = 16; ctx.fillStyle = "#e9fff5";
             ctx.fillText(String(e.n), 0, 0);
             ctx.restore();
           } else {
@@ -6183,7 +6281,7 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
             if (st < 0.28) {
               const k = Math.min(1, st / 0.1), fade = 1 - st / 0.28, L = e.size * 1.7;
               ctx.save(); ctx.translate(e.x, e.y); ctx.rotate(-0.28);
-              ctx.globalAlpha = fade; ctx.shadowColor = "#ff2d6f"; ctx.shadowBlur = 18; ctx.fillStyle = "#fff";
+              ctx.globalAlpha = fade * EVA; ctx.shadowColor = "#ff2d6f"; ctx.shadowBlur = 12; ctx.fillStyle = "#fff";
               ctx.fillRect(-L * k, -1.5, L * 2 * k, 3);
               ctx.restore();
             }
@@ -6195,7 +6293,7 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
               const dr = Math.max(0, 1 - 2.4 * dt); q.vx *= dr; q.vy = q.vy * dr + 22 * dt;
               ctx.save(); ctx.translate(q.x, q.y); ctx.rotate(q.r * (1 - life));
               ctx.font = "800 " + Math.round(e.size * .5) + "px " + MONO;
-              ctx.globalAlpha = life; ctx.shadowColor = q.c; ctx.shadowBlur = 14; ctx.fillStyle = q.c;
+              ctx.globalAlpha = life * EVA; ctx.shadowColor = q.c; ctx.shadowBlur = 10; ctx.fillStyle = q.c;
               ctx.fillText(String(q.v), 0, 0);
               ctx.restore();
             }
@@ -6205,7 +6303,7 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
               ctx.save(); ctx.translate(e.x, e.y + e.size * .55);
               ctx.scale(.7 + sk * .3, .7 + sk * .3);
               ctx.font = "800 " + Math.round(e.size * .42) + "px " + MONO;
-              ctx.globalAlpha = sk * sf; ctx.shadowColor = "#33d1ff"; ctx.shadowBlur = 16; ctx.fillStyle = "#33d1ff";
+              ctx.globalAlpha = sk * sf * EVA; ctx.shadowColor = "#33d1ff"; ctx.shadowBlur = 10; ctx.fillStyle = "#33d1ff";
               ctx.fillText("= " + e.sum, 0, 0);
               ctx.restore();
             }
