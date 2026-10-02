@@ -3212,11 +3212,48 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
     if (len <= 17) return "text-sm sm:text-xl";
     return "text-xs sm:text-lg";
   }
-  function hackCost(hk) {
+  // ===== 新仕様: 防衛コストは順位連動（1位=15 / 2位〜=10 / 最下位=5） =====
+  const FT_DEF_COST_TOP = 15, FT_DEF_COST_MID = 10, FT_DEF_COST_LAST = 5;
+  function ftDefCostMap(players, price) {
+    const map = {};
+    (players || []).forEach((p) => { if (p) map[p.id] = FT_DEF_COST_LAST; });
+    const list = (players || []).filter((p) => p && !p.isBankrupt)
+      .map((p) => ({ id: p.id, tv: totalValue(p.cash || 0, p.holdings || 0, price || 0) }));
+    list.sort((a, b) => b.tv - a.tv);
+    const n = list.length;
+    list.forEach((x, i) => {
+      if (n <= 1) map[x.id] = FT_DEF_COST_LAST;
+      else if (i === 0) map[x.id] = FT_DEF_COST_TOP;
+      else if (i === n - 1) map[x.id] = FT_DEF_COST_LAST;
+      else map[x.id] = FT_DEF_COST_MID;
+    });
+    return map;
+  }
+  function ftDefCostOf(players, price, id) {
+    const m = ftDefCostMap(players, price);
+    return m[id] != null ? m[id] : FT_DEF_COST_LAST;
+  }
+  // COIN不足時の調整（操作→妨害→防衛(反射に切替)の順で削る）
+  function ftFitHackToStock(hack, stock, defCost) {
+    let cost = hackCost(hack, defCost);
+    while (cost > stock && hack.quick > 0) { hack.quick -= 1; cost = hackCost(hack, defCost); }
+    if (cost > stock && (hack.heavy || 0) > 0) { hack.heavy = 0; cost = hackCost(hack, defCost); }
+    if (cost > stock && hack.defense) {
+      hack.defense = false; hack.reflect = true;
+      cost = hackCost(hack, defCost);
+      if (cost > stock) { hack.reflect = false; cost = hackCost(hack, defCost); }
+    }
+    if (cost > stock) {
+      hack.heavy = 0; hack.defense = false; hack.reflect = false;
+      hack.avant = false; hack.avantSab = false;
+    }
+    return hack;
+  }
+  function hackCost(hk, defCost) {
     if (!hk) return 0;
     let c = Math.max(0, Number(hk.quick) || 0);
     if ((hk.heavy || 0) > 0) c += 5 * (typeof hk.heavy === "number" ? Math.max(1, hk.heavy) : 1);
-    if (hk.defense) c += 5;
+    if (hk.defense) c += (defCost != null ? defCost : 5);
     if (hk.reflect) c += 5;
     if (hk.avant || hk.avantSab) c += 10;
     return c;
@@ -3226,7 +3263,11 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
     const q = Math.max(0, ownQuick || 0);
     return sopf(nStart + q + h);
   }
-  function settleTurn(players, orders, hacks, nStart, priceBefore) {
+  function settleTurn(players, orders, hacks, nStart, priceBefore, opts) {
+    // opts 未指定（チュートリアル）は従来仕様のまま。opts.rules/tax で新仕様を有効化
+    const RULES = !!(opts && opts.rules);
+    const TAX_ON = !!(opts && opts.tax);
+    const defCostOf = (id) => (RULES && opts.defCostMap && opts.defCostMap[id] != null) ? opts.defCostMap[id] : 5;
     const incomingHeavyMap = {};
     const defenseMap = {};
     const reflectMap = {};
@@ -3330,7 +3371,7 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
       nMap[p.id] = nStart + effectiveQuick + incH;
     });
     const execResults = {};
-    const updated = players.map((p) => {
+    let updated = players.map((p) => {
       if (p.isBankrupt) {
         execResults[p.id] = {
           action: "stay",
@@ -3367,7 +3408,7 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
         }
         if (cash + 1e-9 < required) {
           const hand = p.cards.stock != null ? p.cards.stock : 0;
-          const defCost = hacks[p.id] && hacks[p.id].defense ? 5 : 0;
+          const defCost = hacks[p.id] && hacks[p.id].defense ? defCostOf(p.id) : 0;
           const refCost = hacks[p.id] && hacks[p.id].reflect ? 5 : 0;
           const alreadyUsed = (hacks[p.id] && hacks[p.id].quick || 0) + ((hacks[p.id] && hacks[p.id].heavy || 0) > 0 ? 5 : 0) + defCost + refCost + (hacks[p.id] && hacks[p.id].avant || hacks[p.id] && hacks[p.id].avantSab ? 10 : 0);
           const handLeft = Math.max(0, hand - alreadyUsed);
@@ -3476,10 +3517,19 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
         tv: totalValue(cash, holdings, execPrice),
         finalN: nMap[p.id]
       };
-      const defCostUsed = hacks[p.id] && hacks[p.id].defense ? 5 : 0;
+      const defCostUsed = hacks[p.id] && hacks[p.id].defense ? defCostOf(p.id) : 0;
       const refCostUsed = hacks[p.id] && hacks[p.id].reflect ? 5 : 0;
       const avantCostUsed = hacks[p.id] && hacks[p.id].avant || hacks[p.id] && hacks[p.id].avantSab ? 10 : 0;
-      const used = (hacks[p.id] && hacks[p.id].quick || 0) + ((hacks[p.id] && hacks[p.id].heavy || 0) > 0 ? 5 : 0) + defCostUsed + refCostUsed + avantCostUsed + bailoutCards;
+      // 新仕様: 妨害が成功（他の生存者の防衛・反射に阻まれなかった）した場合、使用COINは返却
+      const heavyUsedNow = (hacks[p.id] && hacks[p.id].heavy || 0) > 0;
+      const heavyGuarded = heavyUsedNow && players.some((q) => q && !q.isBankrupt && String(q.id) !== String(p.id) && (defenseMap[q.id] || reflectMap[q.id]));
+      const heavyRefund = (RULES && heavyUsedNow && !heavyGuarded && !wentBankrupt) ? 5 : 0;
+      if (execResults[p.id]) {
+        execResults[p.id].heavyRefund = heavyRefund;
+        execResults[p.id].heavyGuarded = !!(RULES && heavyGuarded);
+        execResults[p.id].defCost = defCostOf(p.id);
+      }
+      const used = (hacks[p.id] && hacks[p.id].quick || 0) + ((hacks[p.id] && hacks[p.id].heavy || 0) > 0 ? 5 : 0) + defCostUsed + refCostUsed + avantCostUsed + bailoutCards - heavyRefund;
       let cards;
       if (wentBankrupt) {
         cards = { stock: 0 };
@@ -3504,7 +3554,58 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
         avantUsed: !!p.avantUsed || !!(hacks[p.id] && hacks[p.id].avant) || !!(hacks[p.id] && hacks[p.id].avantSab)
       };
     });
-    return { updated, execResults, priceMap, nMap, incomingHeavyMap };
+    // ===== 新仕様: 税金（ターン終了時） =====
+    // 1位=総資産の5% / 2位〜(最下位を除く)=総資産の0.5% を主催者へ納付。
+    // 最下位は納税せず、そのターンに集まった税金の全額を補助として受け取る。
+    let taxInfo = null;
+    if (TAX_ON) {
+      const active = updated.filter((p) => !p.isBankrupt);
+      if (active.length >= 2) {
+        const tvOf = (p) => totalValue(p.cash, p.holdings, priceMap[p.id]);
+        const rankedT = active.slice().sort((a, b) => tvOf(b) - tvOf(a));
+        const lowId = rankedT[rankedT.length - 1].id;
+        const paid = {};
+        let pool = 0;
+        rankedT.forEach((p, idx) => {
+          if (p.id === lowId) return;
+          const rate = idx === 0 ? 0.05 : 0.005;
+          const px = priceMap[p.id] || 0;
+          let want = Math.floor(tvOf(p) * rate);
+          if (want <= 0) { paid[p.id] = { amount: 0, rate: rate, rank: idx + 1 }; return; }
+          let cash = p.cash, holdings = p.holdings;
+          if (cash + 1e-9 < want && holdings > 0 && px > 0) {
+            const sellSh = Math.min(holdings, Math.ceil((want - cash) / px));
+            cash += sellSh * px;
+            holdings -= sellSh;
+          }
+          const amount = Math.min(want, Math.max(0, cash));
+          cash -= amount;
+          pool += amount;
+          paid[p.id] = { amount: amount, rate: rate, rank: idx + 1, cash: cash, holdings: holdings };
+        });
+        updated = updated.map((p) => {
+          if (p.isBankrupt) return p;
+          const px = priceMap[p.id] || 0;
+          let cash = p.cash, holdings = p.holdings;
+          const er = execResults[p.id];
+          if (p.id === lowId) {
+            cash += pool;
+            if (er) { er.subsidy = pool; er.taxRank = rankedT.length; }
+          } else if (paid[p.id]) {
+            cash = paid[p.id].cash != null ? paid[p.id].cash : cash;
+            holdings = paid[p.id].holdings != null ? paid[p.id].holdings : holdings;
+            if (er) { er.taxPaid = paid[p.id].amount; er.taxRate = paid[p.id].rate; er.taxRank = paid[p.id].rank; }
+          }
+          const tv2 = totalValue(cash, holdings, px);
+          if (er) { er.cash = cash; er.holdings = holdings; er.tv = tv2; }
+          const hist = (p.history || []).slice();
+          if (hist.length) hist[hist.length - 1] = tv2;
+          return { ...p, cash, holdings, avgPrice: holdings > 0 ? p.avgPrice : 0, history: hist };
+        });
+        taxInfo = { pool: pool, lowId: lowId, topId: rankedT[0].id };
+      }
+    }
+    return { updated, execResults, priceMap, nMap, incomingHeavyMap, taxInfo };
   }
   function leaderByValue(players, basePrice) {
     let best = null;
@@ -4464,7 +4565,7 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
 }
 
   /** aiDecideCards の戻り値を hack 形式へ（早期TERN・奥義使用済み・ラスト5・COIN超過の補正込み） */
-  function ftCpuHackFromCards(cards, coinRescue, player, turn, totalTurns) {
+  function ftCpuHackFromCards(cards, coinRescue, player, turn, totalTurns, defCost) {
     const c = cards || {};
     const stock = (player.cards && player.cards.stock) || 0;
     const hack = emptyHack();
@@ -4487,15 +4588,7 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
       hack.avantSab = false;
     }
     if (isLastFiveTurns(turn, totalTurns)) hack.coinRescue = "";
-    let cost = hackCost(hack);
-    while (cost > stock && hack.quick > 0) {
-      hack.quick -= 1;
-      cost = hackCost(hack);
-    }
-    if (cost > stock) {
-      hack.heavy = 0; hack.defense = false; hack.reflect = false;
-      hack.avant = false; hack.avantSab = false;
-    }
+    ftFitHackToStock(hack, stock, defCost);
     return hack;
   }
 
@@ -4732,15 +4825,7 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
     if (hack.coinRescue) order = { action: "stay", shares: 0 };
 
     // コスト超過時は削る
-    let cost = hackCost(hack);
-    while (cost > stock && hack.quick > 0) {
-      hack.quick -= 1;
-      cost = hackCost(hack);
-    }
-    if (cost > stock) {
-      hack.heavy = 0; hack.defense = false; hack.reflect = false;
-      hack.avant = false; hack.avantSab = false;
-    }
+    ftFitHackToStock(hack, stock, ftDefCostOf(players, basePrice, player.id));
 
     return { order: order, hack: hack };
   }
@@ -5401,11 +5486,12 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
   }
 
 
-  function CoinPhase({ player, nStart, turn, totalTurns, hack, setHack, onConfirm }) {
+  function CoinPhase({ player, nStart, turn, totalTurns, hack, setHack, onConfirm, defCost }) {
+    const defCostV = defCost != null ? defCost : 5;
     const stock = player.cards.stock;
     const last5 = isLastFiveTurns(turn, totalTurns);
     const early = isEarlyTurns(turn);
-    const cost = hackCost(hack);
+    const cost = hackCost(hack, defCostV);
     const affordable = cost <= stock;
     const tv = totalValue(player.cash, player.holdings, sopf(nStart));
     const estPrice = hack.avant || hack.avantSab ? hack.avantPrice || 1 : sopf(nStart + Math.max(0, hack.quick || 0));
@@ -5494,7 +5580,7 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
         disabled: early,
         icon: "crosshair",
         title: "\u59A8\u5BB3",
-        desc: early ? "\u6700\u521D\u306E3TERN\u306F\u4F7F\u7528\u4E0D\u53EF" : "5\u679A \xB7 \u81EA\u5206\u4EE5\u5916\u306E N \u306B +1"
+        desc: early ? "\u6700\u521D\u306E3TERN\u306F\u4F7F\u7528\u4E0D\u53EF" : "5\u679A\uFF08\u6210\u529F\u6642\u306F\u8FD4\u5374\uFF09 \xB7 \u81EA\u5206\u4EE5\u5916\u306E N \u306B +1"
       }
     ), /* @__PURE__ */ React.createElement(
       IntervRow,
@@ -5505,7 +5591,7 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
         disabled: early,
         icon: "shield",
         title: "\u9632\u885B",
-        desc: early ? "\u6700\u521D\u306E3TERN\u306F\u4F7F\u7528\u4E0D\u53EF" : "5\u679A \xB7 \u88AB\u59A8\u5BB3\u3092\u3059\u3079\u3066\u7121\u52B9\u5316"
+        desc: early ? "\u6700\u521D\u306E3TERN\u306F\u4F7F\u7528\u4E0D\u53EF" : defCostV + "\u679A \xB7 \u88AB\u59A8\u5BB3\u3092\u3059\u3079\u3066\u7121\u52B9\u5316"
       }
     ), /* @__PURE__ */ React.createElement(
       IntervRow,
@@ -5654,6 +5740,9 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
       if (r.avant) t.push({ c: "#c084fc", l: "AVANT-GARDE操作", k: "avant", side: "own" });
       if (r.avantSab) t.push({ c: "#c084fc", l: "AVANT-GARDE妨害", k: "avantSab", side: "own" });
       if (r.bailout) t.push({ c: "#ffb648", l: "帳消し", k: null, side: "own" });
+      if ((r.heavyRefund || 0) > 0) t.push({ c: "#ff4d6d", l: "妨害成功 COIN+" + r.heavyRefund + "返却", k: null, side: "own" });
+      if ((r.taxPaid || 0) > 0) t.push({ c: "#9ca3af", l: "税 −" + fmt(r.taxPaid), k: null, side: "own" });
+      if ((r.subsidy || 0) > 0) t.push({ c: "#39ff9c", l: "補助 +" + fmt(r.subsidy), k: null, side: "own" });
       if (r.coinRescue === "half5") t.push({ c: "#ffb648", l: "補充+5", k: null, side: "own" });
       if (r.coinRescue === "zero10") t.push({ c: "#ffb648", l: "補充+10", k: null, side: "own" });
       if ((r.incomingHeavy || 0) > 0) t.push({ c: "#ff4d6d", l: "被妨害+" + r.incomingHeavy, k: "sab", side: "in" });
@@ -5685,6 +5774,10 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
       if (r.avant) own.push("奥義：AVANT-GARDE-操作 → 株価 " + r.execPrice + " 円に指定");
       if (r.avantSab) own.push("奥義：AVANT-GARDE-妨害を発動");
       if (r.bailout) own.push("帳消し：COIN10枚で買付キャンセル");
+      if ((r.heavyRefund || 0) > 0) own.push("妨害成功：使用したCOIN" + r.heavyRefund + "枚が返却された");
+      else if (r.heavyGuarded) own.push("妨害は防衛・反射に阻まれたためCOIN返却なし");
+      if ((r.taxPaid || 0) > 0) own.push("税金：総資産の" + (r.taxRate * 100) + "%（" + fmt(r.taxPaid) + "円）を主催者へ納付");
+      if ((r.subsidy || 0) > 0) own.push("救済措置：集まった税金の全額 " + fmt(r.subsidy) + " 円を補助として受け取った");
       if (r.coinRescue === "half5") own.push("COIN補充：総資産50% → +5枚");
       if (r.coinRescue === "zero10") own.push("COIN補充：総資産75% → +10枚");
       if (h > 0) incoming.push("被妨害 +" + h + "：Nに加算");
@@ -5827,9 +5920,9 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
     return h(ModalShell, { title: "ルール", onClose, wide: true }, h("div", { className: "ft-rules" }, h("div",{className:"ft-rules-section"},h("div",{className:"ft-rules-h"},"ゴール"),h("p",{className:"ft-rules-lead"},"最終TERN終了時の",h("strong",null,"総資産（現金＋株）が最多"),"の人が勝ち。他プレイヤー全員が破産しても勝ち。")),
       h("div",{className:"ft-rules-section"},h("div",{className:"ft-rules-h"},"株価"),h("div",{className:"ft-rule-block"},h("div",{className:"ft-rule-formula"},"株価 = N の素因数の合計"),h("div",{className:"ft-rule-chips"},h("span",{className:"ft-chip"},"例 12=2×2×3 → 7円"),h("span",{className:"ft-chip up"},"素数 → 高い"),h("span",{className:"ft-chip down"},"2の累乗 → 安い")),h("p",{className:"ft-rules-note"},"各プレイヤーの株価は個別計算（共通の最終株価はない）"))),
       h("div",{className:"ft-rules-section"},h("div",{className:"ft-rules-h"},"1 TERN の流れ"),h("div",{className:"ft-flow"},h("div",{className:"ft-flow-step"},h("div",{className:"ft-flow-num"},"1"),h("div",{className:"ft-flow-body"},h("b",null,"開示"),h("span",null,"N と仮株価を公開"))),h("div",{className:"ft-flow-step"},h("div",{className:"ft-flow-num"},"2"),h("div",{className:"ft-flow-body"},h("b",null,"注文"),h("span",null,"買い / 売り / 様子見（秘密）"))),h("div",{className:"ft-flow-step"},h("div",{className:"ft-flow-num"},"3"),h("div",{className:"ft-flow-body"},h("b",null,"市場介入"),h("span",null,"COINで操作・妨害など"))),h("div",{className:"ft-flow-step"},h("div",{className:"ft-flow-num"},"4"),h("div",{className:"ft-flow-body"},h("b",null,"清算"),h("span",null,"個人株価で精算"))))),
-      h("div",{className:"ft-rules-section"},h("div",{className:"ft-rules-h"},"COIN 介入"),h("div",{className:"ft-card-types"},h("div",{className:"ft-card-type op"},h("div",{className:"ft-card-type-title"},h(FtHackIcon,{kind:"op",size:26}),"操作"),h("ul",null,h("li",null,"1枚で自分のN+1（枚数分可）"))),h("div",{className:"ft-card-type sab"},h("div",{className:"ft-card-type-title"},h(FtHackIcon,{kind:"sab",size:26}),"妨害"),h("ul",null,h("li",null,"5枚・自分以外のN+1"))),h("div",{className:"ft-card-type def"},h("div",{className:"ft-card-type-title"},h(FtHackIcon,{kind:"def",size:26}),"防衛"),h("ul",null,h("li",null,"5枚・被妨害を無効化"))),h("div",{className:"ft-card-type reflect"},h("div",{className:"ft-card-type-title"},h(FtHackIcon,{kind:"reflect",size:26}),"反射"),h("ul",null,h("li",null,"5枚・妨害を発動者へ返す（防衛と排他）"))),h("div",{className:"ft-card-type avant"},h("div",{className:"ft-card-type-title"},h(FtHackIcon,{kind:"avant",size:26}),"奥義：AVANT-GARDE-操作"),h("ul",null,h("li",null,"10枚・自分の株価指定（1ゲーム1回）"))),h("div",{className:"ft-card-type avant"},h("div",{className:"ft-card-type-title"},h(FtHackIcon,{kind:"avantSab",size:26}),"奥義：AVANT-GARDE-妨害"),h("ul",null,h("li",null,"10枚・他人の株価を強制（防衛で無効可）"))))),
+      h("div",{className:"ft-rules-section"},h("div",{className:"ft-rules-h"},"COIN 介入"),h("div",{className:"ft-card-types"},h("div",{className:"ft-card-type op"},h("div",{className:"ft-card-type-title"},h(FtHackIcon,{kind:"op",size:26}),"操作"),h("ul",null,h("li",null,"1枚で自分のN+1（枚数分可）"))),h("div",{className:"ft-card-type sab"},h("div",{className:"ft-card-type-title"},h(FtHackIcon,{kind:"sab",size:26}),"妨害"),h("ul",null,h("li",null,"5枚・自分以外のN+1"),h("li",null,"成功（防衛・反射されず）なら使用COINは返却"))),h("div",{className:"ft-card-type def"},h("div",{className:"ft-card-type-title"},h(FtHackIcon,{kind:"def",size:26}),"防衛"),h("ul",null,h("li",null,"1位15枚・2位〜10枚・最下位5枚（順位で変動）"),h("li",null,"被妨害を無効化"))),h("div",{className:"ft-card-type reflect"},h("div",{className:"ft-card-type-title"},h(FtHackIcon,{kind:"reflect",size:26}),"反射"),h("ul",null,h("li",null,"5枚・妨害を発動者へ返す（防衛と排他）"))),h("div",{className:"ft-card-type avant"},h("div",{className:"ft-card-type-title"},h(FtHackIcon,{kind:"avant",size:26}),"奥義：AVANT-GARDE-操作"),h("ul",null,h("li",null,"10枚・自分の株価指定（1ゲーム1回）"))),h("div",{className:"ft-card-type avant"},h("div",{className:"ft-card-type-title"},h(FtHackIcon,{kind:"avantSab",size:26}),"奥義：AVANT-GARDE-妨害"),h("ul",null,h("li",null,"10枚・他人の株価を強制（防衛で無効可）"))))),
       h("div",{className:"ft-rules-section"},h("div",{className:"ft-rules-h"},"序盤（最初の3 TERN）"),h("ul",{className:"ft-rules-bullets"},h("li",null,"妨害・防衛・反射・奥義：AVANT-GARDE-妨害は使用不可"),h("li",null,"操作・奥義：AVANT-GARDE-操作は使用可"))),
-      h("div",{className:"ft-rules-section"},h("div",{className:"ft-rules-h"},"終盤（ラスト5 TERN）"),h("ul",{className:"ft-rules-bullets"},h("li",null,"様子見不可（保有があれば売り、なければ買い強制）"),h("li",null,"売買は最大枚数の50%以上"),h("li",null,"突入時に生存者へCOIN+5"),h("li",null,"COIN補充不可")))));
+      h("div",{className:"ft-rules-section"},h("div",{className:"ft-rules-h"},"終盤（ラスト5 TERN）"),h("ul",{className:"ft-rules-bullets"},h("li",null,"様子見不可（保有があれば売り、なければ買い強制）"),h("li",null,"売買は最大枚数の50%以上"),h("li",null,"突入時に生存者へCOIN+5"),h("li",null,"COIN補充不可"))),h("div",{className:"ft-rules-section"},h("div",{className:"ft-rules-h"},"税金"),h("ul",{className:"ft-rules-bullets"},h("li",null,"毎ターン清算後に総資産へ課税・補助"),h("li",null,"1位：総資産の5%を納税"),h("li",null,"2位〜：総資産の0.5%を納税"),h("li",null,"最下位：税収全額を補助として受取")))));
   }
   function ModalShell({ title, onClose, children, wide }) {
     return /* @__PURE__ */ React.createElement("div", { className: "fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80", onClick: onClose }, /* @__PURE__ */ React.createElement("div", { className: "relative rounded-2xl border border-[#39ff9c]/25 bg-[#050506] p-5 max-h-[90vh] overflow-y-auto a-scale-in " + (wide ? "w-full max-w-2xl" : "w-full max-w-md"), onClick: (e) => e.stopPropagation() }, /* @__PURE__ */ React.createElement("div", { className: "flex items-center justify-between mb-4" }, /* @__PURE__ */ React.createElement("div", { className: "font-display font-bold text-lg text-[#39ff9c]" }, title), /* @__PURE__ */ React.createElement("button", { type: "button", onClick: onClose, className: "text-neutral-500 hover:text-neutral-200 font-mono text-sm px-2" }, "\u2715")), children));
@@ -6163,7 +6256,7 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
     return { debug: 1, secure: true };
   }
   const ONLINE_INIT = { role: null, code: "", status: "", lobby: [], count: 0, serious: false, myId: 0, joined: false, hostName: "" };
-  function sanitizeSubmission(p, d) {
+  function sanitizeSubmission(p, d, defCost) {
     const n = function (v, lo, hi) { return Math.max(lo, Math.min(hi, Math.floor(Number(v) || 0))); };
     const oh = (d && d.hack) || {};
     let hk = {
@@ -6177,7 +6270,7 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
       coinRescue: (oh.coinRescue === "half5" || oh.coinRescue === "zero10") ? oh.coinRescue : ""
     };
     const stock = (p && p.cards && p.cards.stock) || 0;
-    if (!hk.coinRescue && hackCost(hk) > stock) hk = emptyHack();
+    if (!hk.coinRescue && hackCost(hk, defCost) > stock) hk = emptyHack();
     const oo = (d && d.order) || {};
     const order = { action: (oo.action === "buy" || oo.action === "sell") ? oo.action : "stay", shares: n(oo.shares, 0, 1e9) };
     return { order: order, hack: hk };
@@ -6619,6 +6712,7 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
     }
     function resolve(subs) {
       resolvedSeqRef.current = hostSeqRef.current;
+      const defCostMap = ftDefCostMap(players, basePrice);
       const orders = {};
       const hacks = {};
       for (const p of players) {
@@ -6684,13 +6778,13 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
         } catch (e) {
           cards = null;
         }
-        hacks[wp.id] = ftCpuHackFromCards(cards, resc, wp, turn, totalTurns);
+        hacks[wp.id] = ftCpuHackFromCards(cards, resc, wp, turn, totalTurns, defCostMap[wp.id]);
       });
       ftCpuAvantBoost(working, hacks, orders, turn, totalTurns, nStart, basePrice);
       ftLimitCpuHeavyAndAvant(working, hacks, orders);
       // 補充は applyCoinRescue で適用済み → settleTurn での二重適用（COIN倍付け）を防ぐ
       working.forEach((wp) => { if (wp && ftRescued[wp.id] && hacks[wp.id]) hacks[wp.id] = { ...hacks[wp.id], _rescueApplied: true }; });
-      const res = settleTurn(working, orders, hacks, nStart, basePrice);
+      const res = settleTurn(working, orders, hacks, nStart, basePrice, { rules: true, tax: true, defCostMap: defCostMap });
       try {
         if (!roleRef.current) recordAiTurnLearn(working, orders, hacks, res.execResults, nStart, basePrice);
       } catch (e) {}
@@ -6929,7 +7023,7 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
       if (pid == null || cur.phase !== "play" || cur.stage === "resolve" || !d.order || !d.hack) return;
       const p = cur.players.find(function (x) { return x.id === pid; });
       if (!p || p.isAI || p.isBankrupt) return;
-      const clean = sanitizeSubmission(p, d);
+      const clean = sanitizeSubmission(p, d, ftDefCostOf(cur.players, cur.basePrice, pid));
       subsRef.current = Object.assign({}, subsRef.current, { [pid]: clean });
       setSubmittedIds(function (ids) { return ids.indexOf(pid) >= 0 ? ids : ids.concat([pid]); });
       setTimeout(function () { L.current.tryResolveOnline(); }, 30);
@@ -6966,7 +7060,7 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
     function submitOnline() {
       if (roleRef.current === "host") {
         const me = players[0];
-        subsRef.current = Object.assign({}, subsRef.current, { 0: sanitizeSubmission(me, { order: humanOrder, hack: humanHack }) });
+        subsRef.current = Object.assign({}, subsRef.current, { 0: sanitizeSubmission(me, { order: humanOrder, hack: humanHack }, ftDefCostOf(players, basePrice, 0)) });
         setSubmittedIds(function (ids) { return ids.indexOf(0) >= 0 ? ids : ids.concat([0]); });
         setTurnPhase("wait");
         setTimeout(function () { L.current.tryResolveOnline(); }, 30);
@@ -7188,6 +7282,7 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
         totalTurns,
         hack: humanHack,
         setHack: setHumanHack,
+        defCost: ftDefCostOf(players, basePrice, human.id),
         onConfirm: () => { if (online.role) submitOnline(); else resolve(); }
       }
     ), (turnPhase === "wait" || turnPhase === "spectate") && React.createElement("div", { className: "rounded-2xl border border-[#33d1ff]/25 bg-black/50 backdrop-blur p-6 space-y-3 a-fade-up" },
