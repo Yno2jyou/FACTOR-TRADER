@@ -1204,7 +1204,7 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
     return { quickUsed: 0, heavyBankruptIds: {}, defenseBlocked: 0, reflectOut: 0, bailouts: 0, wasLast: false, avantThisGame: 0, coinRescueUsed: false };
   }
   const TURN_TABLE = { 2: 12, 4: 22, 8: 32, 10: 32 };
-  const CARDS_TABLE = { 2: 30, 4: 30, 8: 20, 10: 20 };
+  const CARDS_TABLE = { 2: 30, 4: 30, 8: 30, 10: 30 };
   const SERIOUS_COIN_BONUS = 10;
 
   const CPU_NAMES = [
@@ -3267,6 +3267,7 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
     // opts 未指定（チュートリアル）は従来仕様のまま。opts.rules/tax で新仕様を有効化
     const RULES = !!(opts && opts.rules);
     const TAX_ON = !!(opts && opts.tax);
+    const NO_SUBSIDY = !!(opts && opts.noSubsidy); // ラスト5TERN: 課税のみ・補助なし
     const defCostOf = (id) => (RULES && opts.defCostMap && opts.defCostMap[id] != null) ? opts.defCostMap[id] : 5;
     const incomingHeavyMap = {};
     const defenseMap = {};
@@ -3589,8 +3590,8 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
           let cash = p.cash, holdings = p.holdings;
           const er = execResults[p.id];
           if (p.id === lowId) {
-            cash += pool;
-            if (er) { er.subsidy = pool; er.taxRank = rankedT.length; }
+            if (!NO_SUBSIDY) cash += pool;
+            if (er) { er.subsidy = NO_SUBSIDY ? 0 : pool; er.subsidyOff = NO_SUBSIDY; er.taxRank = rankedT.length; }
           } else if (paid[p.id]) {
             cash = paid[p.id].cash != null ? paid[p.id].cash : cash;
             holdings = paid[p.id].holdings != null ? paid[p.id].holdings : holdings;
@@ -4739,6 +4740,64 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
       }
     });
   }
+  // ===== CPUの奥義妨害は立て続けに撃たない（前回の発動から FT_CPU_SAB_GAP TERN 空ける） =====
+  const FT_CPU_SAB_GAP = 3;
+  let FT_CPU_SAB_LAST = -99;
+  function ftCpuSabCooldown(players, hacks, turn) {
+    if (turn < FT_CPU_SAB_LAST) FT_CPU_SAB_LAST = -99; // 新しいゲーム
+    const firing = (players || []).filter(function (p) { return p && p.isAI && !p.isBankrupt && hacks[p.id] && hacks[p.id].avantSab; });
+    if (!firing.length) return;
+    if (FT_CPU_SAB_LAST !== turn && turn - FT_CPU_SAB_LAST < FT_CPU_SAB_GAP) {
+      firing.forEach(function (p) {
+        const old = hacks[p.id] || emptyHack();
+        hacks[p.id] = { ...emptyHack(), coinRescue: old.coinRescue || "", _sabDropped: true };
+      });
+      return;
+    }
+    FT_CPU_SAB_LAST = turn;
+  }
+  // ===== CPUの保険ルール =====
+  //  ・奥義妨害(99999円)が来そうな局面(予測) → 『防衛』（反射では奥義妨害は防げない）
+  //  ・それ以外の妨害への保険は基本『反射』
+  //  ・破産しうる買いは必ず保険を確保（COINは操作→妨害の順に削る）
+  function ftCpuInsurancePolicy(players, hacks, orders, turn, totalTurns, nStart, basePrice, defCostMap) {
+    if (isEarlyTurns(turn)) return;
+    const px = Number(basePrice) || 0;
+    const alive = (players || []).filter(function (p) { return p && !p.isBankrupt; });
+    alive.forEach(function (p) {
+      if (!p.isAI) return;
+      const hk = hacks[p.id];
+      if (!hk || hk.avant || hk.avantSab || hk.coinRescue) return;
+      const ord = orders[p.id] || { action: "stay", shares: 0 };
+      const sh = ord.shares || 0;
+      const isBuy = ord.action === "buy" && sh >= 1;
+      const stock = (p.cards && p.cards.stock) || 0;
+      const liq = (Number(p.cash) || 0) + (Number(p.holdings) || 0) * px;
+      const bkHeavy = isBuy && sh * personalExecPrice(nStart, hk.quick || 0, 1, "buy") > liq + 1e-9;
+      const attackers = alive.filter(function (q) {
+        return String(q.id) !== String(p.id) && !q.avantUsed && ((q.cards && q.cards.stock) || 0) >= 10;
+      });
+      // 奥義妨害の予測: 狙われやすい大口買い(30株以上かつ換金可能額の5割以上)＋奥義未使用でCOIN10枚以上の相手がいる＋中盤以降
+      const bigBuy = isBuy && sh >= 30 && sh * px >= 0.5 * Math.max(1, liq);
+      const predSab = bigBuy && attackers.length > 0 && (turn / Math.max(1, totalTurns)) >= 0.4;
+      const must = bkHeavy || predSab;
+      const wants = !!(hk.defense || hk.reflect || must || (hk._sabDropped && isBuy));
+      if (!wants) return;
+      const dc = (defCostMap && defCostMap[p.id] != null) ? defCostMap[p.id] : 5;
+      let useDef = !!(predSab || ((hk.heavy || 0) > 0 && bkHeavy));
+      const nh = { ...hk, defense: false, reflect: false };
+      // 保険の枠を確保（操作→妨害の順に削る）
+      const insCost = useDef ? dc : 5;
+      while (nh.quick > 0 && nh.quick + ((nh.heavy || 0) > 0 ? 5 : 0) + insCost > stock) nh.quick -= 1;
+      if ((nh.heavy || 0) > 0 && nh.quick + 5 + insCost > stock) nh.heavy = 0;
+      if (nh.quick + ((nh.heavy || 0) > 0 ? 5 : 0) + insCost <= stock) {
+        nh.defense = useDef; nh.reflect = !useDef;
+      } else if (useDef && !predSab && nh.quick + ((nh.heavy || 0) > 0 ? 5 : 0) + 5 <= stock) {
+        nh.reflect = true; // 防衛が高すぎる場合のみ反射へ
+      }
+      hacks[p.id] = nh;
+    });
+  }
   function aiDecideTurn(player, nStart, basePrice, turn, totalTurns, players) {
     const stock = (player.cards && player.cards.stock) || 0;
     const last5 = isLastFiveTurns(turn, totalTurns);
@@ -5777,6 +5836,7 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
       if ((r.heavyRefund || 0) > 0) own.push("妨害成功：使用したCOIN" + r.heavyRefund + "枚が返却された");
       else if (r.heavyGuarded) own.push("妨害は防衛・反射に阻まれたためCOIN返却なし");
       if ((r.taxPaid || 0) > 0) own.push("税金：総資産の" + (r.taxRate * 100) + "%（" + fmt(r.taxPaid) + "円）を主催者へ納付");
+      if (r.subsidyOff) own.push("ラスト5 TERN：補助なし（税収は支払われない）");
       if ((r.subsidy || 0) > 0) own.push("救済措置：集まった税金の全額 " + fmt(r.subsidy) + " 円を補助として受け取った");
       if (r.coinRescue === "half5") own.push("COIN補充：総資産50% → +5枚");
       if (r.coinRescue === "zero10") own.push("COIN補充：総資産75% → +10枚");
@@ -5920,9 +5980,9 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
     return h(ModalShell, { title: "ルール", onClose, wide: true }, h("div", { className: "ft-rules" }, h("div",{className:"ft-rules-section"},h("div",{className:"ft-rules-h"},"ゴール"),h("p",{className:"ft-rules-lead"},"最終TERN終了時の",h("strong",null,"総資産（現金＋株）が最多"),"の人が勝ち。他プレイヤー全員が破産しても勝ち。")),
       h("div",{className:"ft-rules-section"},h("div",{className:"ft-rules-h"},"株価"),h("div",{className:"ft-rule-block"},h("div",{className:"ft-rule-formula"},"株価 = N の素因数の合計"),h("div",{className:"ft-rule-chips"},h("span",{className:"ft-chip"},"例 12=2×2×3 → 7円"),h("span",{className:"ft-chip up"},"素数 → 高い"),h("span",{className:"ft-chip down"},"2の累乗 → 安い")),h("p",{className:"ft-rules-note"},"各プレイヤーの株価は個別計算（共通の最終株価はない）"))),
       h("div",{className:"ft-rules-section"},h("div",{className:"ft-rules-h"},"1 TERN の流れ"),h("div",{className:"ft-flow"},h("div",{className:"ft-flow-step"},h("div",{className:"ft-flow-num"},"1"),h("div",{className:"ft-flow-body"},h("b",null,"開示"),h("span",null,"N と仮株価を公開"))),h("div",{className:"ft-flow-step"},h("div",{className:"ft-flow-num"},"2"),h("div",{className:"ft-flow-body"},h("b",null,"注文"),h("span",null,"買い / 売り / 様子見（秘密）"))),h("div",{className:"ft-flow-step"},h("div",{className:"ft-flow-num"},"3"),h("div",{className:"ft-flow-body"},h("b",null,"市場介入"),h("span",null,"COINで操作・妨害など"))),h("div",{className:"ft-flow-step"},h("div",{className:"ft-flow-num"},"4"),h("div",{className:"ft-flow-body"},h("b",null,"清算"),h("span",null,"個人株価で精算"))))),
-      h("div",{className:"ft-rules-section"},h("div",{className:"ft-rules-h"},"COIN 介入"),h("div",{className:"ft-card-types"},h("div",{className:"ft-card-type op"},h("div",{className:"ft-card-type-title"},h(FtHackIcon,{kind:"op",size:26}),"操作"),h("ul",null,h("li",null,"1枚で自分のN+1（枚数分可）"))),h("div",{className:"ft-card-type sab"},h("div",{className:"ft-card-type-title"},h(FtHackIcon,{kind:"sab",size:26}),"妨害"),h("ul",null,h("li",null,"5枚・自分以外のN+1"),h("li",null,"成功（防衛・反射されず）なら使用COINは返却"))),h("div",{className:"ft-card-type def"},h("div",{className:"ft-card-type-title"},h(FtHackIcon,{kind:"def",size:26}),"防衛"),h("ul",null,h("li",null,"1位15枚・2位〜10枚・最下位5枚（順位で変動）"),h("li",null,"被妨害を無効化"))),h("div",{className:"ft-card-type reflect"},h("div",{className:"ft-card-type-title"},h(FtHackIcon,{kind:"reflect",size:26}),"反射"),h("ul",null,h("li",null,"5枚・妨害を発動者へ返す（防衛と排他）"))),h("div",{className:"ft-card-type avant"},h("div",{className:"ft-card-type-title"},h(FtHackIcon,{kind:"avant",size:26}),"奥義：AVANT-GARDE-操作"),h("ul",null,h("li",null,"10枚・自分の株価指定（1ゲーム1回）"))),h("div",{className:"ft-card-type avant"},h("div",{className:"ft-card-type-title"},h(FtHackIcon,{kind:"avantSab",size:26}),"奥義：AVANT-GARDE-妨害"),h("ul",null,h("li",null,"10枚・他人の株価を強制（防衛で無効可）"))))),
+      h("div",{className:"ft-rules-section"},h("div",{className:"ft-rules-h"},"COIN 介入"),h("div",{className:"ft-card-types"},h("div",{className:"ft-card-type op"},h("div",{className:"ft-card-type-title"},h(FtHackIcon,{kind:"op",size:26}),"操作"),h("ul",null,h("li",null,"1枚で自分のN+1（枚数分可）"))),h("div",{className:"ft-card-type sab"},h("div",{className:"ft-card-type-title"},h(FtHackIcon,{kind:"sab",size:26}),"妨害"),h("ul",null,h("li",null,"5枚・自分以外のN+1"),h("li",null,"成功（防衛・反射されず）なら使用COINは返却"))),h("div",{className:"ft-card-type def"},h("div",{className:"ft-card-type-title"},h(FtHackIcon,{kind:"def",size:26}),"防衛"),h("ul",null,h("li",null,"1位：15枚・2位〜：10枚・最下位：5枚（順位で変動）"),h("li",null,"被妨害を無効化"))),h("div",{className:"ft-card-type reflect"},h("div",{className:"ft-card-type-title"},h(FtHackIcon,{kind:"reflect",size:26}),"反射"),h("ul",null,h("li",null,"5枚・妨害を発動者へ返す（防衛と排他）"))),h("div",{className:"ft-card-type avant"},h("div",{className:"ft-card-type-title"},h(FtHackIcon,{kind:"avant",size:26}),"奥義：AVANT-GARDE-操作"),h("ul",null,h("li",null,"10枚・自分の株価指定（1ゲーム1回）"))),h("div",{className:"ft-card-type avant"},h("div",{className:"ft-card-type-title"},h(FtHackIcon,{kind:"avantSab",size:26}),"奥義：AVANT-GARDE-妨害"),h("ul",null,h("li",null,"10枚・他人の株価を強制（防衛で無効可）"))))),
       h("div",{className:"ft-rules-section"},h("div",{className:"ft-rules-h"},"序盤（最初の3 TERN）"),h("ul",{className:"ft-rules-bullets"},h("li",null,"妨害・防衛・反射・奥義：AVANT-GARDE-妨害は使用不可"),h("li",null,"操作・奥義：AVANT-GARDE-操作は使用可"))),
-      h("div",{className:"ft-rules-section"},h("div",{className:"ft-rules-h"},"終盤（ラスト5 TERN）"),h("ul",{className:"ft-rules-bullets"},h("li",null,"様子見不可（保有があれば売り、なければ買い強制）"),h("li",null,"売買は最大枚数の50%以上"),h("li",null,"突入時に生存者へCOIN+5"),h("li",null,"COIN補充不可"))),h("div",{className:"ft-rules-section"},h("div",{className:"ft-rules-h"},"税金"),h("ul",{className:"ft-rules-bullets"},h("li",null,"毎ターン清算後に総資産へ課税・補助"),h("li",null,"1位：総資産の5%を納税"),h("li",null,"2位〜：総資産の0.5%を納税"),h("li",null,"最下位：税収全額を補助として受取")))));
+      h("div",{className:"ft-rules-section"},h("div",{className:"ft-rules-h"},"終盤（ラスト5 TERN）"),h("ul",{className:"ft-rules-bullets"},h("li",null,"様子見不可"),h("li",null,"売買は最大枚数の50%以上"),h("li",null,"突入時に生存者へCOIN+5"),h("li",null,"COIN補充不可"))),h("div",{className:"ft-rules-section"},h("div",{className:"ft-rules-h"},"税金"),h("ul",{className:"ft-rules-bullets"},h("li",null,"毎ターン清算後に総資産へ課税・補助"),h("li",null,"1位：総資産の5%を納税"),h("li",null,"2位〜：総資産の0.5%を納税"),h("li",null,"最下位：税収全額を補助として受取"),h("li",null,"ラスト5 TERN：課税のみ（補助なし）")))));
   }
   function ModalShell({ title, onClose, children, wide }) {
     return /* @__PURE__ */ React.createElement("div", { className: "fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80", onClick: onClose }, /* @__PURE__ */ React.createElement("div", { className: "relative rounded-2xl border border-[#39ff9c]/25 bg-[#050506] p-5 max-h-[90vh] overflow-y-auto a-scale-in " + (wide ? "w-full max-w-2xl" : "w-full max-w-md"), onClick: (e) => e.stopPropagation() }, /* @__PURE__ */ React.createElement("div", { className: "flex items-center justify-between mb-4" }, /* @__PURE__ */ React.createElement("div", { className: "font-display font-bold text-lg text-[#39ff9c]" }, title), /* @__PURE__ */ React.createElement("button", { type: "button", onClick: onClose, className: "text-neutral-500 hover:text-neutral-200 font-mono text-sm px-2" }, "\u2715")), children));
@@ -6480,7 +6540,7 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
               h("input", { value: sess || name, disabled: !!sess, maxLength: 12, onChange: (e) => setName(e.target.value.slice(0, 12)), className: "w-full h-12 rounded-xl bg-black/60 border border-neutral-800 px-3 font-mono text-lg outline-none focus:border-[#33d1ff]/60", style: { color: "#d7ede2", WebkitTextFillColor: "#d7ede2" } })),
             h("div", null, h("div", { className: lbl }, "席数（ホスト設定・不足分はCPU）"),
               h("div", { className: "grid grid-cols-4 gap-2" }, COUNTS.map((c) => optBtn(count === c, c, () => setCount(c), c + "人", TURN_TABLE[c] + " TERN")))),
-            h("div", null, h("div", { className: lbl }, "難易度（ホスト設定）"),
+            h("div", null, h("div", { className: lbl }, "COIN枚数（ホスト設定）"),
               h("div", { className: "grid grid-cols-2 gap-2" }, optBtn(!serious, "n", () => setSerious(false), "NORMAL", "COIN " + CARDS_TABLE[count]), optBtn(serious, "s", () => setSerious(true), "SERIOUS", "COIN " + (CARDS_TABLE[count] + SERIOUS_COIN_BONUS))))
           ) : null,
           h(OnlineLobby, { cfg: { count, humanName: (sess || name || "YOU"), seriousMode: serious }, onBack: () => setTab("local"), onStart, net })));
@@ -6495,7 +6555,7 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
       },
       /* @__PURE__ */ React.createElement("span", { className: "text-xl" }, c, /* @__PURE__ */ React.createElement("span", { className: "text-[0.72em] tracking-wider opacity-90 ml-1" }, "PEOPLE")),
       /* @__PURE__ */ React.createElement("div", { className: "text-[10px] tracking-widest mt-1 text-neutral-600 opacity-80" }, TURN_TABLE[c], " TERN")
-    )))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] tracking-[0.3em] text-neutral-500 uppercase mb-2 font-mono" }, "\u96E3\u6613\u5EA6"), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-2 gap-2" }, /* @__PURE__ */ React.createElement("button", { type: "button", onClick: () => setSerious(false), className: "py-3 rounded-xl font-mono border " + (!serious ? "border-[#39ff9c] text-[#39ff9c] bg-[#39ff9c]/10" : "border-neutral-800 text-neutral-500") }, /* @__PURE__ */ React.createElement("div", { className: "font-bold" }, "NORMAL"), /* @__PURE__ */ React.createElement("div", { className: "text-[10px] text-neutral-600" }, "COIN ", CARDS_TABLE[count])), /* @__PURE__ */ React.createElement("button", { type: "button", onClick: () => setSerious(true), className: "py-3 rounded-xl font-mono border " + (serious ? "border-[#39ff9c] text-[#39ff9c] bg-[#39ff9c]/10" : "border-neutral-800 text-neutral-500") }, /* @__PURE__ */ React.createElement("div", { className: "font-bold" }, "SERIOUS"), /* @__PURE__ */ React.createElement("div", { className: "text-[10px] text-neutral-600" }, "COIN ", CARDS_TABLE[count] + SERIOUS_COIN_BONUS)))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] tracking-[0.3em] text-neutral-500 uppercase mb-2 font-mono" }, "CPU \u96E3\u6613\u5EA6"), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-3 gap-2" }, /* @__PURE__ */ React.createElement("button", { type: "button", onClick: () => setAiDiff("normal"), className: "py-3 rounded-xl font-mono border " + (aiDiff === "normal" ? "border-[#33d1ff] text-[#33d1ff] bg-[#33d1ff]/10" : "border-neutral-800 text-neutral-500") }, /* @__PURE__ */ React.createElement("div", { className: "font-bold text-sm" }, "NORMAL"), /* @__PURE__ */ React.createElement("div", { className: "text-[9px] text-neutral-600" }, "IQ~125")), /* @__PURE__ */ React.createElement("button", { type: "button", onClick: () => setAiDiff("hard"), className: "py-3 rounded-xl font-mono border " + (aiDiff === "hard" ? "border-[#39ff9c] text-[#39ff9c] bg-[#39ff9c]/10" : "border-neutral-800 text-neutral-500") }, /* @__PURE__ */ React.createElement("div", { className: "font-bold text-sm" }, "HARD"), /* @__PURE__ */ React.createElement("div", { className: "text-[9px] text-neutral-600" }, "IQ~145")), /* @__PURE__ */ React.createElement("button", { type: "button", onClick: () => setAiDiff("nightmare"), className: "py-3 rounded-xl font-mono border " + (aiDiff === "nightmare" ? "border-[#ff2d6f] text-[#ff2d6f] bg-[#ff2d6f]/10" : "border-neutral-800 text-neutral-500") }, /* @__PURE__ */ React.createElement("div", { className: "font-bold text-sm" }, "NIGHTMARE"), /* @__PURE__ */ React.createElement("div", { className: "text-[9px] text-neutral-600" }, "IQ~175")))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] tracking-[0.3em] text-neutral-500 uppercase mb-2 font-mono" }, "\u30C8\u30EC\u30FC\u30C0\u30FC\u540D"), /* @__PURE__ */ React.createElement(Input, {
+    )))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] tracking-[0.3em] text-neutral-500 uppercase mb-2 font-mono" }, "COIN枚数"), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-2 gap-2" }, /* @__PURE__ */ React.createElement("button", { type: "button", onClick: () => setSerious(false), className: "py-3 rounded-xl font-mono border " + (!serious ? "border-[#39ff9c] text-[#39ff9c] bg-[#39ff9c]/10" : "border-neutral-800 text-neutral-500") }, /* @__PURE__ */ React.createElement("div", { className: "font-bold" }, "NORMAL"), /* @__PURE__ */ React.createElement("div", { className: "text-[10px] text-neutral-600" }, "COIN ", CARDS_TABLE[count])), /* @__PURE__ */ React.createElement("button", { type: "button", onClick: () => setSerious(true), className: "py-3 rounded-xl font-mono border " + (serious ? "border-[#39ff9c] text-[#39ff9c] bg-[#39ff9c]/10" : "border-neutral-800 text-neutral-500") }, /* @__PURE__ */ React.createElement("div", { className: "font-bold" }, "SERIOUS"), /* @__PURE__ */ React.createElement("div", { className: "text-[10px] text-neutral-600" }, "COIN ", CARDS_TABLE[count] + SERIOUS_COIN_BONUS)))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] tracking-[0.3em] text-neutral-500 uppercase mb-2 font-mono" }, "CPU \u96E3\u6613\u5EA6"), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-3 gap-2" }, /* @__PURE__ */ React.createElement("button", { type: "button", onClick: () => setAiDiff("normal"), className: "py-3 rounded-xl font-mono border " + (aiDiff === "normal" ? "border-[#33d1ff] text-[#33d1ff] bg-[#33d1ff]/10" : "border-neutral-800 text-neutral-500") }, /* @__PURE__ */ React.createElement("div", { className: "font-bold text-sm" }, "NORMAL"), /* @__PURE__ */ React.createElement("div", { className: "text-[9px] text-neutral-600" }, "IQ~125")), /* @__PURE__ */ React.createElement("button", { type: "button", onClick: () => setAiDiff("hard"), className: "py-3 rounded-xl font-mono border " + (aiDiff === "hard" ? "border-[#39ff9c] text-[#39ff9c] bg-[#39ff9c]/10" : "border-neutral-800 text-neutral-500") }, /* @__PURE__ */ React.createElement("div", { className: "font-bold text-sm" }, "HARD"), /* @__PURE__ */ React.createElement("div", { className: "text-[9px] text-neutral-600" }, "IQ~145")), /* @__PURE__ */ React.createElement("button", { type: "button", onClick: () => setAiDiff("nightmare"), className: "py-3 rounded-xl font-mono border " + (aiDiff === "nightmare" ? "border-[#ff2d6f] text-[#ff2d6f] bg-[#ff2d6f]/10" : "border-neutral-800 text-neutral-500") }, /* @__PURE__ */ React.createElement("div", { className: "font-bold text-sm" }, "NIGHTMARE"), /* @__PURE__ */ React.createElement("div", { className: "text-[9px] text-neutral-600" }, "IQ~175")))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "text-[10px] tracking-[0.3em] text-neutral-500 uppercase mb-2 font-mono" }, "\u30C8\u30EC\u30FC\u30C0\u30FC\u540D"), /* @__PURE__ */ React.createElement(Input, {
       value: sess || name,
       onChange: (e) => { if (!sess) setName(e.target.value.slice(0, 12)); },
       disabled: !!sess,
@@ -6782,9 +6842,11 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
       });
       ftCpuAvantBoost(working, hacks, orders, turn, totalTurns, nStart, basePrice);
       ftLimitCpuHeavyAndAvant(working, hacks, orders);
+      ftCpuSabCooldown(working, hacks, turn);
+      ftCpuInsurancePolicy(working, hacks, orders, turn, totalTurns, nStart, basePrice, defCostMap);
       // 補充は applyCoinRescue で適用済み → settleTurn での二重適用（COIN倍付け）を防ぐ
       working.forEach((wp) => { if (wp && ftRescued[wp.id] && hacks[wp.id]) hacks[wp.id] = { ...hacks[wp.id], _rescueApplied: true }; });
-      const res = settleTurn(working, orders, hacks, nStart, basePrice, { rules: true, tax: true, defCostMap: defCostMap });
+      const res = settleTurn(working, orders, hacks, nStart, basePrice, { rules: true, tax: true, defCostMap: defCostMap, noSubsidy: isLastFiveTurns(turn, totalTurns) });
       try {
         if (!roleRef.current) recordAiTurnLearn(working, orders, hacks, res.execResults, nStart, basePrice);
       } catch (e) {}
