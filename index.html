@@ -3682,6 +3682,25 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
   const AI_DIFF_IQ = { normal: 95, hard: 135, nightmare: 190 };
   let FT_AI_FORCE_HARD = false;
   let FT_LOCAL_AI_DIFF = "hard"; // normal | hard | nightmare
+  /** 難易度パラメータ表（skillは難易度固定。学習IQは重み微調整のみに使う） */
+  const FT_DIFF_PARAMS = {
+    normal:    { skill: 0.30, gate: 0.72, reserveBase: 0, noise: 1.10, mistake: 0.16, sabMul: 0.6,  look: false, rescue: "loose", spendCap: 0.45 },
+    hard:      { skill: 0.62, gate: 0.55, reserveBase: 1, noise: 0.25, mistake: 0.04, sabMul: 1.0,  look: true,  rescue: "cond",  spendCap: 0.30 },
+    nightmare: { skill: 1.00, gate: 0.50, reserveBase: 1, noise: 0.00, mistake: 0.00, sabMul: 1.15, look: true,  rescue: "ev",    spendCap: 0.30 }
+  };
+  function ftDP() {
+    const k = FT_AI_FORCE_HARD ? "hard" : FT_LOCAL_AI_DIFF;
+    return FT_DIFF_PARAMS[k] || FT_DIFF_PARAMS.hard;
+  }
+  /** 奥義操作の大口判定（相対）：20株以上かつ買付額が現金の5割以上 */
+  function ftBigRelBuy(shares, price, cash) {
+    return (shares || 0) >= 20 && (shares || 0) * Math.max(1, price || 1) >= 0.5 * Math.max(1, cash || 1);
+  }
+  /** 奥義妨害を撃つ価値しきい値：序盤は厳しく、終盤ほど緩く、残り2TERN以下は消化 */
+  function ftSabTheta(progress, remT) {
+    if (remT <= 2) return 0;
+    return Math.max(0.35, 0.95 - 0.7 * progress);
+  }
   function setAiForceHard(v) {
     FT_AI_FORCE_HARD = !!v;
   }
@@ -3722,14 +3741,14 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
   // ONLINE / LOCAL HARD以上: 学習IQと難易度IQの高い方を採用
   if (FT_AI_FORCE_HARD) {
     const iq = Math.max(FT_ONLINE_AI_IQ, clampAiIq(data.iq != null ? data.iq : AI_DEFAULT_IQ));
-    const skill = iqToSkill(iq);
+    const skill = 0.65;
     return { data, skill, w: data.w, human: data.human, s: data.s, iq, fixed: true };
   }
   const diffIq = AI_DIFF_IQ[FT_LOCAL_AI_DIFF] || AI_DIFF_IQ.hard;
   const learned = clampAiIq(data.iq != null ? data.iq : AI_DEFAULT_IQ);
   // 学習が進んでいればさらに上乗せ、未学習でも難易度IQを下限に
   const iq = clampAiIq(Math.max(learned, diffIq));
-  const skill = iqToSkill(iq);
+  const skill = ftDP().skill;
   return { data, skill, w: data.w, human: data.human, s: data.s, iq, fixed: false };
 }
   function aiDecideCoinRescue(p, order, nStart, priceBefore, allPlayers, allOrders, turn, totalTurns) {
@@ -3763,24 +3782,41 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
     const o = (allOrders && allOrders[hp.id]) || {};
     return (o.action === "buy" || o.action === "sell") && (o.shares || 0) > 0;
   });
+  const P = ftDP();
+  const progR = (Number(turn) || 0) / Math.max(1, Number(totalTurns) || 1);
   let choice = "";
-  if (st === 0) {
-    if (need) choice = Math.random() < 0.97 ? "zero10" : "half5";
-    else if (preEndgame) choice = Math.random() < 0.95 ? "zero10" : "half5";
-    else if (humanAhead || humanTrading || staying) choice = Math.random() < 0.88 ? "zero10" : (Math.random() < 0.7 ? "half5" : "");
-    else if (trading) choice = Math.random() < 0.82 ? "zero10" : (Math.random() < 0.55 ? "half5" : "");
-    else choice = Math.random() < 0.7 ? "zero10" : (Math.random() < 0.4 ? "half5" : "");
-  } else if (st <= 5) {
-    if (need) choice = Math.random() < 0.95 ? "half5" : "";
-    else if (preEndgame) choice = Math.random() < 0.92 ? "half5" : "";
-    else if (humanAhead || humanTrading || staying) choice = Math.random() < 0.85 ? "half5" : "";
-    else if (trading) choice = Math.random() < 0.75 ? "half5" : "";
-    else choice = Math.random() < 0.55 ? "half5" : "";
+  if (P.rescue === "loose") {
+    if (st === 0) {
+      if (need) choice = Math.random() < 0.97 ? "zero10" : "half5";
+      else if (preEndgame) choice = Math.random() < 0.95 ? "zero10" : "half5";
+      else if (humanAhead || humanTrading || staying) choice = Math.random() < 0.88 ? "zero10" : (Math.random() < 0.7 ? "half5" : "");
+      else if (trading) choice = Math.random() < 0.82 ? "zero10" : (Math.random() < 0.55 ? "half5" : "");
+      else choice = Math.random() < 0.7 ? "zero10" : (Math.random() < 0.4 ? "half5" : "");
+    } else if (st <= 5) {
+      if (need) choice = Math.random() < 0.95 ? "half5" : "";
+      else if (preEndgame) choice = Math.random() < 0.92 ? "half5" : "";
+      else if (humanAhead || humanTrading || staying) choice = Math.random() < 0.85 ? "half5" : "";
+      else if (trading) choice = Math.random() < 0.75 ? "half5" : "";
+      else choice = Math.random() < 0.55 ? "half5" : "";
+    }
+
+  } else {
+    // 補充は総資産の50%/75%を失う高コスト行為：必要なときだけ実行
+    const avantPending = !p.avantUsed;
+    let worth = false;
+    if (need) worth = true;                                           // 破産回避の防衛枠が要る
+    else if (avantPending && progR >= 0.25 && st < 10) worth = true;  // 奥義の弾(10枚)を確保
+    else if (P.rescue === "ev" && preEndgame && st === 0 && (humanAhead || humanTrading)) worth = true;
+    if (worth) {
+      if (st === 0) choice = (avantPending || need) ? "zero10" : "half5";
+      else choice = "half5";
+    }
   }
   return choice || "";
 }
   function aiDecideTrade(rnd, nStart, priceBefore, cash, holdings, refPrice, ctx) {
   ctx = ctx || {};
+  const P = ftDP();
   const maxBuyShares = priceBefore > 0 ? Math.floor(cash / priceBefore) : 0;
   const ratio = refPrice > 0 ? priceBefore / refPrice : 1;
   const totalAssets = cash + holdings * priceBefore;
@@ -3799,7 +3835,12 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
   // ラスト5: 一位のCPUは最低限の売りのみ（買い禁止）で順位防衛
   const isLeaderCpu = endgameLock && selfIdCtx && playersCtx
     && isLeaderPlayer(selfIdCtx, playersCtx, priceBefore);
-  if (isLeaderCpu) {
+  let leaderMarginSmall = false;
+  if (isLeaderCpu && P.look) {
+    const _tvs = (playersCtx || []).filter((q) => q && !q.isBankrupt).map((q) => (q.cash || 0) + (q.holdings || 0) * priceBefore).sort((x, y) => y - x);
+    leaderMarginSmall = _tvs.length > 1 && _tvs[0] < _tvs[1] * 1.08;
+  }
+  if (isLeaderCpu && !leaderMarginSmall) {
     if (holdings > 0) {
       const minS = minOrderShares("sell", holdings, maxBuyShares);
       return { action: "sell", shares: Math.max(1, minS), leaderProtect: true };
@@ -3849,7 +3890,7 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
   function preferStayOrSafe(order) {
     if (!order) return { action: "stay", shares: 0 };
     if (order.action !== "buy" || (order.shares || 0) <= 0) return order;
-    if (!protectCd) return order;
+    if (!protectCd && !(P.look && selfPl && ((selfPl.cards && selfPl.cards.stock) || 0) < 5)) return order;
     if (!buyBankruptRisk(order.shares, 0)) return order;
     // 破産リスクあり → 様子見（終盤は売り優先、買いなら安全枠のみ）
     if (endgameLock) {
@@ -3857,6 +3898,10 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
       const safe = safeBuyShares();
       if (safe > 0) return { action: "buy", shares: safe };
       return { action: "stay", shares: 0 };
+    }
+    if (P.look) {
+      const safeN = safeBuyShares();
+      if (safeN > 0) return { action: "buy", shares: safeN };
     }
     return { action: "stay", shares: 0 };
   }
@@ -3904,7 +3949,7 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
   // ノイズ: skill高いほど強く減衰（HARD以上はほぼ0）
   const noiseBase = 0.22 * (1 - 0.85 * skill) * (ww.noise || 0.55);
   const noiseAmp = skill >= 0.85 ? noiseBase * 0.15 : (skill >= 0.65 ? noiseBase * 0.4 : noiseBase);
-  edge += (Math.random() - 0.5) * noiseAmp;
+  edge += (Math.random() - 0.5) * (noiseAmp * 0.3 + P.noise * 1.4);
   edge *= 0.95 + 0.28 * (ww.aggression || 0.55) * skill;
 
   // --- 様子見＋後でCOIN妨害を狙う戦術（意図的に維持） ---
@@ -3934,6 +3979,7 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
     return { action: "stay", shares: 0 };
   }
 
+  if (!endgameLock && P.mistake > 0 && Math.random() < P.mistake) return { action: "stay", shares: 0 };
   // --- 高値利確: ほぼ全売り ---
   if ((isSkyHigh || (isHigh && edge < 0.3)) && holdings > 0) {
     const pct = 0.92 + Math.random() * 0.08; // 92-100%
@@ -4026,6 +4072,13 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
   for (let i = 0; i < idStr.length; i++) idHash = (idHash * 31 + idStr.charCodeAt(i)) | 0;
   const isPreferredTurn = (turn % 3) === (Math.abs(idHash) % 3);
   const persona = ftCpuPersona(selfId);
+  const P = ftDP();
+  const _selfPl0 = (playersList || []).find((pl) => pl && String(pl.id) === String(selfId));
+  const avantPending = !!(_selfPl0 && !_selfPl0.avantUsed && !_selfPl0.isBankrupt);
+  const last5Now = isLastFiveTurns(turn, totalTurns);
+  // COIN予算：奥義未使用の間は奥義(10)+防衛予備を常に確保
+  let reserveFloor = 0;
+  if (P.reserveBase) reserveFloor = last5Now ? (avantPending ? 10 : 0) : (avantPending ? 15 : 5);
 
   // --- 操作: 前半も適度に使い、後半用に温存する配分 ---
   // 理想消費ペース: 経過割合に応じてCOINの一部を残す
@@ -4048,7 +4101,8 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
       : 0;
     if (behindHumOp || skillC >= 0.7) reserve = Math.max(0, Math.floor(reserve * 0.35));
     if (skillC >= 0.9) reserve = 0;
-    const spendable = Math.max(0, stock - reserve);
+    let spendable = Math.max(0, stock - Math.max(reserve, reserveFloor));
+    if (P.reserveBase && progress < P.gate) spendable = Math.min(spendable, Math.max(0, stock - Math.ceil(40 * (1 - P.spendCap))));
     // 1TERN上限（skillに応じ厚く）
     let turnCap = 1;
     if (progress < 0.35) turnCap = selfShares >= 4 ? 2 : 1;
@@ -4064,7 +4118,7 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
     let bestScore = -1;
     // skill高いほど操作コストを低く見積もる → 1円でも有利なら使う
     const unitCostBase = progress < 0.4 ? 1.0 : progress < 0.7 ? 0.55 : 0.28;
-    const unitCost = unitCostBase * (1.15 - 0.55 * skillC);
+    const unitCost = (P.reserveBase ? (progress < P.gate ? 160 : 60) : unitCostBase) * (1.15 - 0.55 * skillC);
     for (let q = 0; q <= maxQ; q++) {
       const p = personalExecPrice(nStart, q, 0, selfAction);
       const gain = selfAction === "buy" ? basePrice - p : p - basePrice;
@@ -4115,6 +4169,7 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
     if ((persona.heavyMul || 1) >= 1.3) {
       coinReserve = Math.max(0, Math.floor(coinReserve * 0.4));
     }
+    coinReserve = Math.max(coinReserve, reserveFloor);
     const canAffordHeavy = stock - bestQuick - coinReserve >= 5;
 
     let bestTarget = null;
@@ -4181,7 +4236,7 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
       }
     });
 
-    if (bestTarget && (canAffordHeavy || bestIsBankruptShot)) {
+    if (bestTarget && (canAffordHeavy || (bestIsBankruptShot && stock - bestQuick - 5 >= (P.reserveBase && avantPending ? 10 : 0)))) {
       let fireChance = 0;
       const targetIsHuman = !bestTarget.isAI;
       if (bestIsBankruptShot) {
@@ -4345,12 +4400,17 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
   if (
     selfPl && !selfPl.avantUsed && !selfPl.isBankrupt &&
     stockLeft >= 10 &&
-    progress >= 0.4
+    progress >= P.gate
   ) {
     // --- 奥義（妨害）: 大口買いに99999円。1円では使わない ---
     let sabChance = 0;
     let sabPrice = 99999;
     let bestSabScore = 0;
+    let bestSabRatio = 0;
+    let topTvAll = 1;
+    (playersList || []).forEach((pl) => {
+      if (pl && !pl.isBankrupt) { const v = (pl.cash || 0) + (pl.holdings || 0) * (priceBefore || 0); if (v > topTvAll) topTvAll = v; }
+    });
     let totalOthersTradeShares = 0;
     let othersTradingCount = 0;
     if (turn > 3) {
@@ -4370,6 +4430,8 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
         const req = tShares * forced;
         const liq = (pl.cash || 0) + (pl.holdings || 0) * Math.max(0, Number(priceBefore) || 0);
         const bankruptShot = req > liq + 1e-9;
+        const rT = (liq / Math.max(1, topTvAll)) * (pl.isAI ? 0.5 : 1);
+        if (rT > bestSabRatio) bestSabRatio = rT;
         const totalLoss = delta * tShares;
         let score = totalLoss + (bankruptShot ? 80000 : 0);
         if (!pl.isAI) score *= 1.35;
@@ -4411,27 +4473,20 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
     // --- 奥義（操作）: 大口買い（数万株以上）のみ。中盤〜終盤で使用。売りでは使わない ---
     let avChance = 0;
     let avPrice = 1;
-    if (selfAction === "buy" && selfShares >= 10000) {
-      // 数万株以上の大口買い専用（AVANT-GARDE操作）
-      if (selfShares >= AVANT_BIG) {
-        avChance = 0.78;
-        if (selfShares >= AVANT_BIG * 2) avChance = 0.92;
-      } else if (selfShares >= 30000) {
-        avChance = 0.45 + Math.min(0.3, (selfShares / AVANT_BIG) * 0.3);
-      } else {
-        // 1万〜3万株: 中盤以降のみ控えめ
-        avChance = progress >= 0.5 ? 0.22 : 0.08;
-      }
-      if (progress > 0.45) avChance = Math.min(0.95, avChance + 0.08);
-      if (progress > 0.7) avChance = Math.min(0.95, avChance + 0.06);
+    if (selfAction === "buy" && ftBigRelBuy(selfShares, priceBefore, selfPl.cash)) {
+      const relBuy = (selfShares * Math.max(1, priceBefore || 1)) / Math.max(1, selfPl.cash || 1);
+      avChance = 0.35 + Math.min(0.4, relBuy * 0.3);
+      if (progress > 0.7) avChance = Math.min(0.95, avChance + 0.1);
+      if (remainingTurns <= 2) avChance = Math.max(avChance, 0.85);
       const priceHit = personalExecPrice(nStart, bestQuick, 1, "buy");
       const req = selfShares * priceHit;
       const liq = (selfPl.cash || 0) + (selfPl.holdings || 0) * Math.max(0, Number(priceBefore) || 0);
-      if (req > liq + 1e-9) avChance = Math.max(avChance, selfShares >= 30000 ? 0.9 : 0.7);
+      if (req > liq + 1e-9) avChance = Math.max(avChance, 0.7);
       avPrice = 1;
     }
     // 個性: 操作屋は奥義操作を厚く、妨害屋は奥義妨害寄り
     avChance *= persona.avantOpMul || 1;
+    avChance *= Math.min(1, P.sabMul);
     if (stockLeft < 15) {
       avChance *= 0.85;
       sabChance *= 0.85;
@@ -4470,14 +4525,14 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
       sabChance = Math.max(sabChance, 0.85);
     }
     // 鉄則: 自分が破産回避必要な大口買い（数万株以上）では操作型AVANT-GARDEを優先
-    if (mustProtectBankruptcy && selfAction === "buy" && selfShares >= 10000) {
+    if (mustProtectBankruptcy && selfAction === "buy" && ftBigRelBuy(selfShares, priceBefore, selfPl ? selfPl.cash : 0)) {
       pickSab = false;
       if (stockLeft >= 10 && selfPl && !selfPl.avantUsed) {
         avChance = Math.max(avChance, 0.92);
         avPrice = 1;
       }
     }
-    if (pickSab && !mustProtectBankruptcy && hasBankruptBuyTarget && Math.random() < Math.min(0.98, Math.max(sabChance, 0.82))) {
+    if (pickSab && !mustProtectBankruptcy && hasBankruptBuyTarget && bestSabRatio >= ftSabTheta(progress, remainingTurns) && Math.random() < Math.min(1, P.sabMul) && Math.random() < Math.min(0.98, Math.max(sabChance, 0.82))) {
       avantSab = 1;
       avantPrice = 99999;
       bestQuick = 0;
@@ -4552,7 +4607,7 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
           const liq = (pl.cash || 0) + (pl.holdings || 0) * Math.max(0, Number(priceBefore) || 0);
           if (req > liq + 1e-9) canBankruptHuman = true;
         });
-        if (canBankruptHuman || bestHumanBuyShares >= 5) {
+        if (canBankruptHuman && (remainingTurns <= 2 || Math.random() < 0.6)) {
           avantSab = 1;
           avantPrice = 99999;
           avant = 0;
@@ -4564,12 +4619,12 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
       }
       if (!avant && !avantSab) {
         // 通常妨害で人間を狙う（枠があれば）
-        if (stock - bestQuick >= 5 && (humanBuyingBig || humanSelling || Math.random() < 0.55)) {
+        if (stock - bestQuick - (P.reserveBase && avantPending ? 10 : 0) >= 5 && (humanBuyingBig || humanSelling || Math.random() < 0.55)) {
           bestHeavy = Math.max(bestHeavy, 1);
         }
         // 自分の売買が有利になる操作を厚く
         if ((selfAction === "buy" || selfAction === "sell") && selfShares >= 1 && stock >= 2) {
-          const reserveDef = humanAlive ? 5 : 0;
+          const reserveDef = (humanAlive ? 5 : 0) + (P.reserveBase && avantPending ? 10 : 0);
           const spendable = Math.max(0, stock - reserveDef - (bestHeavy > 0 ? 5 : 0));
           if (spendable > bestQuick) {
             bestQuick = Math.min(spendable, Math.max(bestQuick, Math.min(4, spendable)));
@@ -4606,7 +4661,7 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
           !avant && !avantSab &&
           selfPl && !selfPl.avantUsed && !selfPl.isBankrupt &&
           stock - (useDefense ? 5 : 0) - (useReflect ? 5 : 0) >= 10 &&
-          selfAction === "buy" && selfShares >= 10000
+          selfAction === "buy" && ftBigRelBuy(selfShares, priceBefore, selfPl ? selfPl.cash : 0)
         ) {
           avant = 1;
           avantPrice = 1;
@@ -4679,6 +4734,8 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
     const px = Number(basePrice) || 0;
     const progress = turn / Math.max(1, totalTurns);
     const early = isEarlyTurns(turn);
+    const P = ftDP();
+    const gateOpen = progress >= P.gate;
     const alive = (players || []).filter(function (p) { return p && !p.isBankrupt; });
     const humans = alive.filter(function (p) { return !p.isAI; });
     const tvOf = function (p) { return (Number(p.cash) || 0) + (Number(p.holdings) || 0) * px; };
@@ -4715,7 +4772,7 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
       const endFive = isLastFiveTurns(turn, totalTurns);
       // --- 妨害（99999円）---
       let pSab = 0;
-      if (!early && !(endFive && iAmLeader)) {
+      if (!early && gateOpen && !(endFive && iAmLeader)) {
         const targets = bigBuyers.filter(function (q) { return String(q.id) !== String(p.id); });
         if (targets.length) {
           let threat = 0;
@@ -4736,6 +4793,9 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
           if (ord.action === "buy") pSab += 0.05; // 自分は影響を受けず通常価格で買える
           if (threat < 1) pSab *= 0.4;
           pSab = Math.min(0.95, pSab + (pSab > 0 ? ramp : 0));
+          const bestR = Math.max.apply(null, targets.map(function (q) { return (tvOf(q) / Math.max(1, topTv)) * (q.isAI ? 0.5 : 1); }));
+          if (bestR < ftSabTheta(progress, totalTurns - turn + 1)) pSab *= 0.2;
+          pSab *= Math.min(1, P.sabMul);
         }
       }
       // --- 操作（大口買い数万株以上のみ・1円固定。売りでは使わない）---
@@ -4744,9 +4804,9 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
       const sh = ord.shares || 0;
       const behindHuman = humans.some(function (q) { return tvOf(q) > selfTv * 0.92; });
       // AVANT-GARDE操作は中盤以降・大口買い（1万株以上）のみ
-      if (!early && progress >= 0.35 && ord.action === "buy" && sh >= 10000) {
+      if (!early && gateOpen && ord.action === "buy" && ftBigRelBuy(sh, px, p.cash)) {
         const ratio = (sh * px) / Math.max(1, Number(p.cash) || 0);
-        if (sh >= 30000 || ratio >= 0.5) {
+        if (ratio >= 0.5) {
           pOp = behindHuman ? 0.7 : 0.35;
           if (sh >= 100000) pOp += 0.15;
           if (ratio >= 0.9) pOp += 0.12;
@@ -4782,7 +4842,7 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
   function ftLimitCpuHeavyAndAvant(players, hacks, orders) {
     const alive = (players || []).filter(function (p) { return p && p.isAI && !p.isBankrupt && hacks[p.id]; });
     const aiHeavy = alive.filter(function (p) { return (Number(hacks[p.id].heavy) || 0) > 0; });
-    const heavySlots = 1;
+    const heavySlots = alive.length >= 5 ? 2 : 1;
     if (aiHeavy.length > heavySlots) {
       aiHeavy.sort(function (a, b) {
         const oa = ((orders[a.id] || {}).action === "stay") ? 1 : 0;
@@ -6949,6 +7009,15 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
       });
       ftCpuAvantBoost(working, hacks, orders, turn, totalTurns, nStart, basePrice);
       ftLimitCpuHeavyAndAvant(working, hacks, orders);
+      try {
+        const _S = (window.__ftCpuStats = window.__ftCpuStats || { avant: [], rescue: 0 });
+        working.forEach((wp) => {
+          if (!wp || !wp.isAI || !hacks[wp.id]) return;
+          const hk = hacks[wp.id];
+          if (hk.avant || hk.avantSab) _S.avant.push({ turn: turn, total: totalTurns, type: hk.avantSab ? "sab" : "op", diff: FT_LOCAL_AI_DIFF });
+          if (hk.coinRescue) _S.rescue++;
+        });
+      } catch (e) {}
       // 補充は applyCoinRescue で適用済み → settleTurn での二重適用（COIN倍付け）を防ぐ
       working.forEach((wp) => { if (wp && ftRescued[wp.id] && hacks[wp.id]) hacks[wp.id] = { ...hacks[wp.id], _rescueApplied: true }; });
       const res = settleTurn(working, orders, hacks, nStart, basePrice, turn, totalTurns);
