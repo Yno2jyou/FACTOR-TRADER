@@ -3530,7 +3530,8 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
       const defCostUsed = hacks[p.id] && hacks[p.id].defense ? _defCostFor(p.id) : 0;
       const refCostUsed = hacks[p.id] && hacks[p.id].reflect ? 5 : 0;
       const avantCostUsed = hacks[p.id] && hacks[p.id].avant || hacks[p.id] && hacks[p.id].avantSab ? 10 : 0;
-      // 妨害: 防衛・反射していない生存相手が1人以上いれば着弾成功 → COIN5枚返却
+      // 妨害: 防衛・反射していない「売買中」の生存相手が1人以上いれば着弾成功 → COIN5枚返却
+      // stay（様子見）への着弾は成功判定にしない
       let heavyCostUsed = 0;
       let heavyRefunded = false;
       if ((hacks[p.id] && hacks[p.id].heavy || 0) > 0) {
@@ -3538,7 +3539,12 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
         for (let oi = 0; oi < players.length; oi++) {
           const op = players[oi];
           if (!op || String(op.id) === String(p.id) || op.isBankrupt) continue;
-          if (!defenseMap[op.id] && !reflectMap[op.id]) { heavySuccess = true; break; }
+          if (defenseMap[op.id] || reflectMap[op.id]) continue;
+          const opOrder = orders[op.id] || { action: "stay", shares: 0 };
+          const opAct = String(opOrder.action || "stay");
+          if (opAct === "stay") continue;
+          heavySuccess = true;
+          break;
         }
         if (heavySuccess) {
           heavyCostUsed = 0;
@@ -3546,6 +3552,24 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
         } else {
           heavyCostUsed = 5;
           heavyRefunded = false;
+        }
+      }
+      // 現金0かつ保有0で破産未確定の場合は破産扱い（COIN補充等で総資産が0になるケース）
+      if (!wentBankrupt) {
+        const c0 = Math.max(0, Math.floor(Number(cash) || 0));
+        const h0 = Math.max(0, Math.floor(Number(holdings) || 0));
+        if (c0 <= 0 && h0 <= 0) {
+          wentBankrupt = true;
+          cash = 0;
+          holdings = 0;
+          avgPrice = 0;
+          if (!note) note = "破産（総資産0）";
+          if (execResults[p.id]) {
+            execResults[p.id].bankrupt = true;
+            execResults[p.id].note = note;
+            execResults[p.id].cash = 0;
+            execResults[p.id].holdings = 0;
+          }
         }
       }
       const used = (hacks[p.id] && hacks[p.id].quick || 0) + heavyCostUsed + defCostUsed + refCostUsed + avantCostUsed + bailoutCards;
@@ -3563,6 +3587,7 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
         execResults[p.id].holdings = holdings;
         execResults[p.id].heavyRefunded = heavyRefunded;
         execResults[p.id].heavyCostUsed = heavyCostUsed;
+        execResults[p.id].bankrupt = wentBankrupt;
       }
       return {
         ...p,
@@ -3659,7 +3684,25 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
         });
       }
     }
-        return { updated, execResults, priceMap, nMap, incomingHeavyMap };
+    // 最終安全網: 総資産0なのに非破産のプレイヤーを破産にする
+    updated = updated.map(function (p) {
+      if (!p || p.isBankrupt) return p;
+      const c = Math.max(0, Math.floor(Number(p.cash) || 0));
+      const h = Math.max(0, Math.floor(Number(p.holdings) || 0));
+      if (c > 0 || h > 0) return p;
+      if (execResults[p.id]) {
+        execResults[p.id].bankrupt = true;
+        execResults[p.id].cash = 0;
+        execResults[p.id].holdings = 0;
+        execResults[p.id].tv = 0;
+        if (!execResults[p.id].note) execResults[p.id].note = "破産（総資産0）";
+      }
+      const hist = (p.history || []).slice();
+      if (hist.length) hist[hist.length - 1] = 0;
+      else hist.push(0);
+      return Object.assign({}, p, { cash: 0, holdings: 0, avgPrice: 0, cards: { stock: 0 }, isBankrupt: true, history: hist });
+    });
+    return { updated, execResults, priceMap, nMap, incomingHeavyMap };
   }
   function leaderByValue(players, basePrice) {
     let best = null;
@@ -6136,7 +6179,7 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
       h("div",{className:"ft-rules-section"},h("div",{className:"ft-rules-h"},"株価"),h("div",{className:"ft-rule-block"},h("div",{className:"ft-rule-formula"},"株価 = N の素因数の合計"),h("div",{className:"ft-rule-chips"},h("span",{className:"ft-chip"},"例 12=2×2×3 → 7円"),h("span",{className:"ft-chip up"},"素数 → 高い"),h("span",{className:"ft-chip down"},"2の累乗 → 安い")),h("p",{className:"ft-rules-note"},"各プレイヤーの株価は個別計算（共通の最終株価はない）"))),
       h("div",{className:"ft-rules-section"},h("div",{className:"ft-rules-h"},"1 TERN の流れ"),h("div",{className:"ft-flow"},h("div",{className:"ft-flow-step"},h("div",{className:"ft-flow-num"},"1"),h("div",{className:"ft-flow-body"},h("b",null,"開示"),h("span",null,"N と仮株価を公開"))),h("div",{className:"ft-flow-step"},h("div",{className:"ft-flow-num"},"2"),h("div",{className:"ft-flow-body"},h("b",null,"注文"),h("span",null,"買い / 売り / 様子見（秘密）"))),h("div",{className:"ft-flow-step"},h("div",{className:"ft-flow-num"},"3"),h("div",{className:"ft-flow-body"},h("b",null,"市場介入"),h("span",null,"COINで操作・妨害など"))),h("div",{className:"ft-flow-step"},h("div",{className:"ft-flow-num"},"4"),h("div",{className:"ft-flow-body"},h("b",null,"清算"),h("span",null,"個人株価で精算"))))),
       h("div",{className:"ft-rules-section"},h("div",{className:"ft-rules-h"},"COIN"),h("ul",{className:"ft-rules-bullets"},h("li",null,"開始時に一律40枚（SERIOUSは50枚）。市場介入専用"),h("li",null,"補充：5枚以下→総資産50%で+5／0枚→総資産75%で+10（市場介入中・ラスト5は不可）"),h("li",null,h("strong",null,"破産"),"：買い代金を現金＋全株売却でも払えないとき"),h("li",null,h("strong",null,"帳消し"),"：COIN10枚でその買いをキャンセル（破産回避）"))),
-      h("div",{className:"ft-rules-section"},h("div",{className:"ft-rules-h"},"市場介入"),h("div",{className:"ft-card-types"},h("div",{className:"ft-card-type op"},h("div",{className:"ft-card-type-title"},h(FtHackIcon,{kind:"op",size:26}),"操作"),h("ul",null,h("li",null,"1枚で自分のN+1（枚数分可）"),h("li",null,"自分の株価だけ操作"),h("li",null,"被妨害で無効"))),h("div",{className:"ft-card-type sab"},h("div",{className:"ft-card-type-title"},h(FtHackIcon,{kind:"sab",size:26}),"妨害"),h("ul",null,h("li",null,"5枚・自分以外のN+1"),h("li",null,"自分には無効・重複可"),h("li",null,"成功時（防衛・反射されず着弾）はCOIN返却"),h("li",null,"最初の3TERN不可"))),h("div",{className:"ft-card-type def"},h("div",{className:"ft-card-type-title"},h(FtHackIcon,{kind:"def",size:26}),"防衛"),h("ul",null,h("li",null,"順位でコスト変動"),h("li",null,"（1位：10枚/2位〜：7枚/最下位：5枚）"),h("li",null,"被妨害を無効化"),h("li",null,"最初の3TERN不可"))),h("div",{className:"ft-card-type reflect"},h("div",{className:"ft-card-type-title"},h(FtHackIcon,{kind:"reflect",size:26}),"反射"),h("ul",null,h("li",null,"5枚・妨害を発動者へ返す（防衛と排他）"),h("li",null,"最初の3TERN不可"))),h("div",{className:"ft-card-type avant"},h("div",{className:"ft-card-type-title"},h(FtHackIcon,{kind:"avant",size:26}),"奥義：AVANT-GARDE-操作"),h("ul",null,h("li",null,"10枚・自分の株価指定（1ゲーム1回）"),h("li",null,"1〜99999円を指定"),h("li",null,"被妨害無効"))),h("div",{className:"ft-card-type avant"},h("div",{className:"ft-card-type-title"},h(FtHackIcon,{kind:"avantSab",size:26}),"奥義：AVANT-GARDE-妨害"),h("ul",null,h("li",null,"10枚・他人の株価を強制（防衛で無効可）"),h("li",null,"1〜99999円を指定・1ゲーム1回"),h("li",null,"最初の3TERN不可")))),h("p",{className:"ft-rules-note",style:{marginTop:8}},"奥義は操作／妨害どちらか一方のみ。他COINと併用不可。重複時は総資産が少ない側が優先。")),
+      h("div",{className:"ft-rules-section"},h("div",{className:"ft-rules-h"},"市場介入"),h("div",{className:"ft-card-types"},h("div",{className:"ft-card-type op"},h("div",{className:"ft-card-type-title"},h(FtHackIcon,{kind:"op",size:26}),"操作"),h("ul",null,h("li",null,"1枚で自分のN+1（枚数分可）"),h("li",null,"自分の株価だけ操作"),h("li",null,"被妨害で無効"))),h("div",{className:"ft-card-type sab"},h("div",{className:"ft-card-type-title"},h(FtHackIcon,{kind:"sab",size:26}),"妨害"),h("ul",null,h("li",null,"5枚・自分以外のN+1"),h("li",null,"自分には無効・重複可"),h("li",null,"成功時（売買中の相手に防衛・反射されず着弾）はCOIN返却"),h("li",null,"最初の3TERN不可"))),h("div",{className:"ft-card-type def"},h("div",{className:"ft-card-type-title"},h(FtHackIcon,{kind:"def",size:26}),"防衛"),h("ul",null,h("li",null,"順位でコスト変動"),h("li",null,"（1位：10枚/2位〜：7枚/最下位：5枚）"),h("li",null,"被妨害を無効化"),h("li",null,"最初の3TERN不可"))),h("div",{className:"ft-card-type reflect"},h("div",{className:"ft-card-type-title"},h(FtHackIcon,{kind:"reflect",size:26}),"反射"),h("ul",null,h("li",null,"5枚・妨害を発動者へ返す（防衛と排他）"),h("li",null,"最初の3TERN不可"))),h("div",{className:"ft-card-type avant"},h("div",{className:"ft-card-type-title"},h(FtHackIcon,{kind:"avant",size:26}),"奥義：AVANT-GARDE-操作"),h("ul",null,h("li",null,"10枚・自分の株価指定（1ゲーム1回）"),h("li",null,"1〜99999円を指定"),h("li",null,"被妨害無効"))),h("div",{className:"ft-card-type avant"},h("div",{className:"ft-card-type-title"},h(FtHackIcon,{kind:"avantSab",size:26}),"奥義：AVANT-GARDE-妨害"),h("ul",null,h("li",null,"10枚・他人の株価を強制（防衛で無効可）"),h("li",null,"1〜99999円を指定・1ゲーム1回"),h("li",null,"最初の3TERN不可")))),h("p",{className:"ft-rules-note",style:{marginTop:8}},"奥義は操作／妨害どちらか一方のみ。他COINと併用不可。重複時は総資産が少ない側が優先。")),
       h("div",{className:"ft-rules-section"},h("div",{className:"ft-rules-h"},"税・補助（毎TERN清算後）"),h("ul",{className:"ft-rules-bullets"},h("li",null,h("strong",null,"税"),"：1位は総資産の5%、2位〜（最下位以外）は総資産の0.5%を支払う"),h("li",null,h("strong",null,"補助"),"：そのTERNに集まった税の全額が最下位へ支払われる（救済措置）"),h("li",null,"生存2人以上のとき適用。ラスト5TERNは課税・補助なし"),h("li",null,"税は現金から支払い。不足時は仮株価で株を売って納税"))),
       h("div",{className:"ft-rules-section"},h("div",{className:"ft-rules-h"},"序盤（最初の3 TERN）"),h("ul",{className:"ft-rules-bullets"},h("li",null,"妨害・防衛・反射・奥義：AVANT-GARDE-妨害は使用不可"),h("li",null,"操作・奥義：AVANT-GARDE-操作は使用可"))),
       h("div",{className:"ft-rules-section"},h("div",{className:"ft-rules-h"},"終盤（ラスト5 TERN）"),h("ul",{className:"ft-rules-bullets"},h("li",null,"様子見不可（保有があれば売り、なければ買い強制）"),h("li",null,"売買は最大枚数の50%以上"),h("li",null,"突入時に生存者へCOIN+5"),h("li",null,"COIN補充不可"),h("li",null,"課税・補助なし"))),
