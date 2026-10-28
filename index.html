@@ -1100,7 +1100,7 @@ window.ftSfx = window.ftSfx || function () {};
       unlock: function () { [784, 988, 1175, 1568, 1976].forEach(function (f, i) { bell(f, i * 0.07, 0.09, 0.6); }); tone({ f: 600, f2: 3000, d: 0.5, v: 0.04, a: 0.1 }); }
     };
 
-    function canPlay() { return S.on && !document.hidden && (window.__ftSpeed || 1) <= 1; }
+    function canPlay() { return false; } /* 効果音廃止: BGMのみ */
     function run(name, opts) {
       try { T = ctx.currentTime + 0.03; SND[name](opts || {}); } catch (e) {}
     }
